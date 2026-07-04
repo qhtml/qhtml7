@@ -7,6 +7,7 @@ qt_standard_project_setup()
 
 qt_add_executable(qhtml7-wasm
     main.cpp
+    qhtml_types.hpp qhtml_parser.hpp
 )
 
 target_link_libraries(qhtml7-wasm

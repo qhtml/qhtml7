@@ -5,7 +5,12 @@ var Module;
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const currentScript = document.currentScript;
-  const base = new URL(".", currentScript && currentScript.src ? currentScript.src : window.location.href).href;
+
+  if (!currentScript || !currentScript.src) {
+    throw new Error("qhtml-wasm.js must be loaded from a script URL");
+  }
+
+  const base = new URL(".", currentScript.src).href;
 
   if (globalScope.QHTML7Ready) {
     return;
@@ -24,6 +29,7 @@ var Module;
 
   function resolveFactory() {
     const names = [
+      "qhtml7_wasm_entry",
       "qhtml7_entry",
       "qhtml7_glue",
       "qhtml_qt_entry",
@@ -36,16 +42,16 @@ var Module;
       }
     }
 
-    throw new Error("qhtml7-glue.js did not register a QHTML7 module factory");
+    throw new Error("qhtml7-wasm.js did not register a QHTML7 module factory");
   }
 
   async function boot() {
-    await loadScript(base + "qhtml7-glue.js");
+    await loadScript(base + "qhtml7-wasm.js");
 
     const qtModule = await resolveFactory()({
       locateFile(path) {
-        if (path === "qhtml7.wasm" || path.endsWith(".wasm")) {
-          return base + "qhtml7.wasm";
+        if (path === "qhtml7-wasm.wasm" || path.endsWith(".wasm")) {
+          return base + "qhtml7-wasm.wasm";
         }
         return base + path;
       }
