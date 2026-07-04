@@ -1,5 +1,9 @@
 #include <QCoreApplication>
-
+#include "qhtml_types.hpp"
+#include "qhtml_parser.hpp"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/bind.h>
+#endif
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
