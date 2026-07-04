@@ -1,5 +1,9 @@
 QHTML7 specifications prompt.
 
+-------------- This section is fully implemented -----------------
+--------------- use for reference only ----------------------
+--------------- proceed to next milestone -------------------
+
 1. `qhtml-wasm.js` is included <script src="qhtml-wasm.js"></script> which will have the code to initialize the qhtml7.wasm file (which will be discussed later) using the glue `qhtml7-glue.js` which will be compiled as a type of webassembly based library that will provide the base classes and functionality for some parts of the system. We will discuss the webassembly details shortly.
 
 2. Once the webassembly is loaded and initialized fully, we need to create a CustomElement class in javascript that has an attribute "ready" which is automatically set to 0 when the script runs in a closure. This CustomElement will be tag "q-html"  so it will be accessible via <q-html> </q-html>. As soon as the element is created either via HTML or via Javascript .createDocument, the `ready` attribute is set to `"0"` and then the entire inner Contents of the element is stored and saved to a bound property on this particular <q-html> DOM element under the name `.qhtmlSource`, accessible to all via `querySelector("q-html").qhtmlSource`.
@@ -136,4 +140,340 @@ Multiple selectors with shorthand:
 
 This is a milestone checkpoint. All the above cases must parse successfully as-is exactly and all variations of them as well before the next step can be tackled.
 
-----------------------------
+---------------------------- end of milestone ----------------------------
+
+------------------ begin next milestone --------------------
+------------------- q-components ---------------------
+---------------- This section is complete  -------------------------
+
+5. Next up we have to implement actual runtime classes for q-component in wasm. q-components work like this:
+  First, you define the q-component and give it a name:
+
+  ```
+  q-component mycomponent {
+        div,span,text { hello world }
+  }
+
+  ```
+
+  This creates a new Custom HTML Element and type that can be used as a QHTML Named Type.
+  Next you instantiate it
+
+  ```
+   mycomponent object1 { }
+  ```
+
+  The result is in the HTML DOM a new
+  ```
+  <mycomponent component-uuid="<UUID matching definition object>" component-instance="<UUID of object1 instance>"></mycomponent>```
+
+  and also the QDomTree will have two new objects added to the .qhtmlChildren wherever these are defined in:
+
+  a new QHTMLComponentDefinition("mycomponent") object in the QHTMLDomTree
+  a new QHTMLComponentInstance(<pointer to the QHTMLComponentDefinition object above>)
+  an entry into the .qhtmlContext of the qhtmlParent QHTMLNode*-inheriting object that the definition and instance were parsed from of (can be two different places) so that .resolve("mycomponent") will return the QHTMLComponentDefintion object and .resolve("object1") will return the QHTMLComponentInstance object for the parent and all descendants that are directly descendant from this object (meaning calling .qhtmlParent successively will eventually lead back to the place where these are defined in. Anything outside of the tree would have to dotwalk to use the definitions like
+  ``` someObject.qhtmlParent.mycomponent object2 { } ``` which would create the same mycomponent object but from say an element that is has a common parent but is not descendant directly (sibling).```
+  Dot walking should be attempted to be resolved only when using a typed name style syntax with `<keyword> <name> { }` and never should be resolved when using an anonymous style declaration like  `<keyword> { }` This is to avoid conflicts with the .class and #id  shortcuts.
+
+  If something cannot be resolved through dotwalking, but part of the string can be, resolve up to the last available object and then throw an error saying "could not resolve "<remaining dot walk path>" from "<resolved dot walk path>"
+
+  This will get us to the end of the instantiation section for components.
+
+  when the following syntax works this section is complete
+
+  ```
+  <q-html>
+  q-component mycomponent {
+   div,span,text { hello world }
+  }
+
+  mycomponent object1 { }
+  </q-html>
+  ```
+
+  Result:
+  ```
+  <mycomponent component-definition="<definition uuid>"component-instance="<instance uuid>">
+  <div><span>hello world </span></div>
+  </mycomponent>
+```
+-------------- end of section ----------------
+
+--------------- next section ---------------------
+----------------- Complete  ----------------------
+---------------- signals, slots, and properties ------------------
+
+6a. First we need QHTMLFunction type which is triggered by having `function myfunc(parameters) { }` in a q-component like so
+
+```
+q-component mycomp {
+  function dowork(message) { alert(message) }
+}
+
+mycomp object1 { }
+
+/* object1.dowork(message) will cause the alert with message to show  when called from javascript blocks such as another function or from the javascript in the browser directly.  */
+```
+
+This means that any function QHTMLFunction needs to be converted to a bound property function when the DOM is created and the QHTMLContext must have every entry passed into the function context as well so that all keywords and named objects are available.
+
+6b. Now we have our q-component runtime all setup nicely, its time to implement q-signal, which is a QHTMLSignal() type in C++.  the QHTMLSignal() typed object are always connected to the a member of the QDomTree root that they are in called .qhtmlSignalBus which has C++ class QHTMLSignalBus(). This signal bus has one job receive a generic signal from C++ QHTMLSignal objects that contains the signal UUID, the QHTMLNode* UUID it was called from, and any parameters specified by the signal.  What the QHTMLSignalBus also does is allow other C++ (or javascript objects) to connect to the .signalReceived(signal, sender, parameters) signal and then execute arbitrary code when a specific signal is received from a specific sender and have the parameters available. This is how it works under the hood, but from QHTML it is implemented in a much simpler way. signals can only be added to q-component definitions to make them available to all instances of the definitions or to individual instances, which will in both cases make a new .qhtmlChildren element of type QHTMLSignal with a UUID for the signal and the .qhtmlParent property as well as the .qhtmlContext inherited from the ancestors.
+
+Implementation is as follows:
+
+```
+<q-html>
+q-component mycomponent {
+q-signal mySignal(name, message)
+}
+
+q-component othercomponent {
+ function handleSignal(name, message) { alert(name + " said " + message) }
+}
+
+mycomponent object1 { }
+othercomponent object2 { }
+
+/* from javascript:   object1.mySignal.connect(object2.handleSignal) */
+/* now object1.mySignal("bob", "hello") will ultimately cause an alert in the browser to pop up about bob saying hello */
+```
+Implement this completely and carefully as its a critical component so it must be created exactly right or it was cause issues for everything else in the futre of the project.
+
+
+------------------------------------- Section completed ----------------------------------
+
+------------------------- Next section ------------------------
+-----------------------  proerties, slots, and this -----------------------
+
+7. Now for the fun part -- q-component will need to support a `this` binding available to any any javascript  function or other QHTMLScriptNode that exists.  `this` should always point to the closest instance of a q-component.. for example:
+
+q-component mycomp {
+  function sendAlert() { alert("hello world"); }
+   function dothing() {  this.sendAlert(); }
+
+ }
+
+ mycomp object5 { }
+
+ /* object5.dothing() will cause sendAlert() to fire and send an alert with "hello world" */
+ /* these functions are already bound to the DOM, but `this` must also be bound in the javascript exection context */
+
+/* only `this` to anything that is of type QHTMLComponentInstance or has component instance metadata (when its a DOM element) */
+
+------
+
+8.  We must also support this syntax
+
+q-component mycomp {
+q-property myprop: <arbitrary pointer to QHTMLNode*-based object or primitive value or CSS unit>
+
+function genericfunction() { reutrn this.myprop }
+}
+
+Examples:
+
+mycomp obj1 { }
+
+q-component acomp {
+  q-property prop1: 24
+  q-property prop2: "hello"
+  q-property prop3: obj1
+  q-property prop4: obj1.myprop
+  q-property prop5: 24%
+  q-property prop6: 25vw
+  q-property prop7: 30px
+  q-property prop8: obj1.genericfunction /* allows prop8 to be callable */
+  q-property prop9: obj1.genericfunction() /* makes prop9 whatever the return value is of genericfunction() */
+}
+
+acomp obj7 { }
+/* obj7.prop1 == 24 */
+/* obj7.prop8 = Function */
+/* obj7.prop8() = obj1.genericfunction() return value */
+
+-------------------------------------------------- end of section -------------------------------------
+---------------------- next section -------------------------
+---------------------- inline handlers and event handlers -----------------------------
+9. Back ticks are supported and can be used with ${} in order to replace with resolved symbols inline. For example
+
+```
+q-component mycomp {
+
+q-property otherprop: "world"
+q-property myprop: `hello ${this.otherprop}`
+}
+
+mycomp obj5 { }
+
+
+/* obj5.myprop === "hello world" */
+
+
+10. Event handlers - in QHTML7 event handlers work much like how they work in regular javascript -- events (signals) are sent, and certain objects can subscribe to those signals so that when they fire, a javascript function will execute.  It is also possible to use some syntactic sugar for implementating signal handlers on q-component-based objects (both instances or if defined in the QHTMLComponentDefinition, it will be applied to all QHTMLComponent instances as if it was manually added to each one as-is. References inside of signal handlers do not get resolved or evaluated until they are executed when receiving a signal. Format:
+
+<q-html>
+q-component mycomp {
+  onClick() {  alert("mycomp was clicked") }
+
+
+
+}
+
+mycomp obj1 { }
+
+/* clicking on obj1 will cause the alert to fire */
+
+/* other acceptable use cases */
+mycomp obj1 {
+  q-signal mysignal(name)
+
+  q-property myprop: "hello"
+  onclick { alert("no parameters will pass with no parameters") }
+  onclick { alert(this.myprop + " all symbols are resolved and bound from the QHTMLContext of obj1"); }
+
+  onmysignal(name) { alert("You can also bind to signals in this same way") }
+  onCLICK { alert("this is case insensitive so ONclick, onCLICK or oNCLiCk all work the same."); }
+  onmousepress(event) { alert("you can also pick up mouse press events and other javascript events that coming from obj1" + event) }
+
+  onfocus {  alert(`You can also back ticks with templated inline references that resolve inline ${this.myprop}`); }
+}
+
+-------------------------
+
+11. Using javascript primitive objects and arrays in QHTML.  You can use primitive Javascript Arrays and Objects in QHTML as you would normally use them in Javascript, via { key: value, key: value }  and [value1, value2, value3].  Care must be taken when using them as they can become confused easily with QHTML objects. The way to know the difference between the two is that when operating declaratively, the only places objects and arrays are allowed inline / anonymously is in a q-property assignment like this:
+
+q-component mycomp {
+   q-property myarray: [25, 30, 35, 40]
+   q-property myobj: { key1: 25, key2: 30, key3: 40 }
+}
+
+Under the hood, myarray is treated as a QHTMLNode with type QHTMLArrayNode and myobj is of type QHTMLMapNode. The QHTMLArrayNode is a QVector<QVariant> while stored in C++ side with helpers for .push() .pop(), .unshift() and .shift(). It also needs .concat(otherarray), .slice(), .splice(), .filter(), and .map().  These should all be evaluated when called by calling a function from the browser javascript context and rendering an javascript-style array from the values, then calling the javascript function specified and then feeding that back into WASM to generate a new array to output.  I know its a bit of a performance botttleneck, but its maximum compatibility. QHTMLMapNode should work exactly the same way. If you can think of a better way to allow for arrays and objects from javascript to map cleanly with C++, then by all means do that instead as long as its fully compatible.
+
+--------------------------------------------------------
+
+12. html { } primitive tag. You can use a few primitive tags for different things: One of them is html { <arbitrary html> } which allows for direct insertion of pure HTML into the rendered output. Example:
+
+```
+div,span { html { <div>hello world</div> } }
+```
+Results in the HTML
+
+```
+<div><span><div>hello world</div></span></div>
+```
+
+---------------------------
+----------------------
+
+13. QHTML7 supports onPaintBackground(properties) { }, onPaintBorder(properties) { }, and onPaintMask(properties) { } special event handlers for q-components. These special handlers are for CSS houdini painting of backgrounds, borders and masks. The way they work is like this:
+
+WHenever one of the special handler are found, then internal javascript plus whatever QHTMLContext objects exist from the parent / ancestors are passed as a BLOB and registered as a paintWorklet with a unique ID and unique CSS class. Then the unique class is added as a style property to the DOM element when generated into DOM as `background: paint(<unique class>)`, or `border-image-source: paint(...)` or `mask-image` / `-webkit-mask-image`: paint(..)`
+
+CSS Painters also support properties being passed via CSS properties to manipulate the way the painting is done dynamically from outside of the painter event handler. This is done by specifying a list of QHTML Property references to the properties parameter on the onPaint*(properties) event handler. If any of the properties array is not of type QHTMLProperty, an error is shown in the console and the painting does not proceed. If all properties are of type QHTML Property, then each of the properties are added by name as CSS properties available to the paint worklet, and whenever they are changed by manipulating the actual QHTML Property* object from any source, which then triggers the on<property>changed(val) { } special handler to fire, and that is connected to a generated event handler in the browser side DOM which updates the CSS property by manipulating the .style property of the DOM element.
+
+Inside special paint nodes `this` is bound to the getContext2d() function, not the QHTMLComponentInstance, but the properties that are passed via `properties` are bound by name to the actual properties.
+
+Example
+```
+q-component paintedcomp {
+
+  q-property color: "black";
+  q-property width: 240px;
+  q-property height: 140px;
+  q-property paintvars: [this.color, this.width, this.height]
+  onPaintBackground(paintvars) {
+  /* use the CSS Houdini Paint worklet API */
+    this.clearRect(white);
+    this.setFill(this.color);
+    this.drawRect(0, 0, this.width, this.height);
+  }
+}
+```
+
+14a. Styles and Themes. QHTML Supports a robust style system which allows for users to define groups of CSS styles and assign them as named objects which can be accessed from within the QHTML runtime.
+
+```
+q-style style1 {
+   border: 2px solid green;
+   color: white;
+   width: calc(30px - 100px);
+}
+```
+
+14b. Also supported is adding CSS classes from existing class-based CSS frameworks directly into styles.
+
+```
+q-style style2 {
+   q-style-class { w3-row jumbo heading }
+   padding: 4px 12px 6px 3px;
+}
+```
+
+
+14c. q-style objects can be applied directly as an element class using the anonymous class syntax like so:
+
+```
+style1 {
+ div,span { mycomponent { } }
+}
+
+style2 {
+  span,h2 { text { hello world } }
+}
+```
+
+or combined together..
+
+```
+style1 {  div {
+  style2 { span {
+    text { hello world } } }
+  }
+}
+```
+
+or used in a chain
+
+```
+style1,div,span { text { hello } }
+```
+
+The resulting effect either way is that all elements that are children of the style element get the .style property set with the CSS properties within that style and any class assignments. regardless of depth.
+
+14d. If you want more fine grained control over which elements are styled, then you would use `q-theme`  which allows you to choose CSS selectors and assign styles based on them.
+
+```
+q-theme mytheme {
+  div { style1 }
+  span { style1 style2 }
+  h2 { style2 }
+  .someclass > div { style1 style2 }
+}
+
+mytheme {
+  div { text { abc } }
+  span { text { hello world } }
+  h2.someclass { text { headline } }
+}
+
+```
+There is also a q-default-theme which is an overidable set of colors that when a different theme is applied will simply "step aside" and let any q-theme definitions have precedence, this is useful for reusable components that you wish to customize part of without having to manually edit the whole component, implement a complex style property system, or completely re-style the entire thing. Its also necessary because in a reusable component, the q-theme would come directly before the actual component itself, and therefore would require styles to be applied to it per instance, and this could not be.  So
+```
+q-default-theme mydefault {
+  .class1 { style1 style2 }
+}
+mydefault { div.class1 { } }
+```
+
+And you can also combine multiple q-themes together by including a q-theme into your theme
+
+```
+q-theme mytheme2 {
+  q-child-theme { mytheme1 }
+  span { style2 }
+}
+```
+
+The order that the items appear in the theme control the final result with the exception of q-default-theme which always allows q-theme to take precedence when multiple styles are conflicting.
+
+---------------------------------- end of section ----------------------------------------

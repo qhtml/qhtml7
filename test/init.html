@@ -1,14 +1,409 @@
 <!DOCTYPE html>
-<html lang="">
+<html>
   <head>
     <meta charset="utf-8">
-    <title></title>
     <script src="../dist/qhtml-wasm.js"></script>
   </head>
   <body>
-    <header></header>
-    <main></main>
-    <q-html>div,span { text { hello world } }</q-html>
-    <footer></footer>
+<q-html>
+html {
+<style>
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f3f6f8;
+    color: #172026;
+  }
+  q-html {
+    display: block;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  section {
+    display: block;
+    margin: 0 0 18px;
+    padding: 16px;
+    border: 1px solid #d7e0e7;
+    border-radius: 8px;
+    background: white;
+  }
+  button {
+    margin: 6px 8px 6px 0;
+    padding: 8px 12px;
+    border: 1px solid #6f8da3;
+    border-radius: 6px;
+    background: #eef5f8;
+    color: #172026;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #dcecf2;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .sample {
+    padding: 10px;
+    border: 1px dashed #9eb1bd;
+    border-radius: 6px;
+    margin: 8px 0;
+  }
+  .theme-target {
+    padding: 10px;
+    margin: 8px 0;
+  }
+</style>
+}
+
+q-component button { }
+
+q-component basiccard {
+  q-property title: "Basic"
+  q-property message: "Ready"
+}
+
+q-component sourcecomp {
+  q-property myprop: "source value"
+  function genericfunction() { return this.myprop; }
+}
+
+q-component targetcomp {
+  q-property prop1: 24
+  q-property prop2: "hello"
+  q-property prop3: sourceObj
+  q-property prop4: sourceObj.myprop
+  q-property prop5: 24%
+  q-property prop6: 25vw
+  q-property prop7: 30px
+  q-property prop8: sourceObj.genericfunction
+  q-property prop9: sourceObj.genericfunction()
+}
+
+q-component signal-source {
+  q-signal mysignal(name, message)
+}
+
+q-component signal-receiver {
+  q-property lastMessage: "none"
+  function handleSignal(name, message) {
+    this.lastMessage = name + " said " + message;
+    alert(this.lastMessage);
+  }
+}
+
+q-component event-demo {
+  q-signal customnotice(message)
+  q-property myprop: "event property"
+  onclick { alert("Component click handler: " + this.myprop); }
+  oncustomnotice(message) { alert("Custom signal handler: " + message + " / " + this.myprop); }
+}
+
+q-component inline-demo {
+  q-property otherprop: "world"
+  q-property myprop: `hello ${this.otherprop}`
+}
+
+q-component collection-demo {
+  q-property myarray: [25, 30, 35, 40]
+  q-property myobj: { key1: 25, key2: 30, key3: 40 }
+}
+
+q-component paintedcomp {
+  q-property color: "black"
+  q-property width: 240px
+  q-property height: 120px
+  q-property paintvars: [this.color, this.width, this.height]
+  onPaintBackground(paintvars) {
+    this.clearRect(white);
+    this.setFill(color);
+    this.drawRect(0, 0, parseFloat(width), parseFloat(height));
+  }
+}
+
+q-style style1 {
+  border: 2px solid green;
+  color: white;
+  background: #2f6f4e;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+q-style style2 {
+  q-style-class { qhtml-style-two }
+  border: 2px solid #305f9f;
+  color: #0d2b4c;
+  background: #d9ecff;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+q-style loudStyle {
+  border: 3px solid #c2410c;
+  color: #7c2d12;
+  background: #ffedd5;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+q-theme mytheme {
+  div { style2 }
+  span { style1 }
+  h2 { loudStyle }
+  .someclass div { loudStyle }
+}
+
+q-default-theme mydefault {
+  .defaultbox { style1 }
+}
+
+q-theme mytheme2 {
+  q-child-theme { mytheme }
+  p { loudStyle }
+}
+
+h1 { text { QHTML7 feature examples } }
+p { text { Each button uses QHTML onclick handlers. Style and theme sections should be visually inspectable directly. } }
+
+section#coreSyntax {
+  h2 { text { 1. Core syntax } }
+  div.sample {
+    h3 { text { Product } }
+    p { text { Lightweight UI syntax. } }
+  }
+  div,section,h3 { text { Nested selector chain } }
+  div#main.card {
+    p { text { Class and id shorthand card body } }
+  }
+  div#my-id.my-class,span.my-class,h2#id2 { text { Multiple selector shorthand } }
+  button checkCore#checkCore {
+    text { Confirm core syntax }
+    onclick {
+      alert(
+        "h1: " + document.querySelector("h1").textContent +
+        "\n#main: " + document.querySelector("#main").textContent.trim() +
+        "\n#id2: " + document.querySelector("#id2").textContent.trim()
+      );
+    }
+  }
+}
+
+section#components {
+  h2 { text { 2. Components and functions } }
+  basiccard basicOne#basicOne {
+    div.sample {
+      h3 { text { Component instance rendered } }
+      p { text { This content is inside a q-component instance. } }
+    }
+  }
+  sourcecomp sourceObj#sourceObj { }
+  button functionButton#functionButton {
+    text { Call component function }
+    onclick {
+      alert("sourceObj.genericfunction() returned: " + document.querySelector("#sourceObj").genericfunction());
+    }
+  }
+}
+
+section#properties {
+  h2 { text { 3. Properties, references, units, and callable values } }
+  targetcomp targetObj#targetObj { }
+  button propertyButton#propertyButton {
+    text { Inspect properties }
+    onclick {
+      var target = document.querySelector("#targetObj");
+      alert(
+        "prop1 number: " + target.prop1 +
+        "\nprop2 string: " + target.prop2 +
+        "\nprop3 object id: " + target.prop3.id +
+        "\nprop4 path: " + target.prop4 +
+        "\nprop5 unit: " + target.prop5 +
+        "\nprop6 unit: " + target.prop6 +
+        "\nprop7 unit: " + target.prop7 +
+        "\nprop8 callable: " + target.prop8() +
+        "\nprop9 call result: " + target.prop9
+      );
+    }
+  }
+  button changePropertyButton#changePropertyButton {
+    text { Change referenced property }
+    onclick {
+      var source = document.querySelector("#sourceObj");
+      source.myprop = "changed source value";
+      alert("sourceObj.myprop is now: " + source.myprop);
+    }
+  }
+}
+
+section#signals {
+  h2 { text { 4. Signals } }
+  signal-source signalSender#signalSender { }
+  signal-receiver signalTarget#signalTarget { }
+  button connectSignalButton#connectSignalButton {
+    text { Connect and emit signal }
+    onclick {
+      var sender = document.querySelector("#signalSender");
+      var receiver = document.querySelector("#signalTarget");
+      sender.mysignal.disconnectAll();
+      sender.mysignal.connect(receiver.handleSignal);
+      sender.mysignal("bob", "hello");
+      alert("Receiver lastMessage property: " + receiver.lastMessage);
+    }
+  }
+}
+
+section#events {
+  h2 { text { 5. Event handlers } }
+  event-demo eventBox#eventBox {
+    div.sample { text { Click this component area to confirm component onclick. } }
+  }
+  button eventButton#eventButton {
+    q-signal customnotice(message)
+    q-property myprop: "button event property"
+    text { Trigger button handlers }
+    onclick {
+      alert("Button onclick with this.myprop: " + this.myprop);
+      this.customnotice("signal from button");
+    }
+    oncustomnotice(message) {
+      alert("Button custom signal handler received: " + message);
+    }
+  }
+  button mouseButton#mouseButton {
+    text { Confirm event parameter }
+    onclick(event) {
+      alert("Native event parameter type: " + event.type);
+    }
+  }
+  button caseButton#caseButton {
+    text { Confirm onCLICK casing }
+    onCLICK {
+      alert("Uppercase onCLICK is bound as click.");
+    }
+  }
+  button mousePressButton#mousePressButton {
+    text { Confirm mousepress mapping }
+    onmousepress(event) {
+      alert("onmousepress received native event: " + event.type);
+    }
+  }
+  button fireEventBoxSignal#fireEventBoxSignal {
+    text { Fire component custom signal }
+    onclick {
+      document.querySelector("#eventBox").customnotice("manual signal call");
+    }
+  }
+}
+
+section#inlineTemplates {
+  h2 { text { 6. Backtick inline templates } }
+  inline-demo inlineObj#inlineObj { }
+  button inlineButton#inlineButton {
+    text { Inspect inline template property }
+    onclick {
+      alert("inlineObj.myprop: " + document.querySelector("#inlineObj").myprop);
+    }
+  }
+}
+
+section#collections {
+  h2 { text { 7. Arrays and objects } }
+  collection-demo collectionObj#collectionObj { }
+  button collectionButton#collectionButton {
+    text { Mutate array and object }
+    onclick {
+      var demo = document.querySelector("#collectionObj");
+      demo.myarray.push(45);
+      demo.myobj.key4 = 50;
+      alert("array: " + demo.myarray.join(", ") + "\nobject key4: " + demo.myobj.key4);
+    }
+  }
+}
+
+section#htmlPrimitive {
+  h2 { text { 8. html primitive } }
+  div.sample {
+    div,span { html { <strong>Raw HTML inserted by html { }</strong> } }
+  }
+  button htmlButton#htmlButton {
+    text { Confirm raw HTML }
+    onclick {
+      alert(document.querySelector("#htmlPrimitive strong").textContent);
+    }
+  }
+}
+
+section#paint {
+  h2 { text { 9. Paint handlers } }
+  paintedcomp paintBox#paintBox {
+    div.sample {
+      text { This component receives a CSS paint background when paint worklets are available. }
+    }
+  }
+  button paintButton#paintButton {
+    text { Change paint color }
+    onclick {
+      var box = document.querySelector("#paintBox");
+      box.color = box.color === "black" ? "green" : "black";
+      alert("paintBox.color is now: " + box.color);
+    }
+  }
+}
+
+section#styles {
+  h2 { text { 10. Styles } }
+  style1 {
+    div#styleOne { text { style1 applied directly } }
+  }
+  style2 {
+    span#styleTwo { text { style2 applied directly } }
+  }
+  style1 { div {
+    style2 { span#combinedStyle {
+      text { style1 and style2 nested application }
+    } }
+  } }
+  style1,div,span#styleChain { text { style1 used in a selector chain } }
+  button styleButton#styleButton {
+    text { Change style1 live }
+    onclick {
+      var q = document.querySelector("q-html");
+      q.qhtmlComponentRegistry.stylesByName.get("style1").setCssText("border: 3px solid #7c3aed; color: white; background: #6d28d9; padding: 10px; border-radius: 6px;");
+      alert("style1 was changed. The green style boxes should now be purple.");
+    }
+  }
+}
+
+section#themes {
+  h2 { text { 11. Themes } }
+  mytheme {
+    div#themeDiv.theme-target { text { div styled by mytheme } }
+    span#themeSpan.theme-target { text { span styled by mytheme } }
+    h2#themeHeading { text { h2 styled by mytheme } }
+    div.someclass {
+      div#themeNested.theme-target { text { nested selector styled by mytheme } }
+    }
+  }
+  mydefault {
+    div#defaultThemeBox.defaultbox { text { q-default-theme fallback style } }
+  }
+  mytheme2 {
+    p#childThemeParagraph { text { q-child-theme plus local p rule } }
+  }
+  button themeButton#themeButton {
+    text { Change theme live }
+    onclick {
+      var q = document.querySelector("q-html");
+      q.qhtmlComponentRegistry.stylesByName.get("loudStyle").setCssText("border: 3px solid #0f766e; color: #134e4a; background: #ccfbf1; padding: 10px; border-radius: 6px;");
+      q.qhtmlComponentRegistry.themesByName.get("mytheme").refresh();
+      q.qhtmlComponentRegistry.themesByName.get("mytheme2").refresh();
+      alert("loudStyle was changed. Theme headline/nested/p boxes should now be teal.");
+    }
+  }
+}
+</q-html>
   </body>
 </html>

@@ -149,7 +149,13 @@ protected:
             QStringLiteral("q-script"),
             QStringLiteral("q-model-view"),
             QStringLiteral("q-factory"),
+            QStringLiteral("q-style"),
+            QStringLiteral("q-style-class"),
+            QStringLiteral("q-theme"),
+            QStringLiteral("q-default-theme"),
+            QStringLiteral("q-child-theme"),
             QStringLiteral("function"),
+            QStringLiteral("q-event-handler"),
             QStringLiteral("slot"),
             QStringLiteral("html"),
             QStringLiteral("text")
@@ -333,8 +339,17 @@ private:
         if (qhtmlKeyword == QStringLiteral("q-factory")) {
             return new QHTMLFactory(qhtmlName, m_attributes);
         }
+        if (qhtmlKeyword == QStringLiteral("q-style")) {
+            return new QHTMLStyle(qhtmlName, m_attributes, qhtmlContent);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-theme") || qhtmlKeyword == QStringLiteral("q-default-theme")) {
+            return new QHTMLTheme(qhtmlKeyword, qhtmlName, m_attributes, qhtmlContent);
+        }
         if (qhtmlKeyword == QStringLiteral("function")) {
-            return new QHTMLMethod(qhtmlName, m_attributes);
+            return new QHTMLFunction(qhtmlName, m_attributes, qhtmlContent);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-event-handler")) {
+            return new QHTMLEventHandler(qhtmlName, m_attributes, qhtmlContent);
         }
         if (qhtmlKeyword == QStringLiteral("q-source")) {
             return new QHTMLSourceFragment(qhtmlName, m_attributes);
@@ -401,6 +416,15 @@ struct SelectorParts {
     bool valid = false;
 };
 
+struct TypedSignatureParts {
+    QString keyword;
+    QString name;
+    QHash<QString, QString> attributes;
+    bool valid = false;
+};
+
+inline SelectorParts parseSelector(QString selector);
+
 inline bool isWordStart(QChar ch)
 {
     return ch.isLetter() || ch == QLatin1Char('_');
@@ -422,6 +446,60 @@ inline bool isKeywordToken(const QString &token)
         }
     }
     return true;
+}
+
+inline bool isTypePathToken(const QString &token)
+{
+    if (token.trimmed().isEmpty()) {
+        return false;
+    }
+    const QStringList parts = token.split(QLatin1Char('.'));
+    for (const QString &part : parts) {
+        if (!isKeywordToken(part)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline TypedSignatureParts parseTypedSignature(const QString &header)
+{
+    TypedSignatureParts out;
+    const QString trimmedHeader = header.trimmed();
+    const int firstSpace = trimmedHeader.indexOf(QRegularExpression(QStringLiteral("\\s+")));
+    if (firstSpace < 0) {
+        return out;
+    }
+
+    out.keyword = trimmedHeader.left(firstSpace).trimmed();
+    if (!isTypePathToken(out.keyword)) {
+        return {};
+    }
+
+    QString nameExpression = trimmedHeader.mid(firstSpace + 1).trimmed();
+    QString parameters;
+    const int openParen = nameExpression.indexOf(QLatin1Char('('));
+    if (openParen >= 0) {
+        const int closeParen = nameExpression.lastIndexOf(QLatin1Char(')'));
+        if (closeParen < openParen || closeParen != nameExpression.size() - 1) {
+            return {};
+        }
+        parameters = nameExpression.mid(openParen + 1, closeParen - openParen - 1).trimmed();
+        nameExpression = nameExpression.left(openParen).trimmed();
+    }
+
+    const SelectorParts nameSelector = parseSelector(nameExpression);
+    if (!nameSelector.valid) {
+        return {};
+    }
+
+    out.name = nameSelector.tagName;
+    out.attributes = nameSelector.attributes;
+    if (!parameters.isEmpty()) {
+        out.attributes.insert(QStringLiteral("parameters"), parameters);
+    }
+    out.valid = true;
+    return out;
 }
 
 inline SelectorParts parseSelector(QString selector)
@@ -471,8 +549,58 @@ inline SelectorParts parseSelector(QString selector)
 inline int findMatchingBrace(const QString &source, int openIndex)
 {
     int depth = 0;
+    QChar quote;
+    bool escape = false;
+    bool lineComment = false;
+    bool blockComment = false;
+
     for (int i = openIndex; i < source.size(); ++i) {
         const QChar ch = source.at(i);
+        const QChar next = i + 1 < source.size() ? source.at(i + 1) : QChar();
+
+        if (lineComment) {
+            if (ch == QLatin1Char('\n')) {
+                lineComment = false;
+            }
+            continue;
+        }
+
+        if (blockComment) {
+            if (ch == QLatin1Char('*') && next == QLatin1Char('/')) {
+                blockComment = false;
+                ++i;
+            }
+            continue;
+        }
+
+        if (!quote.isNull()) {
+            if (escape) {
+                escape = false;
+            } else if (ch == QLatin1Char('\\')) {
+                escape = true;
+            } else if (ch == quote) {
+                quote = QChar();
+            }
+            continue;
+        }
+
+        if (ch == QLatin1Char('/') && next == QLatin1Char('/')) {
+            lineComment = true;
+            ++i;
+            continue;
+        }
+
+        if (ch == QLatin1Char('/') && next == QLatin1Char('*')) {
+            blockComment = true;
+            ++i;
+            continue;
+        }
+
+        if (ch == QLatin1Char('"') || ch == QLatin1Char('\'') || ch == QLatin1Char('`')) {
+            quote = ch;
+            continue;
+        }
+
         if (ch == QLatin1Char('{')) {
             ++depth;
         } else if (ch == QLatin1Char('}')) {
@@ -542,6 +670,31 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
         return new QHTMLAstUnknownFragment(content);
     }
 
+    static const QRegularExpression objectPropertyRx(
+        QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*$"));
+    const QRegularExpressionMatch objectPropertyMatch = objectPropertyRx.match(trimmedHeader);
+    if (objectPropertyMatch.hasMatch()) {
+        QHash<QString, QString> attributes;
+        attributes.insert(QStringLiteral("value"), QStringLiteral("{") + content.trimmed() + QStringLiteral("}"));
+        return new QHTMLAstNamedTypeNode(QStringLiteral("q-property"),
+                                        objectPropertyMatch.captured(1).trimmed(),
+                                        attributes,
+                                        QString());
+    }
+
+    static const QRegularExpression eventHandlerRx(
+        QStringLiteral("^\\s*on([A-Za-z_][A-Za-z0-9_+\\-]*)(?:\\s*\\((.*?)\\))?\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch eventHandlerMatch = eventHandlerRx.match(trimmedHeader);
+    if (eventHandlerMatch.hasMatch()) {
+        QHash<QString, QString> attributes;
+        attributes.insert(QStringLiteral("parameters"), eventHandlerMatch.captured(2).trimmed());
+        return new QHTMLAstNamedTypeNode(QStringLiteral("q-event-handler"),
+                                        eventHandlerMatch.captured(1).trimmed().toLower(),
+                                        attributes,
+                                        content);
+    }
+
     const QStringList selectors = splitSelectors(trimmedHeader);
     if (selectors.size() > 1 && specialSelectorIsOnlyAtEnd(selectors)) {
         return buildAnonymousChain(selectors, 0, content);
@@ -552,15 +705,54 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
         return new QHTMLAstAnonNode(singleSelector.tagName, singleSelector.attributes, content);
     }
 
-    const QStringList words = splitWords(trimmedHeader);
-    if (words.size() == 2 && isKeywordToken(words.at(0))) {
-        const SelectorParts nameSelector = parseSelector(words.at(1));
-        if (nameSelector.valid) {
-            return new QHTMLAstNamedTypeNode(words.at(0), nameSelector.tagName, nameSelector.attributes, content);
-        }
+    const TypedSignatureParts typedSignature = parseTypedSignature(trimmedHeader);
+    if (typedSignature.valid) {
+        return new QHTMLAstNamedTypeNode(typedSignature.keyword,
+                                        typedSignature.name,
+                                        typedSignature.attributes,
+                                        content);
     }
 
     return new QHTMLAstUnknownFragment(trimmedHeader + QStringLiteral(" { ") + content + QStringLiteral(" }"));
+}
+
+inline QHTMLAstNode *nodeFromStatement(const QString &statement)
+{
+    static const QRegularExpression propertyRx(
+        QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*(.*?)\\s*$"));
+    const QRegularExpressionMatch propertyMatch = propertyRx.match(statement);
+    if (propertyMatch.hasMatch()) {
+        QHash<QString, QString> attributes;
+        attributes.insert(QStringLiteral("value"), propertyMatch.captured(2).trimmed());
+        return new QHTMLAstNamedTypeNode(QStringLiteral("q-property"),
+                                        propertyMatch.captured(1).trimmed(),
+                                        attributes,
+                                        QString());
+    }
+
+    const TypedSignatureParts typedSignature = parseTypedSignature(statement);
+    if (typedSignature.valid && typedSignature.keyword == QStringLiteral("q-signal")) {
+        return new QHTMLAstNamedTypeNode(typedSignature.keyword,
+                                        typedSignature.name,
+                                        typedSignature.attributes,
+                                        QString());
+    }
+    return nullptr;
+}
+
+inline void appendStatementOrUnknown(QHTMLAstNode *parent, const QString &source)
+{
+    for (const QString &line : source.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+        const QString statement = line.trimmed();
+        if (statement.isEmpty()) {
+            continue;
+        }
+        if (QHTMLAstNode *node = nodeFromStatement(statement)) {
+            parent->appendAstChild(node);
+        } else {
+            parent->appendAstChild(new QHTMLAstUnknownFragment(statement));
+        }
+    }
 }
 
 } // namespace qhtml7_parser_detail
@@ -580,9 +772,19 @@ inline void QHTMLAstNode::scan(const QString &source)
         if (openIndex < 0) {
             const QString fragment = source.mid(cursor).trimmed();
             if (!fragment.isEmpty()) {
-                appendAstChild(new QHTMLAstUnknownFragment(fragment));
+                qhtml7_parser_detail::appendStatementOrUnknown(this, fragment);
             }
             break;
+        }
+
+        const int lineEndBeforeBlock = source.indexOf(QLatin1Char('\n'), cursor);
+        if (lineEndBeforeBlock >= 0 && lineEndBeforeBlock < openIndex) {
+            const QString statement = source.mid(cursor, lineEndBeforeBlock - cursor).trimmed();
+            if (QHTMLAstNode *node = qhtml7_parser_detail::nodeFromStatement(statement)) {
+                appendAstChild(node);
+                cursor = lineEndBeforeBlock + 1;
+                continue;
+            }
         }
 
         const QString header = source.mid(cursor, openIndex - cursor).trimmed();
@@ -610,6 +812,353 @@ inline void QHTMLDomTree::loadFromAST(QHTMLAstNode *astRoot)
             appendChild(child->toQHTMLNode());
         }
     }
+    indexComponentDefinitions();
+    instantiateStyleThemeApplications();
+    instantiateComponents();
+    bindComponentMembers();
+}
+
+inline void QHTMLDomTree::indexComponentDefinitions()
+{
+    indexComponentDefinitionsFor(this);
+}
+
+inline void QHTMLDomTree::indexComponentDefinitionsFor(QHTMLNode *scope)
+{
+    if (!scope) {
+        return;
+    }
+
+    for (int i = 0; i < scope->qhtmlChildren.size(); ++i) {
+        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
+        if (!child) {
+            continue;
+        }
+
+        if (QHTMLComponentDefinition *definition = dynamic_cast<QHTMLComponentDefinition *>(child)) {
+            if (scope->qhtmlContext) {
+                scope->qhtmlContext->updateObjectReference(definition->qhtmlName(), definition);
+            }
+            if (definition->qhtmlContext) {
+                definition->qhtmlContext->updateObjectReference(definition->qhtmlName(), definition);
+            }
+        }
+        if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(child)) {
+            if (scope->qhtmlContext) {
+                scope->qhtmlContext->updateObjectReference(style->qhtmlName(), style);
+            }
+            if (style->qhtmlContext) {
+                style->qhtmlContext->updateObjectReference(style->qhtmlName(), style);
+            }
+        }
+        if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(child)) {
+            if (scope->qhtmlContext) {
+                scope->qhtmlContext->updateObjectReference(theme->qhtmlName(), theme);
+            }
+            if (theme->qhtmlContext) {
+                theme->qhtmlContext->updateObjectReference(theme->qhtmlName(), theme);
+            }
+        }
+
+        indexComponentDefinitionsFor(child);
+    }
+}
+
+inline void QHTMLDomTree::instantiateStyleThemeApplications()
+{
+    instantiateStyleThemeApplicationsFor(this);
+}
+
+inline void QHTMLDomTree::instantiateStyleThemeApplicationsFor(QHTMLNode *scope)
+{
+    if (!scope) {
+        return;
+    }
+
+    const int childTotal = scope->qhtmlChildren.size();
+    for (int i = 0; i < childTotal; ++i) {
+        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
+        if (!child) {
+            continue;
+        }
+
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(child)) {
+            if (QHTMLStyle *style = resolveStyle(element, element->tagName())) {
+                QHTMLNode *application = styleApplicationFrom(element, style);
+                scope->qhtmlChildren.insert(i, application);
+                delete element;
+                child = application;
+            } else if (QHTMLTheme *theme = resolveTheme(element, element->tagName())) {
+                QHTMLNode *application = themeApplicationFrom(element, theme);
+                scope->qhtmlChildren.insert(i, application);
+                delete element;
+                child = application;
+            }
+        }
+
+        instantiateStyleThemeApplicationsFor(child);
+    }
+}
+
+inline void QHTMLDomTree::instantiateComponents()
+{
+    instantiateComponentsFor(this);
+}
+
+inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
+{
+    if (!scope) {
+        return;
+    }
+
+    const int childTotal = scope->qhtmlChildren.size();
+    for (int i = 0; i < childTotal; ++i) {
+        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
+        if (!child) {
+            continue;
+        }
+
+        if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(child)) {
+            const bool alreadyConcreteComponent =
+                dynamic_cast<QHTMLComponentDefinition *>(typed) ||
+                dynamic_cast<QHTMLComponentInstance *>(typed) ||
+                dynamic_cast<QHTMLStyle *>(typed) ||
+                dynamic_cast<QHTMLTheme *>(typed) ||
+                dynamic_cast<QHTMLStyleApplication *>(typed) ||
+                dynamic_cast<QHTMLThemeApplication *>(typed);
+            if (!alreadyConcreteComponent) {
+                if (QHTMLComponentDefinition *definition = resolveComponentDefinition(typed, typed->keyword())) {
+                    QHTMLNode *instance = componentInstanceFrom(typed, definition);
+                    scope->qhtmlChildren.insert(i, instance);
+                    delete typed;
+                    child = instance;
+
+                    if (scope->qhtmlContext) {
+                        scope->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
+                    }
+                    if (child->qhtmlContext) {
+                        child->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
+                    }
+                }
+            }
+        }
+
+        instantiateComponentsFor(child);
+    }
+}
+
+inline void QHTMLDomTree::bindComponentMembers()
+{
+    bindComponentMembersFor(this);
+}
+
+inline void QHTMLDomTree::bindComponentMembersFor(QHTMLNode *scope)
+{
+    if (!scope) {
+        return;
+    }
+
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(scope)) {
+        cloneDefinitionMembers(instance);
+    }
+
+    bindLocalReferences(scope);
+
+    const int childTotal = scope->qhtmlChildren.size();
+    for (int i = 0; i < childTotal; ++i) {
+        bindComponentMembersFor(scope->qhtmlChildren.value(i, nullptr));
+    }
+}
+
+inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
+{
+    if (!scope || !scope->qhtmlContext) {
+        return;
+    }
+
+    for (int i = 0; i < scope->qhtmlChildren.size(); ++i) {
+        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
+        if (!child || child->qhtmlName().isEmpty()) {
+            continue;
+        }
+
+        if (QHTMLSignal *signal = dynamic_cast<QHTMLSignal *>(child)) {
+            signal->setSignalBus(qhtmlSignalBus);
+        }
+
+        if (dynamic_cast<QHTMLFunction *>(child) ||
+            dynamic_cast<QHTMLSignal *>(child) ||
+            dynamic_cast<QHTMLProperty *>(child) ||
+            dynamic_cast<QHTMLEventHandler *>(child) ||
+            dynamic_cast<QHTMLStyle *>(child) ||
+            dynamic_cast<QHTMLTheme *>(child) ||
+            dynamic_cast<QHTMLComponentDefinition *>(child) ||
+            dynamic_cast<QHTMLComponentInstance *>(child)) {
+            scope->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
+            if (child->qhtmlContext) {
+                child->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
+            }
+        }
+    }
+}
+
+inline void QHTMLDomTree::cloneDefinitionMembers(QHTMLComponentInstance *instance)
+{
+    if (!instance || !instance->definition()) {
+        return;
+    }
+
+    QHTMLComponentDefinition *definition = instance->definition();
+    const int childTotal = definition->qhtmlChildren.size();
+    for (int i = 0; i < childTotal; ++i) {
+        QHTMLNode *definitionChild = definition->qhtmlChildren.value(i, nullptr);
+        if (!definitionChild || definitionChild->qhtmlName().isEmpty()) {
+            continue;
+        }
+
+        if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(definitionChild)) {
+            instance->appendChild(handler->cloneEventHandler());
+            continue;
+        }
+
+        if (hasLocalReference(instance, definitionChild->qhtmlName())) {
+            continue;
+        }
+
+        if (QHTMLFunction *function = dynamic_cast<QHTMLFunction *>(definitionChild)) {
+            instance->appendChild(function->cloneFunction());
+        } else if (QHTMLSignal *signal = dynamic_cast<QHTMLSignal *>(definitionChild)) {
+            QHTMLSignal *clonedSignal = signal->cloneSignal();
+            clonedSignal->setSignalBus(qhtmlSignalBus);
+            instance->appendChild(clonedSignal);
+        } else if (QHTMLProperty *property = dynamic_cast<QHTMLProperty *>(definitionChild)) {
+            instance->appendChild(property->cloneProperty());
+        } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(definitionChild)) {
+            instance->appendChild(style->cloneStyle());
+        } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(definitionChild)) {
+            instance->appendChild(theme->cloneTheme());
+        }
+    }
+}
+
+inline bool QHTMLDomTree::hasLocalReference(QHTMLNode *scope, const QString &name) const
+{
+    if (!scope || name.isEmpty()) {
+        return false;
+    }
+
+    if (scope->qhtmlContext && scope->qhtmlContext->containsLocalReference(name)) {
+        return true;
+    }
+
+    for (int i = 0; i < scope->qhtmlChildren.size(); ++i) {
+        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
+        if (child && child->qhtmlName() == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline QHTMLComponentDefinition *QHTMLDomTree::resolveComponentDefinition(QHTMLNode *scope, const QString &path) const
+{
+    QHTMLNode *resolved = resolveDotPath(scope, path);
+    return dynamic_cast<QHTMLComponentDefinition *>(resolved);
+}
+
+inline QHTMLStyle *QHTMLDomTree::resolveStyle(QHTMLNode *scope, const QString &path) const
+{
+    QHTMLNode *resolved = resolveDotPath(scope, path);
+    return dynamic_cast<QHTMLStyle *>(resolved);
+}
+
+inline QHTMLTheme *QHTMLDomTree::resolveTheme(QHTMLNode *scope, const QString &path) const
+{
+    QHTMLNode *resolved = resolveDotPath(scope, path);
+    return dynamic_cast<QHTMLTheme *>(resolved);
+}
+
+inline QHTMLNode *QHTMLDomTree::resolveDotPath(QHTMLNode *scope, const QString &path) const
+{
+    if (!scope || path.trimmed().isEmpty()) {
+        return nullptr;
+    }
+
+    const QStringList parts = path.split(QLatin1Char('.'), Qt::SkipEmptyParts);
+    if (parts.isEmpty()) {
+        return nullptr;
+    }
+
+    QHTMLReference *current = scope->resolve(parts.first());
+    QHTMLNode *currentNode = dynamic_cast<QHTMLNode *>(current);
+
+    for (int i = 1; i < parts.size(); ++i) {
+        const QString part = parts.at(i);
+        if (part == QStringLiteral("qhtmlParent")) {
+            currentNode = currentNode ? currentNode->parent() : nullptr;
+            current = currentNode;
+            continue;
+        }
+
+        if (!currentNode) {
+            return nullptr;
+        }
+        current = currentNode->resolve(part);
+        currentNode = dynamic_cast<QHTMLNode *>(current);
+    }
+
+    return currentNode;
+}
+
+inline QHTMLNode *QHTMLDomTree::componentInstanceFrom(QHTMLTypedNode *node, QHTMLComponentDefinition *definition) const
+{
+    QHTMLComponentInstance *instance = new QHTMLComponentInstance(node->qhtmlName(), node->attributes(), definition);
+    instance->setQHTMLUUID(node->qhtmlUUID());
+    instance->qhtmlParent = node->qhtmlParent;
+    if (instance->qhtmlContext && node->qhtmlContext) {
+        instance->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
+    }
+    moveChildren(node, instance);
+    return instance;
+}
+
+inline QHTMLNode *QHTMLDomTree::styleApplicationFrom(QHTMLDomElement *node, QHTMLStyle *style) const
+{
+    QHTMLStyleApplication *application = new QHTMLStyleApplication(style);
+    application->setQHTMLUUID(node->qhtmlUUID());
+    application->qhtmlParent = node->qhtmlParent;
+    if (application->qhtmlContext && node->qhtmlContext) {
+        application->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
+    }
+    moveChildren(node, application);
+    return application;
+}
+
+inline QHTMLNode *QHTMLDomTree::themeApplicationFrom(QHTMLDomElement *node, QHTMLTheme *theme) const
+{
+    QHTMLThemeApplication *application = new QHTMLThemeApplication(theme);
+    application->setQHTMLUUID(node->qhtmlUUID());
+    application->qhtmlParent = node->qhtmlParent;
+    if (application->qhtmlContext && node->qhtmlContext) {
+        application->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
+    }
+    moveChildren(node, application);
+    return application;
+}
+
+inline void QHTMLDomTree::moveChildren(QHTMLNode *from, QHTMLNode *to)
+{
+    if (!from || !to) {
+        return;
+    }
+
+    const int childTotal = from->qhtmlChildren.size();
+    for (int i = 0; i < childTotal; ++i) {
+        if (QHTMLNode *child = from->qhtmlChildren.take(i)) {
+            to->appendChild(child);
+        }
+    }
+    from->qhtmlChildren.clear();
 }
 
 #ifdef __EMSCRIPTEN__
@@ -634,6 +1183,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("property", &QHTMLNode::propertyJs)
         .function("updateKeywordReference", &QHTMLNode::updateKeywordReferenceJs)
         .function("updateNamedReference", &QHTMLNode::updateNamedReferenceJs)
+        .function("resolve", &QHTMLNode::resolveJs, allow_raw_pointers())
         .function("resolveType", &QHTMLNode::resolveTypeJs)
         .function("runtime", &QHTMLNode::runtime)
         .function("renderHtml", &QHTMLNode::renderHtmlJs);
@@ -651,12 +1201,82 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("value", &QHTMLUnknownFragment::valueJs);
     class_<QHTMLTypedNode, base<QHTMLDomNode>>("QHTMLTypedNode")
         .function("keyword", &QHTMLTypedNode::keywordJs);
+    class_<QHTMLFunction, base<QHTMLTypedNode>>("QHTMLFunction")
+        .function("parameters", &QHTMLFunction::parameterListJs)
+        .function("body", &QHTMLFunction::bodyJs)
+        .function("call", &QHTMLFunction::callJs)
+        .function("callCount", &QHTMLFunction::callCount)
+        .function("lastArguments", &QHTMLFunction::lastArgumentListJs)
+        .function("lastSenderUUID", &QHTMLFunction::lastSenderUUIDJs)
+        .function("lastSignalUUID", &QHTMLFunction::lastSignalUUIDJs);
+    class_<QHTMLSignal, base<QHTMLTypedNode>>("QHTMLSignal")
+        .function("parameters", &QHTMLSignal::parameterListJs)
+        .function("connect", &QHTMLSignal::connect, allow_raw_pointers())
+        .function("emit", &QHTMLSignal::emitSignalJs)
+        .function("signalBus", &QHTMLSignal::signalBusJs, allow_raw_pointers());
+    class_<QHTMLSignalBus>("QHTMLSignalBus")
+        .function("connect", &QHTMLSignalBus::connectJs, allow_raw_pointers())
+        .function("emitSignal", &QHTMLSignalBus::emitSignalJs, allow_raw_pointers())
+        .function("connectionCount", &QHTMLSignalBus::connectionCount, allow_raw_pointers())
+        .function("lastSignalUUID", &QHTMLSignalBus::lastSignalUUIDJs)
+        .function("lastSenderUUID", &QHTMLSignalBus::lastSenderUUIDJs)
+        .function("lastFunctionUUID", &QHTMLSignalBus::lastFunctionUUIDJs)
+        .function("lastReceiverUUID", &QHTMLSignalBus::lastReceiverUUIDJs)
+        .function("lastScriptBody", &QHTMLSignalBus::lastScriptBodyJs)
+        .function("lastArguments", &QHTMLSignalBus::lastArgumentListJs)
+        .function("lastDispatchCount", &QHTMLSignalBus::lastDispatchCount);
+    class_<QHTMLArrayNode, base<QHTMLNode>>("QHTMLArrayNode")
+        .function("size", &QHTMLArrayNode::size)
+        .function("at", &QHTMLArrayNode::atJs)
+        .function("push", &QHTMLArrayNode::pushJs)
+        .function("pop", &QHTMLArrayNode::popJs)
+        .function("unshift", &QHTMLArrayNode::unshiftJs)
+        .function("shift", &QHTMLArrayNode::shiftJs)
+        .function("slice", &QHTMLArrayNode::slice, allow_raw_pointers())
+        .function("valuesLiteral", &QHTMLArrayNode::valuesLiteralJs);
+    class_<QHTMLMapNode, base<QHTMLNode>>("QHTMLMapNode")
+        .function("value", &QHTMLMapNode::valueJs)
+        .function("setValue", &QHTMLMapNode::setValueJs)
+        .function("remove", &QHTMLMapNode::removeJs)
+        .function("keysLiteral", &QHTMLMapNode::keysLiteralJs)
+        .function("valuesLiteral", &QHTMLMapNode::valuesLiteralJs);
+    class_<QHTMLProperty, base<QHTMLTypedNode>>("QHTMLProperty")
+        .function("value", &QHTMLProperty::valueJs)
+        .function("setValue", &QHTMLProperty::setValueJs)
+        .function("structuredType", &QHTMLProperty::structuredTypeJs)
+        .function("structuredValue", &QHTMLProperty::structuredValueJs, allow_raw_pointers());
+    class_<QHTMLEventHandler, base<QHTMLTypedNode>>("QHTMLEventHandler")
+        .function("eventName", &QHTMLEventHandler::eventNameJs)
+        .function("parameters", &QHTMLEventHandler::parameterListJs)
+        .function("body", &QHTMLEventHandler::bodyJs);
+    class_<QHTMLStyle, base<QHTMLTypedNode>>("QHTMLStyle")
+        .function("body", &QHTMLStyle::bodyJs)
+        .function("setBody", &QHTMLStyle::setBodyJs)
+        .function("setCssText", &QHTMLStyle::setCssTextJs)
+        .function("cssText", &QHTMLStyle::cssTextJs)
+        .function("classList", &QHTMLStyle::classListJs);
+    class_<QHTMLTheme, base<QHTMLTypedNode>>("QHTMLTheme")
+        .function("body", &QHTMLTheme::bodyJs)
+        .function("setBody", &QHTMLTheme::setBodyJs)
+        .function("isDefaultTheme", &QHTMLTheme::isDefaultTheme);
+    class_<QHTMLStyleApplication, base<QHTMLTypedNode>>("QHTMLStyleApplication")
+        .function("style", &QHTMLStyleApplication::styleJs, allow_raw_pointers())
+        .function("styleUUID", &QHTMLStyleApplication::styleUUIDJs);
+    class_<QHTMLThemeApplication, base<QHTMLTypedNode>>("QHTMLThemeApplication")
+        .function("theme", &QHTMLThemeApplication::themeJs, allow_raw_pointers())
+        .function("themeUUID", &QHTMLThemeApplication::themeUUIDJs);
+    class_<QHTMLComponentDefinition, base<QHTMLTypedNode>>("QHTMLComponentDefinition")
+        .function("renderTemplateHtml", &QHTMLComponentDefinition::renderTemplateHtmlJs);
+    class_<QHTMLComponentInstance, base<QHTMLTypedNode>>("QHTMLComponentInstance")
+        .function("componentDefinition", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
+        .function("componentDefinitionUUID", &QHTMLComponentInstance::componentDefinitionUUIDJs);
 
     class_<QHTMLDomTree, base<QHTMLDomNode>>("QHTMLDomTree")
         .constructor<>()
         .function("loadFromAST", &QHTMLDomTree::loadFromAST, allow_raw_pointers())
         .function("clear", &QHTMLDomTree::clear)
         .function("root", &QHTMLDomTree::rootJs, allow_raw_pointers())
+        .function("signalBus", &QHTMLDomTree::signalBusJs, allow_raw_pointers())
         .function("renderHtml", &QHTMLDomTree::renderHtmlJs);
 
     class_<QHTMLAstNode>("QHTMLAstNode")
