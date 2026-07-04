@@ -1,0 +1,139 @@
+QHTML7 specifications prompt.
+
+1. `qhtml-wasm.js` is included <script src="qhtml-wasm.js"></script> which will have the code to initialize the qhtml7.wasm file (which will be discussed later) using the glue `qhtml7-glue.js` which will be compiled as a type of webassembly based library that will provide the base classes and functionality for some parts of the system. We will discuss the webassembly details shortly.
+
+2. Once the webassembly is loaded and initialized fully, we need to create a CustomElement class in javascript that has an attribute "ready" which is automatically set to 0 when the script runs in a closure. This CustomElement will be tag "q-html"  so it will be accessible via <q-html> </q-html>. As soon as the element is created either via HTML or via Javascript .createDocument, the `ready` attribute is set to `"0"` and then the entire inner Contents of the element is stored and saved to a bound property on this particular <q-html> DOM element under the name `.qhtmlSource`, accessible to all via `querySelector("q-html").qhtmlSource`.
+
+3a. The next step, once the source is captured will be to clear the entire inner contents of the <q-html> </q-html> element leaving just an empty element with the .qhtmlSource property and an attribute that is "ready" set to "0". Now, the CustomElement will pass the source code to the WebAssembly QHTML7 parser. There will be a base class called QHTMLASTNode() which has the functions to scan arbitrary text as public methods for different shapes which all other AST-related objects will inherit methods from. This QHTML7 parser will first create a new QHTMLAstNode(<inner contents>) which in the constructor will access the method to scan the text using AST parsing to break it down into different shapes.  QHTMLAstNode will have a member which is a typed as `QHash<int, QHTMLAstNode*>` named `astChildren`. Any shape found that is not inside of brackets matching any of the following shapes shall be instantiated as a new class which will inherit the QHTMLAstNode base class and then added in order to this 'astChildren' QHash using index-based storage.
+
+3b. The first shape to scan for will be constructs that contain this format:  `<word>[#id][.class1][.class2][,<word2>[.class2a][.class2b]][,<word3>[#id3][.class3]][,<wordN>[.classN][#idN]] { <arbitrary text> }`  This is a basic anonymous object definition.  Anytime this exact style is used, it is for creating anonymous HTML elements, and if #id is attached to it in any way (optionally), that becomes the "ID" attribute which can be used to access via `querySelector("#id")`.  THe same goes for .class1, .class2 etc if they are added (optionally) to the <word> then that becomes the class attribute so `div.class1#ok { }`  translates into an AST tag that will become an object class of QHTMLAstAnonNode(word, attributes, <arbitrary text inside of the { }>). The AST parser will have numerous classes used internally to identify different types of patterns, this is a simple one. The new QHTMLAstAnonNode class inherits from QHTMLAstNode so that when its constructed, it will automatically scan/parse any arbitrary text inside and populate its own .astChildren QHash file (inherited from base class QHTMLAstNode).  Providing a , will create  a nested object, so `div,span { }`  would create one `QHTMLAstAnonNode("div", QVariantList(), "span { }")`  which would then parse out `span { }` into another node.  Infinite commas can be applied to create deeply nested hierarchies like div,span,table,tr,td { text { hello world } } which would make  QHTMLAstAnonNode with 5 descendants. You cannot place a named component inside of a comma chain of anonymous elements, typed QHTMLAstTypeNodes must be in a separate declaration separate from any QHTMLAstAnonNode objects with their own set of { } afterwards. QHTMLAstTypeNodes follow a slightly different pattern, which will be explained next. Also if the node is html { } or text { } then it is a special case node and can be included at the end of a comma separated chain of QHTMLAnonNode entries, but cannot appear in the beginning or anywhere in the middle of such a chain. text {} and html {} must be immediately followed by a {.
+
+3c. The AST Parser's next pattern to look out for will be called QHTMLAstTypeNode, which will also inherit QHTMLAstNode to allow deep parsing.   This class will be also defined in the Webassembly code as a class and used internally for the AST parser just like QHTMLAstAnonNode. This typed object will follow the same rules, the only difference is that it follows this syntax :  <type-specification-keyword> <word>[#id][.class1][.class2] { <arbitrary text> }  where type-specification for now can be any individual word [a-zA-Z_\+\-]+ but not two words and cannot contain [#.*$] The constructor will be like this new QHTMLAstNamedTypeNode(<keyword>, <word>, attributes, innerText) and the object will be added to .astChildren once created. May have to use some form of type casting to store properly as QHTMLAstNode after instantiation as a different class.
+
+3d. Now, once all text has been parsed in this fashion into QHTMLAstNode*-inherited classes. Now we will be able to walk this QHTMLAstNode tree that has been created using a public method which will basically be recursively walking the .astChildren hashes. Once everything is in place and all AST nodes are fully instantiated and stored, we must begin building our QHTMLContext tree. The first step is to call .enumerateKeywords() method on the top level QHTMLAstNode object.  This function essentially goes through each entry in its own `.astChildren` QHash, and calls .astType() which will return either "QHTMLAstNamedTypeNode" or "QHTMLAstAnonNode" which will be implemented in the class definitons for each. If its a "QHTMLAstAnonNode" based on .astType()'s return value, then the .qhtmlKeyword property will be set to "" in its constructor.   If the type is QHTMLAstNamedTypeNode, then we call .qhtmlType() on it which will return the .qhtmlKeyword property on the QHTMLAstNamedTypeNode (defined in the constructor initialization). While still in the .enumerateKeywords() method, we will populate a QHash<int, QString> shared by all QHTMLAstNode* classes named .astChildrenUUIDs which will generate a UUID for each .astChildren object and match the indexes to the .astChildrenUUIDs hash.  Next, we will populate another hash table<QString, QString> called .astChildrenUUIDKeywords that will contain the UUID as the key and the result of .qhtmlKeyword property for the matching .astChildren object based on the index / UUID data. There will be a helper method for QHTMLAstNode* classes which will be able to lookup the UUID by id, or by any QHTMLAstNode* inherited child that lives in .astChildren.
+
+3e. Now that enumeration is complete, we scan the .astChildrenUUIDKeywords hash table on this object only looking for "q-keyword" types. Any keywords with `q-keyword` in them will populate cause the .qhtmlName property (stored in constructor of QHTMLAstNode* inherited classes) to be read and then the .qhtmlContent property (arbitrary inner source which is stored in constructor of QHTMLAstNode* inherited classes). If .qhtmlName is not null and .qhtmlContent is a single word, then we call the method this->updateKeywordReference(qhtmlName, qhtmlContent) which will modify the QHTMLContext object which is a public instance on all QHTMLAstNode*-inherited classes called .qhtmlNode which will be instantiated in the constructor. Calling updateKeywordReference(qhtmlName, qhtmlContent) on a QHTMLNode*-inherited class will modify a QHash<QString, QHTMLReference*> called .qhtmlReferences which is key -> QHTMLReference* which is essentially the base class for all QHTML elements which can be accessed directly. More on this later. All we need to know for now is updateKeywordReference(QString, QString) on QHTMLNode, and that class will handle the rest. Next, for each .astChildren element, also call a method to trigger updateKeywordReference(qhtmlName, qhtmlContent) on all .astChildren objects so that the keyword update is also applied to all descendants.  We also want to call updateKeywordReference for any of the default language keywords that are not modified by a q-keyword by setting updateKeywordReference("q-component", "q-component") etc for each of the language keyword-level commands.
+
+3f. Now that we have our keyword references setup, we can use the .qhtmlNode->resolve(<string>) method from QHTMLNode which will look at the QHTMLNode's .qhtmlReferences hash table and return the correct QHTMLReference* which can be a QHTMLNode* or QHTMLKeyword*  (or QHTMLProperty, QHTMLSlot, QHTMLSignal, QHTMLClass, QHTMLVar, QHTMLArray, QHTMLMap, QHTMLComponentDefinition, QHTMLComponentInstance, QHTMLTemplate, QHTMLScript, QHTMLModelView, QHTMLFactory, QHTMLMethod, QHTMLHTMLFragment, QHTMLTextFragment, QHTMLSourceFragment etc. more on this later) All of these types will inherit QHTMLReference so they can be stored in the .qhtmlReferences QHash and will have .qhtmlType property that returns what they are.
+
+3g. Now we setup the references for all of the other QHTMLAstNode* elements, by enumerating the QHTMLAstNamedTypeNode objects and giving them .qhtmlUUID properties and  .qhtmlName property and then sending a .updateNamedReference(qhtmlName, qhtmlUUID) so that all descendants will recognize the .qhtmlName value as UUID from .qhtmlUUID value.
+3g. We now have the basic framework where we can store any of the different QHTML types of objects into a single data structure. Once our data structure is built, we can create the QHTMLDomTree which is a class all its own which will be populated via a method .loadFromAST(<QHTMLAstNode*>) that will grab the .toQHTMLNode() on the root node, which will return the QHTMLNode object itself, which should be populated with all of the children QHTMLNode* data already. We will do a deep copy here and forget the QHTMLAstNode once the root node and descendants are copied over into the QHTMLDomTree.
+
+3h. Now that we have our QHTMLNode setup with our keywords and named references added to QHTMLNode::resolve(<arbitrary word>) which will find the object based on the .qhtmlReferences hash. This hash will have shallow reference pointers to objects which will be parented elsewhere, but their pointers shall remain valid and bound to their UUID through a series of link QHash tables throughout the QHTMLDomTree and its .qhtmlChildren. Care must be taken not to iterate over elements that have already been iterated over, for example, if there is an object defined as
+QHTMLComponentInstance myInstance = new QHTMLComponentInstance(); myInstance.qhtmlUUID = "20281-af322r";  Then when enumerating, we would skip enumeration by adding "20281-af322r" to a list of already enumerated objects. Also when setting pu the context, we want to skip anything that already exists in the context, like if "20281-af322r" matches a QHTMLComponentInstance in `context` and is a member of .qhtmlChildren, then we would not iterate over it again to avoid endlessly looping over QHTMLNode* objects when setting up references since the references for that QHTMLNode* object would already have been resolved.
+
+When all is said and done, QHTMLDomTree* root should have .qhtmlProperties, .qhtmlUUID, .qhtmlChildren with various different QHTMLDomNode*-inherting objects, which each of them will also contain their own .qhtmlChildren.  There should also be a .qhtmlContext which will have pointers to all parent QHTMLContext references as well as any defined directly in this QHTMLNode* (but not in the children node). There should be .parent() and .children() which return the .qhtmlParent QDOMNode pointer and iteratee over thee .qhtmlChildren QHash returning a QVector list of pointers to all children. There should be a .qhtmlContext which contains strings and pointers as well as a .resolve(string) that matches strings to references, and a .runtime() method that will be per-class type, so QHTMLComponentInstance will have a different .runtime() and QHTMLModelView's .runtime() and so on for every class that inherits from QDomNode. The runtime() will be called once all of the objects are fully parsed into the QDomTree() in order by executing the runtime() for an object, which will determine the next actions to take whether it be calling runtime() on children, or implementing some special syntax from the child nodes or whatever.
+
+One last thing, if the AST parser finds a block that does not necessarily match the named type or anonymous type, it should treat that text as a QHTMLUnknownFragment and store it as such. These QHTMLUnkownFragments will be used by the runtime() for various purposes, as will the anonymous and named types. For example:
+
+If the parser receives
+
+`q-component mycomp {
+`  slot { test }
+   div { text { hello world } }
+`}
+
+3i. Step 3's system should be split between two files: qhtml_parser.hpp and qhtml_types.hpp where the types such as QHTMLNode, QHTMLKeyword are all in qhtml_types.hpp, and the QHTMLAst* classes are all in qhtml_parser.hpp.  The public facing API will be bound to the Javascript environment side of WASM so that it is done by the custom <q-html>  class that does
+
+```
+var tree = new Module.QHTMLDomTree();
+var parser = new Module.QHTMLParser();
+tree.loadFromAST(parser.parse(<arbitrary text>));
+this.qhtmlDomTree = tree;
+```
+
+and you will be able to access this tree via .qdom() on that <q-html> custom class or access it directly from .qhtmlDom. as `document.querySelector("q-html").qdom() or document.querySelector("q-html").qhtmlDom`
+
+Now we're ready to start implementation of the runtime system.
+
+Here's the examples of q-html language that is to be fed by the parser, along with brief explainations and some example output to guuide through the creation of the runtime.  For anything that requires interaction with the HTML DOM, the `document` property from javascript should be exposed to QHTML's WASM side via a emscripten::val parameter in a method before parsing begins, and then any script that must be executed in the javascript world should be done by passing the script's contents as a QVariant to a function accessible from the javascript `document` object, which will then on the Javascript side turn the string into an evaluateable script and add all of the QHTMLNode qhtmlContext and other bindings first into the active javascript context through bindings or by setting properties with references to ProxyObjects or setting vars or whatever works and then exectuing the javascript with the full qhtml context of the QDomNode that the script has inherited from its ancestors, along with the `this` property bound to the parent where the script is exected from. Generally speaking, scripts are only used in handlers like onClicked { } but there are a few other places where they turn up so be vigilent.
+
+4. So now the following should be supported:
+
+<q-html>
+  h1 { text { Hello QHTML } }
+  p { text { Your first QHTML render is running. } }
+</q-html>
+```
+
+Resulting HTML:
+
+```html
+<q-html>
+  <h1>Hello QHTML</h1>
+  <p>Your first QHTML render is running.</p>
+</q-html>
+```
+
+## 2. Core Syntax
+
+### Elements and nesting
+
+```qhtml
+<q-html>
+  div {
+    h2 { text { Product } }
+    p  { text { Lightweight UI syntax. } }
+  }
+</q-html>
+```
+
+Resulting HTML:
+
+```html
+<q-html>
+  <div>
+    <h2>Product</h2>
+    <p>Lightweight UI syntax.</p>
+  </div>
+</q-html>
+```
+
+### Selector chains (creates nested elements)
+
+```qhtml
+<q-html>
+  div,section,h3 { text { Nested } }
+</q-html>
+```
+
+Resulting HTML:
+
+```html
+<q-html>
+  <div><section><h3>Nested</h3></section></div>
+</q-html>
+```
+
+
+### Class and id shorthand
+
+```qhtml
+<q-html>
+  div#main.card {
+    p { text { Card body } }
+  }
+</q-html>
+```
+
+Resulting HTML:
+
+```html
+<q-html>
+  <div id="main" class="card">
+    <p>Card body</p>
+  </div>
+</q-html>
+```
+
+Multiple selectors with shorthand:
+
+```qhtml
+<q-html>
+  div#my-id.my-class,span.my-class,h2#id2 { hello world }
+</q-html>
+```
+
+This is a milestone checkpoint. All the above cases must parse successfully as-is exactly and all variations of them as well before the next step can be tackled.
+
+----------------------------
