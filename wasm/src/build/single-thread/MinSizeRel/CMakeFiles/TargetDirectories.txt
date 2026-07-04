@@ -1,0 +1,9 @@
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/qhtml7-wasm.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/edit_cache.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/rebuild_cache.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/list_install_components.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/install.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/install/local.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/install/strip.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/qhtml7-wasm_autogen_timestamp_deps.dir
+/home/mike/build/qhtml7/wasm/src/build/single-thread/MinSizeRel/CMakeFiles/qhtml7-wasm_autogen.dir
