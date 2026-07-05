@@ -104,7 +104,7 @@ q-component event-demo {
 
 q-component inline-demo {
   q-property otherprop: "world"
-  q-property myprop: `hello ${this.otherprop}`
+  q-property myprop: this.otherprop
 }
 
 q-component collection-demo {
@@ -402,6 +402,25 @@ section#themes {
       q.qhtmlComponentRegistry.themesByName.get("mytheme2").refresh();
       alert("loudStyle was changed. Theme headline/nested/p boxes should now be teal.");
     }
+  }
+}
+section {
+q-component mycomp15 {
+q-property myprop: 15
+
+ onmypropchanged{ alert(`changed myprop to ${this.myprop}`); }
+    div,span {
+      slot slotname { text { default contents when not specified } }
+    }
+  }
+
+
+  mycomp15 object15 {
+
+  }
+ button {
+ onclick { object15.myprop = 24; }
+  text { Click here }
   }
 }
 </q-html>

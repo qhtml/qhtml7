@@ -476,4 +476,83 @@ q-theme mytheme2 {
 
 The order that the items appear in the theme control the final result with the exception of q-default-theme which always allows q-theme to take precedence when multiple styles are conflicting.
 
+------------------ completed -------------------------------
 ---------------------------------- end of section ----------------------------------------
+
+------------------------------ next section --------------------------
+15. slots. QHTML QHTMLComponentDefinitions must have a way to inject arbitrary QHTML into them or having a QHTMLComponentDefinition would be no better than just defining a static Custom Element. To inject arbitrary HTML into      specific place of a QHTMLComponent we will have a QHTMLComponentSlot object added to the QHTMLComponentDefinition.
+
+  The declarative format is as follows:
+
+  original style - kept for backwards compatibility:
+  ```
+  q-component mycomp {
+    div,span {
+
+      slot { slotname } /* slot declaration */
+
+      q-slot-default slotname { text { default contents when not specified } } /* set defaults for a specific slot */
+    }
+  }
+  ```
+
+  or we can declare the slot as a named type and then provide a default QHTML Fragment to display when the slot is not used.
+
+  new style - only QHTML7:
+  ```
+  q-component mycomp {
+    div,span {
+      slot slotname { text { default contents when not specified } }
+    }
+  }
+  ```
+
+  Both are correct, the first format is for backwards compatability, while the 2nd is only compatible with QHTML7.
+
+  This creates the QHTMLComponentSlot object in the QHTML Dom Tree as a child of whatever the closest QHTMLComponentDefinition is, even if its not a direct parent, we want to go to the closest QHTMLComponentDefinition object always for ownership but keep the slot's position in the tree - ill explain why..
+
+  In order to use these slots, you would provide the QHTML Fragment to when creating a QHTMLComponentInstance like this:
+
+  ```
+  q-component mycomp {
+    div,span {
+      slot slotname { text { default contents when not specified } }
+    }
+  }
+
+
+  mycomp object1 {
+     slotname { div,span,text { heres the injected slot } }
+  }
+
+  ```
+
+  This yields the following being rendered:
+
+  ```
+  <mycomp metadta-here><div><span><div><span>heres the injected slot</span></div></span></div></mycomp>
+  ```
+
+  Where we have mycomp and then the slot is transformed into the injected text and replaced in the Instance with the QHTMLFragment and then parsed normally inheriting the context of the instantiation and its ancestors and the definition's QHTML Context as well, taking the instance over the definition's named types based on which one was created last. Slots can be accessed programatically through
+  QHTMLComponentInstance.slots() to get a list of QHTMLComponentSlot objects and you can inject into any of them as well as append, replace, or otherwise modify the inner contents by modifying the .qhtmlChildren object from any QHTMLComponentSlot object which will be populated when the QHTMLComponentInstance is created and populated.
+
+
+  ---------------------------------------
+
+  -------------------- next section ---------------
+
+  16. QHTMLTimer - QHTML supports a usable timer with various features. It is accessed using this format:
+
+  ```
+  q-timer mytimer {
+    ontimeout() { /* do javascript code here */ }
+    interval: 400
+    running: false
+    repeat: true
+  }
+
+  ```
+
+  Setting mytimer.running to true will start the timer. You can also call mytimer.start(), mytimer.stop() and change other properties like mytimer.interval = 500; QHTMLTimer has a QHTMLSignal built in:  timeout() which is fired on each timeout. Under the hood QHTMLTimer uses the QTimer C++ implementation with either QTimer::singleShot or a QTimer object and related properties / methods. The QTimer is never exposed to the public API, and is internal to the QHTMLTimer class. It inherits context from its parent and ancestors like any other QHTML object.  Timers should not create a `this` entry in their QHTMLContext for event handlers, instead `this` should be inherited from the parent object when used declaratively.
+
+  ---------

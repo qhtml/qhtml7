@@ -2,10 +2,12 @@
 
 #include <QtCore/QHash>
 #include <QtCore/QList>
+#include <QtCore/QObject>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtCore/QTimer>
 #include <QtCore/QUuid>
 #include <QtCore/QVector>
 
@@ -15,6 +17,7 @@ class QHTMLAstNode;
 class QHTMLFunction;
 class QHTMLSignal;
 class QHTMLSignalBus;
+class QHTMLComponentSlot;
 class QHTMLStyle;
 class QHTMLTheme;
 
@@ -422,6 +425,7 @@ public:
     {
         return attribute(QString::fromStdString(key)).toStdString();
     }
+    QHash<QString, QString> attributes() const { return m_attributes; }
 
     QString renderHtml() const override
     {
@@ -437,6 +441,7 @@ public:
                 out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
             }
         }
+        out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
         out += QStringLiteral(">");
         out += QHTMLDomNode::renderHtml();
         out += QStringLiteral("</") + m_tagName + QStringLiteral(">");
@@ -786,6 +791,102 @@ inline int QHTMLSignal::emitSignal(const QStringList &arguments, QHTMLNode *send
     return m_signalBus ? m_signalBus->emitSignal(this, resolvedSender, arguments) : 0;
 }
 
+class QHTMLComponentSlot final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLComponentSlot(const QString &name = QString(),
+                                const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("slot"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLComponentSlot"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("component-slot"));
+    }
+
+    QString renderHtml() const override { return QHTMLTypedNode::renderHtml(); }
+    QHTMLComponentSlot *cloneSlot() const
+    {
+        QHTMLComponentSlot *cloned = new QHTMLComponentSlot(qhtmlName(), attributes());
+        for (QHTMLNode *child : children()) {
+            if (child) {
+                cloned->appendChild(cloneRenderableNode(child));
+            }
+        }
+        return cloned;
+    }
+
+private:
+    static QHTMLNode *cloneRenderableNode(QHTMLNode *node)
+    {
+        if (!node) {
+            return nullptr;
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return new QHTMLTextFragment(text->value());
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return new QHTMLHTMLFragment(html->value());
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return new QHTMLUnknownFragment(unknown->value());
+        }
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(node)) {
+            QHTMLDomElement *cloned = new QHTMLDomElement(element->tagName(), element->attributes());
+            for (QHTMLNode *child : element->children()) {
+                cloned->appendChild(cloneRenderableNode(child));
+            }
+            return cloned;
+        }
+        if (QHTMLComponentSlot *slot = dynamic_cast<QHTMLComponentSlot *>(node)) {
+            return slot->cloneSlot();
+        }
+        QHTMLNode *cloned = new QHTMLNode(node->qhtmlType(), node->qhtmlName());
+        for (QHTMLNode *child : node->children()) {
+            cloned->appendChild(cloneRenderableNode(child));
+        }
+        return cloned;
+    }
+};
+
+class QHTMLSlotDefault final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLSlotDefault(const QString &name = QString(),
+                              const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-slot-default"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLSlotDefault"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("slot-default"));
+    }
+
+    QString renderHtml() const override { return QString(); }
+};
+
+class QHTMLPropertyAssignment final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLPropertyAssignment(const QString &name = QString(),
+                                     const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-property-assignment"), name, attributes),
+          m_value(attributes.value(QStringLiteral("value")))
+    {
+        setQHTMLType(QStringLiteral("QHTMLPropertyAssignment"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("property-assignment"));
+    }
+
+    QString value() const { return m_value; }
+    std::string valueJs() const { return m_value.toStdString(); }
+    QHTMLPropertyAssignment *cloneAssignment() const
+    {
+        QHash<QString, QString> clonedAttributes = attributes();
+        clonedAttributes.insert(QStringLiteral("value"), m_value);
+        return new QHTMLPropertyAssignment(qhtmlName(), clonedAttributes);
+    }
+    QString renderHtml() const override { return QString(); }
+
+private:
+    QString m_value;
+};
+
 class QHTMLComponentDefinition final : public QHTMLTypedNode
 {
 public:
@@ -829,6 +930,42 @@ public:
         return componentDefinitionUUID().toStdString();
     }
 
+    int slotCount() const { return collectSlots().size(); }
+
+    QHTMLComponentSlot *slotAt(int index) const
+    {
+        const QVector<QHTMLComponentSlot *> localSlots = collectSlots();
+        return index >= 0 && index < localSlots.size() ? localSlots.at(index) : nullptr;
+    }
+
+    QHTMLComponentSlot *slot(const QString &name) const
+    {
+        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
+            if (componentSlot && componentSlot->qhtmlName() == name) {
+                return componentSlot;
+            }
+        }
+        return nullptr;
+    }
+
+    QHTMLComponentSlot *slotJs(const std::string &name) const
+    {
+        return slot(QString::fromStdString(name));
+    }
+
+    QString slotNames() const
+    {
+        QStringList names;
+        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
+            if (componentSlot && !componentSlot->qhtmlName().isEmpty()) {
+                names.append(componentSlot->qhtmlName());
+            }
+        }
+        names.removeDuplicates();
+        return names.join(QStringLiteral(", "));
+    }
+    std::string slotNamesJs() const { return slotNames().toStdString(); }
+
     QString renderHtml() const override
     {
         if (!m_definition) {
@@ -849,15 +986,332 @@ public:
                 out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
             }
         }
+        const QHash<QString, QString> assignedAttributes = attributeAssignments();
+        const QStringList assignedKeys = assignedAttributes.keys();
+        for (const QString &key : assignedKeys) {
+            const QString value = assignedAttributes.value(key);
+            out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
+        }
         out += QStringLiteral(" component-definition=\"") + escapeAttribute(m_definition->qhtmlUUID()) + QStringLiteral("\"");
         out += QStringLiteral(" component-instance=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\">");
-        out += m_definition->renderTemplateHtml();
-        out += QHTMLTypedNode::renderHtml();
+        out += renderTemplateWithSlots();
+        out += renderUnslottedInstanceChildren();
         out += QStringLiteral("</") + tagName + QStringLiteral(">");
         return out;
     }
 
 private:
+    QVector<QHTMLComponentSlot *> collectSlots() const
+    {
+        QVector<QHTMLComponentSlot *> out;
+        collectSlotsFor(m_definition, out);
+        return out;
+    }
+
+    static void collectSlotsFor(QHTMLNode *node, QVector<QHTMLComponentSlot *> &out)
+    {
+        if (!node) {
+            return;
+        }
+        if (QHTMLComponentSlot *componentSlot = dynamic_cast<QHTMLComponentSlot *>(node)) {
+            out.append(componentSlot);
+        }
+        for (QHTMLNode *child : node->children()) {
+            collectSlotsFor(child, out);
+        }
+    }
+
+    QSet<QString> slotNameSet() const
+    {
+        QSet<QString> names;
+        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
+            if (componentSlot && !componentSlot->qhtmlName().isEmpty()) {
+                names.insert(componentSlot->qhtmlName());
+            }
+        }
+        return names;
+    }
+
+    bool definitionHasProperty(const QString &name) const
+    {
+        return definitionHasPropertyIn(m_definition, name);
+    }
+
+    static bool definitionHasPropertyIn(QHTMLNode *node, const QString &name)
+    {
+        if (!node || name.isEmpty()) {
+            return false;
+        }
+        if (node->qhtmlType() == QStringLiteral("QHTMLProperty") && node->qhtmlName() == name) {
+            return true;
+        }
+        for (QHTMLNode *child : node->children()) {
+            if (definitionHasPropertyIn(child, name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    QHash<QString, QString> attributeAssignments() const
+    {
+        QHash<QString, QString> out;
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment || assignment->qhtmlName().isEmpty()) {
+                continue;
+            }
+            if (definitionHasProperty(assignment->qhtmlName())) {
+                continue;
+            }
+            out.insert(assignment->qhtmlName(), htmlAttributeValue(assignment->value()));
+        }
+        return out;
+    }
+
+    static QString htmlAttributeValue(QString value)
+    {
+        value = value.trimmed();
+        if (value.size() >= 2) {
+            const QChar first = value.at(0);
+            const QChar last = value.at(value.size() - 1);
+            if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+                (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+                (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+                return value.mid(1, value.size() - 2);
+            }
+        }
+        return value;
+    }
+
+    QString renderTemplateWithSlots() const
+    {
+        return renderChildrenWithSlots(m_definition);
+    }
+
+    QString renderChildrenWithSlots(QHTMLNode *node) const
+    {
+        QString out;
+        if (!node) {
+            return out;
+        }
+        for (QHTMLNode *child : node->children()) {
+            out += renderNodeWithSlots(child);
+        }
+        return out;
+    }
+
+    QString renderNodeWithSlots(QHTMLNode *node) const
+    {
+        if (!node) {
+            return QString();
+        }
+
+        if (QHTMLComponentSlot *componentSlot = dynamic_cast<QHTMLComponentSlot *>(node)) {
+            return renderSlot(componentSlot);
+        }
+        if (dynamic_cast<QHTMLSlotDefault *>(node)) {
+            return QString();
+        }
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(node)) {
+            QString out = QStringLiteral("<") + element->tagName();
+            const QHash<QString, QString> localAttributes = element->attributes();
+            const QStringList keys = localAttributes.keys();
+            for (const QString &key : keys) {
+                const QString value = localAttributes.value(key);
+                if (!value.isEmpty()) {
+                    out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
+                }
+            }
+            out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(element->qhtmlUUID()) + QStringLiteral("\"");
+            out += QStringLiteral(">");
+            out += renderChildrenWithSlots(element);
+            out += QStringLiteral("</") + element->tagName() + QStringLiteral(">");
+            return out;
+        }
+
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return escapeText(interpolateInstanceText(text->value()));
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return interpolateInstanceText(html->value());
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return escapeText(interpolateInstanceText(unknown->value()));
+        }
+
+        if (node->qhtmlType() == QStringLiteral("QHTMLComponentInstance")) {
+            return node->renderHtml();
+        }
+
+        return renderChildrenWithSlots(node);
+    }
+
+    QString renderSlot(QHTMLComponentSlot *componentSlot) const
+    {
+        if (!componentSlot) {
+            return QString();
+        }
+        const QVector<QHTMLComponentSlot *> _slots = collectSlots();
+        if (_slots.size() == 1) {
+            const QString implicitContent = renderSingleSlotInstanceChildren(componentSlot->qhtmlName());
+            if (!implicitContent.isEmpty()) {
+                return implicitContent;
+            }
+        } else {
+            if (QHTMLNode *overrideNode = slotOverride(componentSlot->qhtmlName())) {
+                return renderChildrenWithSlots(overrideNode);
+            }
+        }
+        if (componentSlot->childCount() > 0) {
+            return renderChildrenWithSlots(componentSlot);
+        }
+        if (QHTMLSlotDefault *slotDefault = defaultForSlot(componentSlot->qhtmlName())) {
+            return renderChildrenWithSlots(slotDefault);
+        }
+        return QString();
+    }
+
+    QHTMLNode *slotOverride(const QString &name) const
+    {
+        if (name.isEmpty()) {
+            return nullptr;
+        }
+        for (QHTMLNode *child : children()) {
+            if (child && child->qhtmlName() == name) {
+                return child;
+            }
+        }
+        return nullptr;
+    }
+
+    QString renderSingleSlotInstanceChildren(const QString &slotName) const
+    {
+        QString out;
+        for (QHTMLNode *child : children()) {
+            if (!child || !isRenderableInstanceChild(child)) {
+                continue;
+            }
+            if (child->qhtmlName() == slotName) {
+                out += renderChildrenWithSlots(child);
+            } else {
+                out += renderNodeWithSlots(child);
+            }
+        }
+        return out;
+    }
+
+    QHTMLSlotDefault *defaultForSlot(const QString &name) const
+    {
+        return defaultForSlotIn(m_definition, name);
+    }
+
+    static QHTMLSlotDefault *defaultForSlotIn(QHTMLNode *node, const QString &name)
+    {
+        if (!node) {
+            return nullptr;
+        }
+        if (QHTMLSlotDefault *slotDefault = dynamic_cast<QHTMLSlotDefault *>(node)) {
+            if (slotDefault->qhtmlName() == name) {
+                return slotDefault;
+            }
+        }
+        for (QHTMLNode *child : node->children()) {
+            if (QHTMLSlotDefault *found = defaultForSlotIn(child, name)) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    static bool isRuntimeInstanceChild(QHTMLNode *child)
+    {
+        if (!child) {
+            return true;
+        }
+        const QString type = child->qhtmlType();
+        return type == QStringLiteral("QHTMLFunction") ||
+               type == QStringLiteral("QHTMLSignal") ||
+               type == QStringLiteral("QHTMLProperty") ||
+               type == QStringLiteral("QHTMLEventHandler") ||
+               type == QStringLiteral("QHTMLPropertyAssignment") ||
+               type == QStringLiteral("QHTMLTimer") ||
+               type == QStringLiteral("QHTMLStyle") ||
+               type == QStringLiteral("QHTMLTheme") ||
+               type == QStringLiteral("QHTMLComponentSlot") ||
+               type == QStringLiteral("QHTMLSlotDefault");
+    }
+
+    static bool isRenderableInstanceChild(QHTMLNode *child)
+    {
+        return child && !isRuntimeInstanceChild(child);
+    }
+
+    QString renderUnslottedInstanceChildren() const
+    {
+        QString out;
+        if (collectSlots().size() == 1) {
+            return out;
+        }
+        const QSet<QString> slotNames = slotNameSet();
+        for (QHTMLNode *child : children()) {
+            if (!child) {
+                continue;
+            }
+            if (slotNames.contains(child->qhtmlName())) {
+                continue;
+            }
+            if (!isRenderableInstanceChild(child)) {
+                continue;
+            }
+            out += renderNodeWithSlots(child);
+        }
+        return out;
+    }
+
+    QString interpolateInstanceText(QString value) const
+    {
+        static const QRegularExpression rx(QStringLiteral("\\$\\{\\s*([^}]+?)\\s*\\}"));
+        QRegularExpressionMatchIterator it = rx.globalMatch(value);
+        int offset = 0;
+        while (it.hasNext()) {
+            const QRegularExpressionMatch match = it.next();
+            const QString replacement = resolveInterpolationValue(match.captured(1).trimmed());
+            value.replace(match.capturedStart(0) + offset, match.capturedLength(0), replacement);
+            offset += replacement.size() - match.capturedLength(0);
+        }
+        return value;
+    }
+
+    QString resolveInterpolationValue(QString expression) const
+    {
+        expression = expression.trimmed();
+        if (expression.startsWith(QStringLiteral("this."))) {
+            expression = expression.mid(5).trimmed();
+        }
+        const int dot = expression.indexOf(QLatin1Char('.'));
+        if (dot > 0) {
+            expression = expression.left(dot).trimmed();
+        }
+        return propertyValueForName(expression);
+    }
+
+    QString propertyValueForName(const QString &name) const
+    {
+        if (name.isEmpty()) {
+            return QString();
+        }
+        for (QHTMLNode *child : children()) {
+            if (!child || child->qhtmlName() != name || child->qhtmlType() != QStringLiteral("QHTMLProperty")) {
+                continue;
+            }
+            if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(child)) {
+                return htmlAttributeValue(typed->attributes().value(QStringLiteral("value")));
+            }
+        }
+        return QString();
+    }
+
     QHTMLComponentDefinition *m_definition = nullptr;
 };
 
@@ -1135,6 +1589,171 @@ private:
     QString m_eventName;
     QStringList m_parameters;
     QString m_body;
+};
+
+class QHTMLTimer final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLTimer(const QString &name = QString(),
+                        const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-timer"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLTimer"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("timer"));
+        m_timer = new QTimer();
+        QObject::connect(m_timer, &QTimer::timeout, [this]() {
+            tick();
+        });
+        m_timeoutSignal = new QHTMLSignal(QStringLiteral("timeout"));
+        appendChild(m_timeoutSignal);
+    }
+
+    ~QHTMLTimer() override
+    {
+        if (m_timer) {
+            m_timer->stop();
+        }
+        delete m_timer;
+    }
+
+    int interval() const { return m_interval; }
+    void setInterval(int interval)
+    {
+        m_interval = interval < 0 ? 0 : interval;
+        m_intervalExplicit = true;
+        if (m_timer) {
+            m_timer->setInterval(m_interval);
+        }
+    }
+    void setIntervalJs(int interval) { setInterval(interval); }
+
+    bool running() const { return m_running; }
+    void setRunning(bool running)
+    {
+        if (running) {
+            start();
+        } else {
+            stop();
+        }
+    }
+    void setRunningJs(bool running) { setRunning(running); }
+
+    bool repeat() const { return m_repeat; }
+    void setRepeat(bool repeat)
+    {
+        m_repeat = repeat;
+        m_repeatExplicit = true;
+        if (m_timer) {
+            m_timer->setSingleShot(!m_repeat);
+        }
+    }
+    void setRepeatJs(bool repeat) { setRepeat(repeat); }
+
+    QHTMLSignal *timeoutSignal() const { return m_timeoutSignal; }
+    QHTMLSignal *timeoutSignalJs() const { return m_timeoutSignal; }
+
+    void setSignalBus(QHTMLSignalBus *bus)
+    {
+        if (m_timeoutSignal) {
+            m_timeoutSignal->setSignalBus(bus);
+        }
+    }
+
+    void start()
+    {
+        applyConfigurationFromChildren();
+        m_running = true;
+        if (m_timer) {
+            m_timer->setInterval(m_interval);
+            m_timer->setSingleShot(!m_repeat);
+            m_timer->start();
+        }
+    }
+
+    void initialize()
+    {
+        applyConfigurationFromChildren();
+        if (m_running) {
+            start();
+        }
+    }
+
+    void stop()
+    {
+        m_running = false;
+        if (m_timer) {
+            m_timer->stop();
+        }
+    }
+
+    int tick()
+    {
+        if (!m_repeat) {
+            m_running = false;
+        }
+        return m_timeoutSignal ? m_timeoutSignal->emitSignal(QStringList(), this) : 0;
+    }
+
+    int tickJs() { return tick(); }
+
+    QHTMLTimer *cloneTimer() const
+    {
+        QHTMLTimer *cloned = new QHTMLTimer(qhtmlName(), attributes());
+        for (QHTMLNode *child : children()) {
+            if (!child || child == m_timeoutSignal) {
+                continue;
+            }
+            if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child)) {
+                cloned->appendChild(handler->cloneEventHandler());
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                cloned->appendChild(assignment->cloneAssignment());
+            }
+        }
+        return cloned;
+    }
+
+    QString renderHtml() const override { return QString(); }
+
+private:
+    void applyConfigurationFromChildren()
+    {
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment) {
+                continue;
+            }
+            const QString name = assignment->qhtmlName().toLower();
+            const QString value = assignment->value().trimmed();
+            if (name == QStringLiteral("interval") && !m_intervalExplicit) {
+                const int nextInterval = value.toInt();
+                m_interval = nextInterval < 0 ? 0 : nextInterval;
+            } else if (name == QStringLiteral("running")) {
+                m_running = boolValue(value, m_running);
+            } else if (name == QStringLiteral("repeat") && !m_repeatExplicit) {
+                m_repeat = boolValue(value, m_repeat);
+            }
+        }
+    }
+
+    static bool boolValue(QString value, bool fallback)
+    {
+        value = value.trimmed().toLower();
+        if (value == QStringLiteral("true") || value == QStringLiteral("1") || value == QStringLiteral("yes")) {
+            return true;
+        }
+        if (value == QStringLiteral("false") || value == QStringLiteral("0") || value == QStringLiteral("no")) {
+            return false;
+        }
+        return fallback;
+    }
+
+    QTimer *m_timer = nullptr;
+    QHTMLSignal *m_timeoutSignal = nullptr;
+    int m_interval = 0;
+    bool m_running = false;
+    bool m_repeat = true;
+    bool m_intervalExplicit = false;
+    bool m_repeatExplicit = false;
 };
 
 class QHTMLStyle final : public QHTMLTypedNode
@@ -1429,6 +2048,7 @@ private:
     QHTMLTheme *resolveTheme(QHTMLNode *scope, const QString &path) const;
     QHTMLNode *resolveDotPath(QHTMLNode *scope, const QString &path) const;
     QHTMLNode *componentInstanceFrom(QHTMLTypedNode *node, QHTMLComponentDefinition *definition) const;
+    QHTMLNode *anonymousComponentInstanceFrom(QHTMLDomElement *node, QHTMLComponentDefinition *definition) const;
     QHTMLNode *styleApplicationFrom(QHTMLDomElement *node, QHTMLStyle *style) const;
     QHTMLNode *themeApplicationFrom(QHTMLDomElement *node, QHTMLTheme *theme) const;
     static void moveChildren(QHTMLNode *from, QHTMLNode *to);

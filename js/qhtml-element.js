@@ -3,6 +3,8 @@
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const ELEMENT_NAME = "q-html";
+  let activePropertyTransactionId = "";
+  let propertyTransactionCounter = 0;
 
   if (!globalScope.QHTML7 || !globalScope.QHTML7.Module) {
     throw new Error("qhtml-element.js must be loaded after qhtml-wasm.js initializes WASM");
@@ -49,10 +51,78 @@
     return byUuid;
   }
 
-  function executeFunctionBody(domElement, functionNode, args, body, signalContext) {
+  function createPropertyTransactionId() {
+    propertyTransactionCounter += 1;
+    const randomPart = Math.random().toString(36).slice(2);
+    return `qhtml-tx-${Date.now().toString(36)}-${propertyTransactionCounter.toString(36)}-${randomPart}`;
+  }
+
+  function currentPropertyTransactionId() {
+    return activePropertyTransactionId || createPropertyTransactionId();
+  }
+
+  function withPropertyTransaction(transactionId, callback) {
+    const previousTransactionId = activePropertyTransactionId;
+    activePropertyTransactionId = transactionId || previousTransactionId || createPropertyTransactionId();
+    try {
+      return callback(activePropertyTransactionId);
+    } finally {
+      activePropertyTransactionId = previousTransactionId;
+    }
+  }
+
+  function isValidContextIdentifier(name) {
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(String(name || "")) &&
+      ![
+        "this", "arguments", "const", "let", "var", "function", "return", "class", "new",
+        "if", "else", "for", "while", "do", "switch", "case", "break", "continue"
+      ].includes(String(name || ""));
+  }
+
+  function qhtmlNodeType(node) {
+    return node && typeof node.qhtmlType === "function" ? node.qhtmlType() : "";
+  }
+
+  function qhtmlNodeName(node) {
+    return node && typeof node.qhtmlName === "function" ? node.qhtmlName() : "";
+  }
+
+  function executionContextFor(domElement, registry, parameterNames) {
+    const names = [];
+    const values = [];
+    const used = new Set(parameterNames || []);
+    const add = function (name, value) {
+      if (!isValidContextIdentifier(name) || used.has(name)) {
+        return;
+      }
+      used.add(name);
+      names.push(name);
+      values.push(value);
+    };
+    const sourceRegistry = registry || (domElement && domElement.__qhtmlRegistry);
+    if (sourceRegistry) {
+      if (sourceRegistry.elementsByName) {
+        sourceRegistry.elementsByName.forEach((element, name) => add(name, element));
+      }
+      if (sourceRegistry.componentDefinitionsByName) {
+        sourceRegistry.componentDefinitionsByName.forEach((definition, name) => add(name, definition));
+      }
+      if (sourceRegistry.timersByName) {
+        sourceRegistry.timersByName.forEach((timer, name) => add(name, timer));
+      }
+    }
+    return { names, values };
+  }
+
+  function executeScriptBody(domElement, parameters, args, body, registry) {
+    const context = executionContextFor(domElement, registry, parameters);
+    const callable = new Function(...parameters, ...context.names, String(body || ""));
+    return callable.apply(domElement, [...(args || []), ...context.values]);
+  }
+
+  function executeFunctionBody(domElement, functionNode, args, body, signalContext, registry) {
     const parameters = splitList(typeof functionNode.parameters === "function" ? functionNode.parameters() : "");
-    const callable = new Function(...parameters, String(body || ""));
-    return callable.apply(domElement, args || []);
+    return executeScriptBody(domElement, parameters, args || [], body, registry);
   }
 
   function stripMatchingQuotes(value) {
@@ -223,31 +293,34 @@
     domElement[functionName] = boundFunction;
   }
 
-  function bindSignal(domElement, signalNode) {
-    if (!domElement || !signalNode || typeof signalNode.qhtmlName !== "function") {
-      return;
+  function createDomSignal(domElement, signalName, signalNode) {
+    if (!domElement || !signalName) {
+      return null;
     }
-    const signalName = signalNode.qhtmlName();
     if (!signalName) {
-      return;
+      return null;
     }
 
     const connections = [];
     const signalFunction = function (...args) {
+      const transactionId = activePropertyTransactionId || signalFunction.__qhtmlPendingTransactionId || "";
+      signalFunction.__qhtmlLastTransactionId = transactionId;
+      signalFunction.__qhtmlPendingTransactionId = "";
       const serializedArgs = args.map((arg) => String(arg)).join(", ");
       if (typeof signalNode.emit === "function") {
         signalNode.emit(serializedArgs);
       }
       domElement.dispatchEvent(new CustomEvent("QHTMLSignal", {
         bubbles: true,
-        detail: { signal: signalName, signalNode, sender: domElement, args }
+        detail: { signal: signalName, signalNode, sender: domElement, args, transactionId }
       }));
-      return connections.map((target) => {
+      const invokeConnections = () => connections.map((target) => {
         if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
-          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: domElement });
+          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: domElement, transactionId });
         }
         return typeof target === "function" ? target.apply(domElement, args) : undefined;
       });
+      return transactionId ? withPropertyTransaction(transactionId, invokeConnections) : invokeConnections();
     };
 
     signalFunction.connect = function (target) {
@@ -266,10 +339,27 @@
     signalFunction.connections = function () {
       return connections.slice();
     };
+    signalFunction.lastTransactionId = function () {
+      return signalFunction.__qhtmlLastTransactionId || "";
+    };
     signalFunction.__qhtmlElement = domElement;
     signalFunction.__qhtmlSignalNode = signalNode;
+    signalFunction.__qhtmlLastTransactionId = "";
+    signalFunction.__qhtmlPendingTransactionId = "";
 
-    domElement[signalName] = signalFunction;
+    return signalFunction;
+  }
+
+  function bindSignal(domElement, signalNode) {
+    if (!domElement || !signalNode || typeof signalNode.qhtmlName !== "function") {
+      return;
+    }
+    const signalName = signalNode.qhtmlName();
+    if (!signalName) {
+      return;
+    }
+
+    domElement[signalName] = createDomSignal(domElement, signalName, signalNode);
   }
 
   function eventNameForDom(eventName) {
@@ -292,8 +382,7 @@
     const parameters = splitList(typeof handlerNode.parameters === "function" ? handlerNode.parameters() : "");
     const body = typeof handlerNode.body === "function" ? handlerNode.body() : "";
     const invoke = function (...args) {
-      const callable = new Function(...parameters, String(body || ""));
-      return callable.apply(domElement, args || []);
+      return executeScriptBody(domElement, parameters, args || [], body, domElement.__qhtmlRegistry);
     };
     invoke.__qhtmlElement = domElement;
     invoke.__qhtmlEventHandlerNode = handlerNode;
@@ -338,25 +427,332 @@
         },
         set(nextValue) {
           const entry = domElement.__qhtmlProperties[propertyName];
+          const transactionId = currentPropertyTransactionId();
+          if (entry.lastTransactionId === transactionId) {
+            return;
+          }
+          entry.lastTransactionId = transactionId;
           entry.value = nextValue;
-          domElement.dispatchEvent(new CustomEvent(`${propertyName}changed`, {
-            bubbles: true,
-            detail: { property: propertyName, value: nextValue, qhtmlNode: propertyNode }
-          }));
-          domElement.dispatchEvent(new CustomEvent("QHTMLPropertyChanged", {
-            bubbles: true,
-            detail: { property: propertyName, value: nextValue, qhtmlNode: propertyNode }
-          }));
+          withPropertyTransaction(transactionId, () => {
+            const signalName = `${propertyName}changed`;
+            if (typeof domElement[signalName] === "function") {
+              domElement[signalName].__qhtmlPendingTransactionId = transactionId;
+              domElement[signalName](nextValue);
+            }
+            domElement.dispatchEvent(new CustomEvent(`${propertyName}changed`, {
+              bubbles: true,
+              detail: { property: propertyName, value: nextValue, qhtmlNode: propertyNode, transactionId }
+            }));
+            domElement.dispatchEvent(new CustomEvent("QHTMLPropertyChanged", {
+              bubbles: true,
+              detail: { property: propertyName, value: nextValue, qhtmlNode: propertyNode, transactionId }
+            }));
+          });
         }
       });
-      domElement[propertyName] = resolvedValue;
     } catch (error) {
       domElement[propertyName] = resolvedValue;
     }
   }
 
+  function propertyChangeSignalName(propertyNode) {
+    const propertyName = qhtmlNodeName(propertyNode);
+    return propertyName ? `${propertyName}changed` : "";
+  }
+
+  function bindPropertyChangeSignal(domElement, propertyNode, registry) {
+    const signalName = propertyChangeSignalName(propertyNode);
+    if (!domElement || !signalName) {
+      return;
+    }
+    if (typeof domElement[signalName] !== "function") {
+      domElement[signalName] = createDomSignal(domElement, signalName, propertyNode);
+      domElement[signalName].__qhtmlPropertyNode = propertyNode;
+    }
+    const definitionUuid = domElement.getAttribute && domElement.getAttribute("component-definition");
+    if (definitionUuid && registry && registry.futurePropertySignalConnections) {
+      const key = `${definitionUuid}::${signalName}`;
+      const futureConnections = registry.futurePropertySignalConnections.get(key) || [];
+      futureConnections.forEach((target) => domElement[signalName].connect(target));
+    }
+  }
+
+  function propertyNodesForDefinition(definitionNode) {
+    const properties = [];
+    walkQHTMLNode(definitionNode, (node) => {
+      if (qhtmlNodeType(node) === "QHTMLProperty") {
+        properties.push(node);
+      }
+    });
+    return properties;
+  }
+
+  function createDefinitionPropertySignal(definitionProxy, definitionNode, signalName, registry) {
+    const definitionUuid = typeof definitionNode.qhtmlUUID === "function" ? definitionNode.qhtmlUUID() : "";
+    const key = `${definitionUuid}::${signalName}`;
+    const signalFunction = function () {
+      return [];
+    };
+    signalFunction.connect = function (target) {
+      if (!target) {
+        return false;
+      }
+      if (!registry.futurePropertySignalConnections.has(key)) {
+        registry.futurePropertySignalConnections.set(key, []);
+      }
+      registry.futurePropertySignalConnections.get(key).push(target);
+      return true;
+    };
+    signalFunction.disconnectAll = function () {
+      registry.futurePropertySignalConnections.set(key, []);
+    };
+    signalFunction.connections = function () {
+      return (registry.futurePropertySignalConnections.get(key) || []).slice();
+    };
+    signalFunction.__qhtmlComponentDefinition = definitionProxy;
+    signalFunction.__qhtmlDefinitionNode = definitionNode;
+    signalFunction.__qhtmlFuturePropertySignal = signalName;
+    return signalFunction;
+  }
+
+  function createComponentDefinitionProxy(definitionNode, registry) {
+    const definitionName = qhtmlNodeName(definitionNode);
+    const definitionProxy = {
+      name: definitionName,
+      qhtmlNode: definitionNode,
+      qhtmlUUID: typeof definitionNode.qhtmlUUID === "function" ? definitionNode.qhtmlUUID() : "",
+      propertySignals: {}
+    };
+    propertyNodesForDefinition(definitionNode).forEach((propertyNode) => {
+      const signalName = propertyChangeSignalName(propertyNode);
+      if (!signalName || definitionProxy[signalName]) {
+        return;
+      }
+      const signal = createDefinitionPropertySignal(definitionProxy, definitionNode, signalName, registry);
+      definitionProxy[signalName] = signal;
+      definitionProxy.propertySignals[signalName] = signal;
+    });
+    return definitionProxy;
+  }
+
   function isPaintEventName(eventName) {
     return eventName === "paintbackground" || eventName === "paintborder" || eventName === "paintmask";
+  }
+
+  function ownerElementForQHTMLNode(node, registry) {
+    let current = node && typeof node.parent === "function" ? node.parent() : null;
+    let insideDefinition = false;
+    while (current) {
+      const type = qhtmlNodeType(current);
+      if (type === "QHTMLComponentInstance") {
+        const uuid = typeof current.qhtmlUUID === "function" ? current.qhtmlUUID() : "";
+        return registry.elementsByUuid.get(uuid) || registry.rootElement;
+      }
+      if (type === "QHTMLComponentDefinition") {
+        insideDefinition = true;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return insideDefinition ? null : registry.rootElement;
+  }
+
+  function timerAssignmentValue(timerNode, name, ownerElement, registry, fallback) {
+    const count = typeof timerNode.childCount === "function" ? timerNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = timerNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLPropertyAssignment" && qhtmlNodeName(child).toLowerCase() === name) {
+        const rawValue = typeof child.value === "function" ? child.value() : "";
+        const resolved = resolvePropertyValue(rawValue, ownerElement, child, registry);
+        return typeof resolved === "undefined" ? fallback : resolved;
+      }
+    }
+    return fallback;
+  }
+
+  function timerBool(value, fallback) {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    const text = String(value == null ? "" : value).trim().toLowerCase();
+    if (text === "true" || text === "1" || text === "yes") {
+      return true;
+    }
+    if (text === "false" || text === "0" || text === "no") {
+      return false;
+    }
+    return fallback;
+  }
+
+  function timerNumber(value, fallback) {
+    const numeric = Number.parseInt(String(value == null ? "" : value), 10);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback;
+  }
+
+  function timerHandlers(timerNode) {
+    const handlers = [];
+    const count = typeof timerNode.childCount === "function" ? timerNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = timerNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLEventHandler" &&
+          typeof child.eventName === "function" &&
+          String(child.eventName() || "").toLowerCase() === "timeout") {
+        handlers.push(child);
+      }
+    }
+    return handlers;
+  }
+
+  function timerSignalNode(timerNode) {
+    const count = typeof timerNode.childCount === "function" ? timerNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = timerNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLSignal" && qhtmlNodeName(child) === "timeout") {
+        return child;
+      }
+    }
+    return null;
+  }
+
+  function createTimerSignal(timerObject, signalNode, ownerElement) {
+    const connections = [];
+    const signalFunction = function (...args) {
+      if (signalNode && typeof signalNode.emit === "function") {
+        signalNode.emit(args.map((arg) => String(arg)).join(", "));
+      }
+      ownerElement.dispatchEvent(new CustomEvent("QHTMLTimerTimeout", {
+        bubbles: true,
+        detail: { timer: timerObject, signalNode, args }
+      }));
+      return connections.map((target) => {
+        if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
+          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: timerObject });
+        }
+        return typeof target === "function" ? target.apply(ownerElement, args) : undefined;
+      });
+    };
+    signalFunction.connect = function (target) {
+      if (!target) {
+        return false;
+      }
+      if (target.__qhtmlFunctionNode && signalNode && typeof signalNode.connect === "function") {
+        signalNode.connect(target.__qhtmlFunctionNode);
+      }
+      connections.push(target);
+      return true;
+    };
+    signalFunction.disconnectAll = function () {
+      connections.length = 0;
+    };
+    signalFunction.connections = function () {
+      return connections.slice();
+    };
+    signalFunction.__qhtmlTimer = timerObject;
+    signalFunction.__qhtmlSignalNode = signalNode;
+    return signalFunction;
+  }
+
+  function createLiveTimer(timerNode, ownerElement, registry) {
+    const timerName = qhtmlNodeName(timerNode);
+    const liveTimer = {
+      name: timerName,
+      node: timerNode,
+      ownerElement,
+      __qhtmlTimerId: null,
+      __qhtmlRunning: false,
+      __qhtmlInterval: timerNumber(timerAssignmentValue(timerNode, "interval", ownerElement, registry, 0), 0),
+      __qhtmlRepeat: timerBool(timerAssignmentValue(timerNode, "repeat", ownerElement, registry, true), true),
+      __qhtmlHandlers: timerHandlers(timerNode)
+    };
+
+    liveTimer.timeout = createTimerSignal(liveTimer, timerSignalNode(timerNode), ownerElement);
+
+    Object.defineProperty(liveTimer, "interval", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return liveTimer.__qhtmlInterval;
+      },
+      set(value) {
+        liveTimer.__qhtmlInterval = timerNumber(value, liveTimer.__qhtmlInterval);
+        if (timerNode && typeof timerNode.setInterval === "function") {
+          timerNode.setInterval(liveTimer.__qhtmlInterval);
+        }
+        if (liveTimer.running) {
+          liveTimer.start();
+        }
+      }
+    });
+    Object.defineProperty(liveTimer, "repeat", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return liveTimer.__qhtmlRepeat;
+      },
+      set(value) {
+        liveTimer.__qhtmlRepeat = timerBool(value, liveTimer.__qhtmlRepeat);
+        if (timerNode && typeof timerNode.setRepeat === "function") {
+          timerNode.setRepeat(liveTimer.__qhtmlRepeat);
+        }
+        if (liveTimer.running) {
+          liveTimer.start();
+        }
+      }
+    });
+    Object.defineProperty(liveTimer, "running", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return liveTimer.__qhtmlRunning;
+      },
+      set(value) {
+        if (timerBool(value, false)) {
+          liveTimer.start();
+        } else {
+          liveTimer.stop();
+        }
+      }
+    });
+
+    liveTimer.tick = function () {
+      liveTimer.timeout();
+      liveTimer.__qhtmlHandlers.forEach((handlerNode) => {
+        const parameters = splitList(typeof handlerNode.parameters === "function" ? handlerNode.parameters() : "");
+        const body = typeof handlerNode.body === "function" ? handlerNode.body() : "";
+        executeScriptBody(ownerElement, parameters, [], body, registry);
+      });
+      if (!liveTimer.repeat) {
+        liveTimer.stop();
+      }
+    };
+    liveTimer.start = function () {
+      liveTimer.stop();
+      liveTimer.__qhtmlRunning = true;
+      const schedule = liveTimer.repeat ? globalScope.setInterval : globalScope.setTimeout;
+      liveTimer.__qhtmlTimerId = schedule(() => liveTimer.tick(), liveTimer.interval);
+      ownerElement.dispatchEvent(new CustomEvent("QHTMLTimerStarted", {
+        bubbles: true,
+        detail: { timer: liveTimer, qhtmlNode: timerNode }
+      }));
+      return liveTimer;
+    };
+    liveTimer.stop = function () {
+      if (liveTimer.__qhtmlTimerId !== null) {
+        if (liveTimer.repeat) {
+          globalScope.clearInterval(liveTimer.__qhtmlTimerId);
+        } else {
+          globalScope.clearTimeout(liveTimer.__qhtmlTimerId);
+        }
+      }
+      liveTimer.__qhtmlTimerId = null;
+      liveTimer.__qhtmlRunning = false;
+      return liveTimer;
+    };
+
+    const initiallyRunning = timerBool(timerAssignmentValue(timerNode, "running", ownerElement, registry, false), false);
+    if (initiallyRunning) {
+      liveTimer.start();
+    }
+    return liveTimer;
   }
 
   function splitTopLevel(value) {
@@ -416,10 +812,6 @@
       });
     });
     return declarations.filter((decl) => decl.name && decl.value);
-  }
-
-  function qhtmlNodeName(node) {
-    return node && typeof node.qhtmlName === "function" ? node.qhtmlName() : "";
   }
 
   function createLiveStyle(styleNode, registry) {
@@ -561,6 +953,7 @@
       }
       domElement.style.setProperty(decl.name, decl.value);
     });
+    reapplyPaintTargetsForElement(domElement, registry);
   }
 
   function unwrapApplication(applicationElement) {
@@ -732,18 +1125,111 @@
 
   function paintTargetForEventName(eventName) {
     if (eventName === "paintbackground") {
-      return ["backgroundImage"];
+      return ["background", "background-image"];
     }
     if (eventName === "paintborder") {
-      return ["borderImageSource"];
+      return ["border-image-source"];
     }
     if (eventName === "paintmask") {
-      return ["maskImage", "webkitMaskImage"];
+      return ["mask-image", "-webkit-mask-image"];
     }
     return [];
   }
 
-  function bindPaintHandler(domElement, handlerNode) {
+  function applyPaintTargetStyles(domElement, eventName, paintName) {
+    const paintValue = `paint(${paintName})`;
+    paintTargetForEventName(eventName).forEach((styleName) => {
+      domElement.style.setProperty(styleName, paintValue, "important");
+    });
+    if (eventName === "paintborder" && !domElement.style.getPropertyValue("border-image-slice")) {
+      domElement.style.setProperty("border-image-slice", "1", "important");
+    }
+  }
+
+  function supportsPaintWorklet() {
+    return Boolean(globalScope.CSS && "paintWorklet" in globalScope.CSS && globalScope.CSS.paintWorklet);
+  }
+
+  function ensurePaintWorklet() {
+    if (supportsPaintWorklet()) {
+      return Promise.resolve(true);
+    }
+    if (!globalScope.CSS || globalScope.CSS.paintWorklet !== undefined) {
+      return Promise.resolve(false);
+    }
+    try {
+      return import("https://unpkg.com/css-paint-polyfill").then(() => supportsPaintWorklet());
+    } catch (error) {
+      return Promise.resolve(false);
+    }
+  }
+
+  function reapplyPaintTargetsForElement(domElement, registry) {
+    if (!domElement || !registry || !registry.paintBindingsByElement) {
+      return;
+    }
+    const bindings = registry.paintBindingsByElement.get(domElement);
+    if (!bindings) {
+      return;
+    }
+    bindings.forEach((binding) => {
+      if (binding && binding.registered) {
+        applyPaintTargetStyles(domElement, binding.eventName, binding.paintName);
+      }
+    });
+  }
+
+  function preparePaintElementBox(domElement, properties) {
+    if (!domElement) {
+      return;
+    }
+    const computed = globalScope.getComputedStyle ? globalScope.getComputedStyle(domElement) : null;
+    if (!computed || computed.display === "inline") {
+      domElement.style.setProperty("display", "block");
+    }
+    domElement.style.setProperty("contain", "paint");
+    const byName = new Map(properties.map((property) => [property.name, property.entry.value]));
+    const width = byName.get("width");
+    const height = byName.get("height");
+    if (width && !domElement.style.getPropertyValue("min-width")) {
+      domElement.style.setProperty("min-width", qhtmlPaintCssValue(width));
+    }
+    if (height && !domElement.style.getPropertyValue("min-height")) {
+      domElement.style.setProperty("min-height", qhtmlPaintCssValue(height));
+    }
+  }
+
+  function registerPaintProperty(propertyName, value) {
+    if (!globalScope.CSS || typeof globalScope.CSS.registerProperty !== "function") {
+      return;
+    }
+    const cssName = `--${propertyName}`;
+    const text = qhtmlPaintCssValue(value);
+    let syntax = "*";
+    let initialValue = text || " ";
+    if (/^[-+]?(?:\d+|\d*\.\d+)px$/.test(text)) {
+      syntax = "<length>";
+      initialValue = text;
+    } else if (/^[-+]?(?:\d+|\d*\.\d+)$/.test(text)) {
+      syntax = "<number>";
+      initialValue = text;
+    } else if (/^(?:#[0-9a-fA-F]{3,8}|[A-Za-z]+|rgb\(.*\)|rgba\(.*\)|hsl\(.*\)|hsla\(.*\))$/.test(text)) {
+      syntax = "<color>";
+      initialValue = text;
+    }
+    try {
+      globalScope.CSS.registerProperty({
+        name: cssName,
+        syntax,
+        inherits: false,
+        initialValue
+      });
+    } catch (error) {
+      // registerProperty throws when the custom property is already registered.
+    }
+  }
+
+  function bindPaintHandler(domElement, handlerNode, registry) {
     const eventName = String(handlerNode.eventName() || "").toLowerCase();
     if (!isPaintEventName(eventName)) {
       return;
@@ -757,19 +1243,30 @@
     const paintName = `qhtml-${eventName}-${handlerUuid}`.replace(/[^A-Za-z0-9_-]/g, "-");
     const body = typeof handlerNode.body === "function" ? handlerNode.body() : "";
     const propertyNames = properties.map((property) => property.name);
+    const workletBodyPrefix = [
+      'const white = "white";',
+      'const black = "black";',
+      'const transparent = "transparent";',
+      ...propertyNames
+        .filter((name) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
+        .map((name) => `const ${name} = this[${JSON.stringify(name)}];`)
+    ].join("\n");
+    preparePaintElementBox(domElement, properties);
     properties.forEach((property) => {
+      registerPaintProperty(property.name, property.entry.value);
       domElement.style.setProperty(`--${property.name}`, qhtmlPaintCssValue(property.entry.value));
       domElement.addEventListener(`${property.name}changed`, (event) => {
         domElement.style.setProperty(`--${property.name}`, qhtmlPaintCssValue(event.detail.value));
+        registerPaintProperty(property.name, event.detail.value);
       });
     });
 
-    paintTargetForEventName(eventName).forEach((styleName) => {
-      domElement.style[styleName] = `paint(${paintName})`;
-    });
-
-    if (!globalScope.CSS || !globalScope.CSS.paintWorklet || typeof Blob !== "function") {
-      console.warn("CSS Paint Worklet is not available; QHTML paint handler was attached as CSS only.");
+    if (typeof Blob !== "function" || !globalScope.URL || typeof globalScope.URL.createObjectURL !== "function") {
+      console.warn("CSS Paint Worklet is not available; QHTML paint handler was not registered.");
+      domElement.dispatchEvent(new CustomEvent("QHTMLPaintWorkletUnavailable", {
+        bubbles: true,
+        detail: { eventName, paintName, qhtmlNode: handlerNode }
+      }));
       return;
     }
 
@@ -780,6 +1277,11 @@
           const read = (name) => {
             const value = properties.get("--" + name);
             return value && typeof value.toString === "function" ? value.toString().trim() : "";
+          };
+          const typed = (value) => {
+            const text = String(value || "").trim();
+            const numeric = text.match(/^[-+]?(?:\\d+|\\d*\\.\\d+)(?:px)?$/);
+            return numeric ? Number.parseFloat(text) : text;
           };
           const scope = {
             ctx,
@@ -795,23 +1297,61 @@
             drawRect(x, y, width, height) { ctx.fillRect(x, y, width, height); },
             strokeRect(x, y, width, height) { ctx.strokeRect(x, y, width, height); }
           };
-          ${JSON.stringify(propertyNames)}.forEach((name) => { scope[name] = read(name); });
-          return Function(${propertyNames
-            .map((name) => JSON.stringify(name))
-            .concat(JSON.stringify('const white = "white";\nconst black = "black";\nconst transparent = "transparent";\n' + body))
-            .join(", ")})
-            .apply(scope, ${JSON.stringify(propertyNames)}.map((name) => scope[name]));
+          ${JSON.stringify(propertyNames)}.forEach((name) => { scope[name] = typed(read(name)); });
+          return Function(${JSON.stringify(workletBodyPrefix + "\n" + body)}).apply(scope);
         }
       }
       registerPaint(${JSON.stringify(paintName)}, QHTMLPaintWorklet);
     `;
-    const blobUrl = URL.createObjectURL(new Blob([workletSource], { type: "application/javascript" }));
-    globalScope.CSS.paintWorklet.addModule(blobUrl).catch((error) => {
+    const blobUrl = globalScope.URL.createObjectURL(new Blob([workletSource], { type: "application/javascript" }));
+    domElement.__qhtmlPaintWorklets = domElement.__qhtmlPaintWorklets || {};
+    domElement.__qhtmlPaintWorklets[paintName] = {
+      blobUrl,
+      eventName,
+      paintName,
+      qhtmlNode: handlerNode,
+      workletSource,
+      registered: false
+    };
+    const paintBinding = domElement.__qhtmlPaintWorklets[paintName];
+    if (registry && registry.paintBindingsByElement) {
+      if (!registry.paintBindingsByElement.has(domElement)) {
+        registry.paintBindingsByElement.set(domElement, new Map());
+      }
+      registry.paintBindingsByElement.get(domElement).set(paintName, paintBinding);
+    }
+
+    ensurePaintWorklet().then((available) => {
+      if (!available) {
+        console.warn("CSS Paint Worklet is not available; QHTML paint handler was not registered.");
+        domElement.dispatchEvent(new CustomEvent("QHTMLPaintWorkletUnavailable", {
+          bubbles: true,
+          detail: { eventName, paintName, blobUrl, qhtmlNode: handlerNode }
+        }));
+        return null;
+      }
+      return globalScope.CSS.paintWorklet.addModule(blobUrl);
+    }).then((result) => {
+      if (result === null) {
+        return;
+      }
+      paintBinding.registered = true;
+      applyPaintTargetStyles(domElement, eventName, paintName);
+      domElement.dispatchEvent(new CustomEvent("QHTMLPaintWorkletReady", {
+        bubbles: true,
+        detail: { eventName, paintName, blobUrl, qhtmlNode: handlerNode }
+      }));
+    }).catch((error) => {
+      paintBinding.error = error;
       console.error("Unable to register QHTML paint worklet", error);
+      domElement.dispatchEvent(new CustomEvent("QHTMLPaintWorkletError", {
+        bubbles: true,
+        detail: { eventName, paintName, blobUrl, qhtmlNode: handlerNode, error }
+      }));
     });
   }
 
-  function bindPaintHandlers(domElement, instanceNode) {
+  function bindPaintHandlers(domElement, instanceNode, registry) {
     if (!domElement || !instanceNode) {
       return;
     }
@@ -820,9 +1360,36 @@
       const child = instanceNode.childAt(index);
       const childType = child && typeof child.qhtmlType === "function" ? child.qhtmlType() : "";
       if (childType === "QHTMLEventHandler" && isPaintEventName(String(child.eventName() || "").toLowerCase())) {
-        bindPaintHandler(domElement, child);
+        bindPaintHandler(domElement, child, registry);
       }
     }
+  }
+
+  function bindDomElementHandlers(rootElement, registry) {
+    if (!rootElement || !registry || !registry.nodesByUuid) {
+      return;
+    }
+    const renderedElements = rootElement.querySelectorAll
+      ? rootElement.querySelectorAll("[qhtml-node]")
+      : [];
+    renderedElements.forEach((domElement) => {
+      if (domElement.hasAttribute("component-instance")) {
+        return;
+      }
+      const node = registry.nodesByUuid.get(domElement.getAttribute("qhtml-node"));
+      if (!node || qhtmlNodeType(node) !== "QHTMLDomElement") {
+        return;
+      }
+      domElement.qhtmlNode = node;
+      domElement.__qhtmlRegistry = registry;
+      const count = typeof node.childCount === "function" ? node.childCount() : 0;
+      for (let index = 0; index < count; index += 1) {
+        const child = node.childAt(index);
+        if (qhtmlNodeType(child) === "QHTMLEventHandler") {
+          bindEventHandler(domElement, child);
+        }
+      }
+    });
   }
 
   function bindComponentDomRuntime(rootElement, tree) {
@@ -835,10 +1402,16 @@
       nodesByUuid,
       elementsByName: new Map(),
       elementsByUuid: new Map(),
+      componentDefinitionsByName: new Map(),
+      componentDefinitionsByUuid: new Map(),
+      futurePropertySignalConnections: new Map(),
       stylesByName: new Map(),
       themesByName: new Map(),
+      timersByName: new Map(),
+      timersByUuid: new Map(),
       styleTargetsByName: new Map(),
       themeScopesByName: new Map(),
+      paintBindingsByElement: new Map(),
       rootElement,
       globals: globalScope
     };
@@ -849,6 +1422,12 @@
         registry.stylesByName.set(nodeName, createLiveStyle(node, registry));
       } else if (nodeType === "QHTMLTheme" && nodeName) {
         registry.themesByName.set(nodeName, createLiveTheme(node, registry));
+      } else if (nodeType === "QHTMLComponentDefinition" && nodeName) {
+        const definitionProxy = createComponentDefinitionProxy(node, registry);
+        registry.componentDefinitionsByName.set(nodeName, definitionProxy);
+        if (definitionProxy.qhtmlUUID) {
+          registry.componentDefinitionsByUuid.set(definitionProxy.qhtmlUUID, definitionProxy);
+        }
       }
     });
     registry.refreshStyle = function (styleName) {
@@ -865,12 +1444,24 @@
     };
     registry.styles = {};
     registry.themes = {};
+    registry.timers = {};
+    registry.definitions = {};
     registry.stylesByName.forEach((styleDef, styleName) => {
       registry.styles[styleName] = styleDef;
     });
     registry.themesByName.forEach((themeDef, themeName) => {
       registry.themes[themeName] = themeDef;
     });
+    registry.componentDefinitionsByName.forEach((definitionDef, definitionName) => {
+      registry.definitions[definitionName] = definitionDef;
+    });
+    registry.stopTimers = function () {
+      registry.timersByUuid.forEach((timer) => {
+        if (timer && typeof timer.stop === "function") {
+          timer.stop();
+        }
+      });
+    };
 
     const renderedComponents = rootElement.querySelectorAll
       ? rootElement.querySelectorAll("[component-instance]")
@@ -885,6 +1476,7 @@
 
       domElement.qhtmlNode = instanceNode;
       domElement.qhtmlDomTree = tree;
+      domElement.__qhtmlRegistry = registry;
       registry.elementsByUuid.set(instanceUuid, domElement);
       if (typeof instanceNode.qhtmlName === "function" && instanceNode.qhtmlName()) {
         registry.elementsByName.set(instanceNode.qhtmlName(), domElement);
@@ -905,6 +1497,21 @@
           bindFunction(domElement, child);
         } else if (childType === "QHTMLSignal") {
           bindSignal(domElement, child);
+        }
+      }
+    });
+
+    renderedComponents.forEach((domElement) => {
+      const instanceNode = domElement.qhtmlNode;
+      if (!instanceNode) {
+        return;
+      }
+
+      const count = typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
+      for (let index = 0; index < count; index += 1) {
+        const child = instanceNode.childAt(index);
+        if (qhtmlNodeType(child) === "QHTMLProperty") {
+          bindPropertyChangeSignal(domElement, child, registry);
         }
       }
     });
@@ -947,7 +1554,30 @@
     });
 
     renderedComponents.forEach((domElement) => {
-      bindPaintHandlers(domElement, domElement.qhtmlNode);
+      bindPaintHandlers(domElement, domElement.qhtmlNode, registry);
+    });
+
+    bindDomElementHandlers(rootElement, registry);
+
+    nodesByUuid.forEach((node) => {
+      if (qhtmlNodeType(node) !== "QHTMLTimer") {
+        return;
+      }
+      const ownerElement = ownerElementForQHTMLNode(node, registry);
+      if (!ownerElement) {
+        return;
+      }
+      const timerName = qhtmlNodeName(node);
+      const timerUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
+      const timerObject = createLiveTimer(node, ownerElement, registry);
+      if (timerName) {
+        ownerElement[timerName] = timerObject;
+        registry.timersByName.set(timerName, timerObject);
+        registry.timers[timerName] = timerObject;
+      }
+      if (timerUuid) {
+        registry.timersByUuid.set(timerUuid, timerObject);
+      }
     });
 
     applyStyleAndThemeApplications(rootElement, registry);
@@ -955,6 +1585,8 @@
     rootElement.qhtmlComponentRegistry = registry;
     rootElement.qhtmlStyles = registry.styles;
     rootElement.qhtmlThemes = registry.themes;
+    rootElement.qhtmlTimers = registry.timers;
+    rootElement.qhtmlComponentDefinitions = registry.definitions;
   }
 
   function mountElement(element, options) {
@@ -973,6 +1605,10 @@
 
       if (typeof element.qhtmlSource !== "string" || element.qhtmlSource.length === 0) {
         element.qhtmlSource = element.innerHTML;
+      }
+
+      if (element.qhtmlComponentRegistry && typeof element.qhtmlComponentRegistry.stopTimers === "function") {
+        element.qhtmlComponentRegistry.stopTimers();
       }
 
       element.innerHTML = "";
