@@ -1,0 +1,157 @@
+q-default-theme q-tabs-theme {
+  q-tabs {
+    q-style {
+      display: block;
+      boxSizing: border-box;
+      color: #0f172a;
+      fontFamily: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+  }
+
+  .q-tabs-container {
+    q-style {
+      display: grid;
+      gridTemplateRows: auto minmax(0, 1fr);
+      gridAutoColumns: max-content;
+      alignItems: stretch;
+      boxSizing: border-box;
+      width: 100%;
+      minHeight: 8rem;
+      overflow: hidden;
+      backgroundColor: #eef3fb;
+      color: #0f172a;
+      border: 1px solid #c7d8ef;
+      borderRadius: 10px;
+    }
+  }
+
+  q-tab {
+    q-style {
+      display: contents;
+    }
+  }
+
+  .q-tab-button {
+    q-style {
+      gridRow: 1;
+      appearance: none;
+      padding: 7px 12px;
+      margin: 4px 0 4px 4px;
+      backgroundColor: #e2e8f0;
+      color: #0f172a;
+      border: 1px solid #c7d8ef;
+      borderRadius: 7px;
+      fontSize: 14px;
+      lineHeight: 1.1;
+      cursor: pointer;
+    }
+  }
+
+  .q-tab-panel {
+    q-style {
+      gridRow: 2;
+      gridColumn: 1 / -1;
+      boxSizing: border-box;
+      minHeight: 5rem;
+      padding: 10px;
+      margin: 0 10px 10px 10px;
+      backgroundColor: rgba(255, 255, 255, 0.55);
+      color: inherit;
+      border: 1px solid #d7e2f1;
+      borderRadius: 8px;
+    }
+  }
+}
+
+q-component q-tab {
+  q-property label: ""
+  q-property name: ""
+
+  q-slot-default name {
+    text { ${this.label} }
+  }
+
+  q-slot-default content {
+    html { &nbsp; }
+  }
+
+  function tabs() {
+    return this.closest("q-tabs");
+  }
+
+  function button() {
+    return this.querySelector(".q-tab-button");
+  }
+
+  function panel() {
+    return this.querySelector(".q-tab-panel");
+  }
+
+  function title() {
+    return String(this.button().textContent || this.label || this.name || "Tab").trim();
+  }
+
+  function activate() {
+    return this.tabs().showTab(this);
+  }
+
+  function setActive(active) {
+    this.setAttribute("q-tab-active", active ? "1" : "0");
+    this.panel().style.display = active ? "block" : "none";
+    this.button().setAttribute("aria-selected", active ? "true" : "false");
+    this.button().style.backgroundColor = active ? "#1d4ed8" : "#e2e8f0";
+    this.button().style.color = active ? "#ffffff" : "#0f172a";
+    this.button().style.borderColor = active ? "#1e40af" : "#c7d8ef";
+    return this;
+  }
+
+  button.q-tab-button {
+    type: "button"
+    role: "tab"
+    onclick {
+      this.closest("q-tab").activate();
+    }
+    slot { name }
+  }
+
+  div.q-tab-panel {
+    role: "tabpanel"
+    slot { content }
+  }
+}
+
+q-component q-tabs {
+  q-property activeIndex: 0
+
+  q-signal changed(index, tab)
+
+  function tabs() {
+    return Array.from(this.querySelectorAll(".q-tabs-container > q-tab"));
+  }
+
+  function showTab(tabOrIndex) {
+    const tabs = this.tabs();
+    const requested = typeof tabOrIndex === "number" ? tabOrIndex : tabs.indexOf(tabOrIndex);
+    const activeIndex = Math.max(0, Math.min(tabs.length - 1, requested));
+    tabs.forEach((tab, index) => tab.setActive(index === activeIndex));
+    this.activeIndex = activeIndex;
+    this.setAttribute("q-tabs-active-index", String(activeIndex));
+    this.changed(activeIndex, tabs[activeIndex]);
+    return tabs[activeIndex];
+  }
+
+  function refreshTabs() {
+    return this.showTab(Number(this.activeIndex));
+  }
+
+  onReady {
+    this.refreshTabs();
+  }
+
+  q-tabs-theme {
+    div.q-tabs-container {
+      role: "tablist"
+      slot { content }
+    }
+  }
+}

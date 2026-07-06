@@ -1,0 +1,766 @@
+q-component page-builder-toolbar {
+  function exportLayout() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.exportToPanel === "function") {
+      window.QPageBuilder.exportToPanel();
+    }
+  }
+
+  function clearLayout() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.clearCanvas === "function") {
+      window.QPageBuilder.clearCanvas();
+    }
+  }
+
+  function newFile() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.newLayoutFile === "function") {
+      window.QPageBuilder.newLayoutFile();
+    }
+  }
+
+  function saveLayout() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.saveLayout === "function") {
+      window.QPageBuilder.saveLayout();
+    }
+  }
+
+  function loadLayout() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.loadLayout === "function") {
+      window.QPageBuilder.loadLayout();
+    }
+  }
+
+  function fileManager() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.openFileManager === "function") {
+      window.QPageBuilder.openFileManager();
+    }
+  }
+
+  function importQHtml() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.importQHtmlFile === "function") {
+      window.QPageBuilder.importQHtmlFile();
+    }
+  }
+
+  function exportFolder() {
+    if (window.QPageBuilder && typeof window.QPageBuilder.exportFolder === "function") {
+      window.QPageBuilder.exportFolder();
+    }
+  }
+
+  header.pb-toolbar {
+    div.pb-brand {
+      div.pb-logo { text { Q } }
+      div {
+        h1 { text { QHTML Page Builder } }
+        p { text { Drag palette items into the canvas. Export emits clean QHTML layout source. } }
+      }
+    }
+    div.pb-actions {
+      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").newFile(); } text { New } }
+      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").saveLayout(); } text { Save } }
+      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").loadLayout(); } text { Load } }
+      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").fileManager(); } text { File Manager } }
+      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").importQHtml(); } text { Import QHTML } }
+      button.pb-action.danger { type: "button" onclick { this.closest("page-builder-toolbar").clearLayout(); } text { Clear } }
+      button.pb-action.primary { type: "button" onclick { this.closest("page-builder-toolbar").exportLayout(); } text { Export QHTML } }
+      button.pb-action.primary { type: "button" onclick { this.closest("page-builder-toolbar").exportFolder(); } text { Export Folder } }
+    }
+  }
+}
+
+q-component page-builder-palette {
+  aside.pb-sidebar {
+    div.pb-sidebar-head {
+      h2 { text { Palette } }
+      p { text { Drag blocks onto the canvas. Items can be moved after they are dropped. } }
+    }
+
+    q-palette-toolbox {
+      docked: "true"
+      title: "Blocks"
+
+      q-palette-toolbox-button {
+        name: "New"
+        component: "pb-new-component"
+        data-pb-create-component: "true"
+        div.pb-palette-preview.new-component {
+          h3 { text { New } }
+          p { text { q-component } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Heading"
+        component: "pb-heading-block"
+        qhtml: "q-style pbHeadingBlockHeaderStyle { padding: 20px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbHeadingBlockTitleStyle { margin: 0; fontSize: 30px; letterSpacing: -.04em; color: #0f172a } q-style pbHeadingBlockSubtitleStyle { marginTop: 8px; color: #64748b; lineHeight: 1.5 } q-theme pbHeadingBlockTheme { header { pbHeadingBlockHeaderStyle } h2 { pbHeadingBlockTitleStyle } p { pbHeadingBlockSubtitleStyle } } pbHeadingBlockTheme { header { h2 { q-layout { data-pb-slot: \"headingTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { headingTitle } } } } } p { q-layout { data-pb-slot: \"headingSubtitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { headingSubtitle } } } } } q-layout { data-pb-slot: \"headingContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { headingContent } } } } } } q-slot-default headingTitle { text { Your heading here } } q-slot-default headingSubtitle { text { Add a short supporting subtitle for this section. } } q-slot-default headingContent { text { Add supporting content or nested blocks here. } }"
+        instance: "pb-heading-block { }"
+        div.pb-palette-preview.heading {
+          h3 { text { Heading } }
+          p { text { Title and subtitle } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Hero"
+        component: "pb-hero-block"
+        qhtml: "q-style pbHeroBlockSectionStyle { padding: 32px; borderRadius: 20px; background: linear-gradient(135deg,#0f172a,#1d4ed8); color: white } q-style pbHeroBlockTitleStyle { margin: 0; fontSize: 38px; letterSpacing: -.06em } q-style pbHeroBlockCopyStyle { maxWidth: 560px; color: #dbeafe; lineHeight: 1.5 } q-style pbHeroBlockButtonStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-theme pbHeroBlockTheme { section.pb-hero-block { pbHeroBlockSectionStyle } h1 { pbHeroBlockTitleStyle } p { pbHeroBlockCopyStyle } button { pbHeroBlockButtonStyle } } pbHeroBlockTheme { section.pb-hero-block { h1 { q-layout { data-pb-slot: \"heroTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroTitle } } } } } p { q-layout { data-pb-slot: \"heroSubtitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroSubtitle } } } } } button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"heroButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroButtonText } } } } } q-layout { data-pb-slot: \"heroContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroContent } } } } } } q-slot-default heroTitle { text { Launch Faster } } q-slot-default heroSubtitle { text { Compose a clean landing page visually, then export declarative QHTML. } } q-slot-default heroButtonText { text { Start Building } } q-slot-default heroContent { text { Add hero details or nested blocks here. } }"
+        instance: "pb-hero-block { }"
+        div.pb-palette-preview.hero {
+          h3 { text { Hero } }
+          p { text { Headline, copy, CTA } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Card"
+        component: "pb-card-block"
+        qhtml: "q-style pbCardBlockArticleStyle { padding: 22px; borderRadius: 18px; background: #f8fafc; border: 1px solid #dbe4f0; color: #0f172a; boxShadow: 0 12px 28px rgba(15,23,42,.08) } q-style pbCardBlockTitleStyle { marginTop: 0; marginBottom: 8px; color: #0f172a } q-style pbCardBlockBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbCardBlockTheme { article.pb-feature-card { pbCardBlockArticleStyle } h3 { pbCardBlockTitleStyle } p { pbCardBlockBodyStyle } } pbCardBlockTheme { article.pb-feature-card { h3 { q-layout { data-pb-slot: \"cardTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { cardTitle } } } } } p { q-layout { data-pb-slot: \"cardBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { cardBody } } } } } q-layout { data-pb-slot: \"cardContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { cardContent } } } } } } q-slot-default cardTitle { text { Card title } } q-slot-default cardBody { text { Use this card for compact page content or feature summaries. } } q-slot-default cardContent { text { Add card details or nested blocks here. } }"
+        instance: "pb-card-block { }"
+        div.pb-palette-preview.card {
+          h3 { text { Card } }
+          p { text { Title and body } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Callout"
+        component: "pb-callout"
+        qhtml: "q-style pbCalloutAsideStyle { padding: 18px; borderRadius: 18px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f } q-style pbCalloutStrongStyle { display: block; marginBottom: 6px; fontWeight: 900 } q-style pbCalloutBodyStyle { margin: 0; color: #78350f; lineHeight: 1.5 } q-theme pbCalloutTheme { aside.pb-callout { pbCalloutAsideStyle } strong { pbCalloutStrongStyle } p { pbCalloutBodyStyle } } pbCalloutTheme { aside.pb-callout { strong { q-layout { data-pb-slot: \"calloutLabel\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { calloutLabel } } } } } p { q-layout { data-pb-slot: \"calloutBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { calloutBody } } } } } q-layout { data-pb-slot: \"calloutContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { calloutContent } } } } } } q-slot-default calloutLabel { text { Note } } q-slot-default calloutBody { text { Use callouts for announcements, warnings, or highlighted copy. } } q-slot-default calloutContent { text { Add supporting details here. } }"
+        instance: "pb-callout { }"
+        div.pb-palette-preview.callout {
+          h3 { text { Callout } }
+          p { text { Highlight panel } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Price Box"
+        component: "pb-price-box"
+        qhtml: "q-style pbPriceBoxSectionStyle { padding: 24px; borderRadius: 20px; background: #f0f9ff; border: 1px solid #bae6fd; color: #0f172a; boxShadow: 0 12px 28px rgba(14,165,233,.14) } q-style pbPriceBoxTitleStyle { marginTop: 0; marginBottom: 8px; color: #075985 } q-style pbPriceBoxAmountStyle { fontSize: 28px; fontWeight: 950; color: #0f172a; margin: 6px 0 14px } q-style pbPriceBoxListStyle { paddingLeft: 20px; color: #334155; lineHeight: 1.6 } q-style pbPriceBoxButtonStyle { border: 0; borderRadius: 999px; background: #0ea5e9; color: white; fontWeight: 900; padding: 10px 16px } q-theme pbPriceBoxTheme { section { pbPriceBoxSectionStyle } h3 { pbPriceBoxTitleStyle } p { pbPriceBoxAmountStyle } ul { pbPriceBoxListStyle } button { pbPriceBoxButtonStyle } } pbPriceBoxTheme { section { h3 { q-layout { data-pb-slot: \"priceTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceTitle } } } } } p { q-layout { data-pb-slot: \"priceAmount\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceAmount } } } } } ul { q-layout { data-pb-slot: \"priceFeatures\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceFeatures } } } } } button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"priceButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceButtonText } } } } } q-layout { data-pb-slot: \"priceContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceContent } } } } } } q-slot-default priceTitle { text { Starter } } q-slot-default priceAmount { text { $29 / month } } q-slot-default priceFeatures { li { text { Core features } } li { text { Email support } } li { text { Simple onboarding } } } q-slot-default priceButtonText { text { Choose plan } } q-slot-default priceContent { text { Add plan details here. } }"
+        instance: "pb-price-box { }"
+        div.pb-palette-preview.price {
+          h3 { text { Price Box } }
+          p { text { Plan card } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Aside Box"
+        component: "pb-aside-box"
+        qhtml: "q-style pbAsideBoxStyle { padding: 18px; borderRadius: 18px; background: #f8fafc; border: 1px solid #cbd5e1; color: #334155 } q-style pbAsideTitleStyle { marginTop: 0; color: #0f172a } q-style pbAsideBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbAsideBoxTheme { aside { pbAsideBoxStyle } h4 { pbAsideTitleStyle } p { pbAsideBodyStyle } } pbAsideBoxTheme { aside { h4 { q-layout { data-pb-slot: \"asideTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { asideTitle } } } } } p { q-layout { data-pb-slot: \"asideBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { asideBody } } } } } q-layout { data-pb-slot: \"asideContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { asideContent } } } } } } q-slot-default asideTitle { text { Related } } q-slot-default asideBody { text { Add secondary context, links, or supporting notes here. } } q-slot-default asideContent { text { Add links or nested content here. } }"
+        instance: "pb-aside-box { }"
+        div.pb-palette-preview.callout {
+          h3 { text { Aside } }
+          p { text { Sidebar content } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Container"
+        component: "pb-container-block"
+        qhtml: "q-style pbContainerSectionStyle { padding: 24px; borderRadius: 22px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbContainerHeaderStyle { marginBottom: 14px } q-style pbContainerTitleStyle { marginTop: 0; marginBottom: 8px } q-style pbContainerBodyStyle { color: #64748b; lineHeight: 1.5 } q-theme pbContainerBlockTheme { section { pbContainerSectionStyle } div { pbContainerHeaderStyle } h3 { pbContainerTitleStyle } p { pbContainerBodyStyle } } pbContainerBlockTheme { section { div { h3 { q-layout { data-pb-slot: \"containerTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { containerTitle } } } } } p { q-layout { data-pb-slot: \"containerBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { containerBody } } } } } } q-layout { data-pb-slot: \"containerContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { containerContent } } } } } } q-slot-default containerTitle { text { Container } } q-slot-default containerBody { text { Place grouped content inside this general purpose section. } } q-slot-default containerContent { text { Add grouped content or nested blocks here. } }"
+        instance: "pb-container-block { }"
+        div.pb-palette-preview.card {
+          h3 { text { Container } }
+          p { text { Generic wrapper } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Text Block"
+        component: "pb-text-block"
+        qhtml: "q-style pbTextBlockStyle { padding: 18px; borderRadius: 16px; background: #ffffff; color: #334155; lineHeight: 1.65 } q-style pbTextBlockParagraphStyle { marginTop: 0; marginBottom: 8px } q-theme pbTextBlockTheme { div { pbTextBlockStyle } p { pbTextBlockParagraphStyle } } pbTextBlockTheme { div { p { q-layout { data-pb-slot: \"textBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { textBody } } } } } q-layout { data-pb-slot: \"textContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { textContent } } } } } } q-slot-default textBody { text { Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante. } } q-slot-default textContent { text { Add additional copy or nested blocks here. } }"
+        instance: "pb-text-block { }"
+        div.pb-palette-preview.card {
+          h3 { text { Text } }
+          p { text { Paragraph copy } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Image Placeholder"
+        component: "pb-image-placeholder"
+        qhtml: "q-style pbImageFigureStyle { margin: 0; padding: 18px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #475569 } q-style pbImageBoxStyle { minHeight: 140px; display: grid; placeItems: center; background: #e2e8f0; borderRadius: 16px; color: #475569 } q-style pbImageCaptionStyle { marginTop: 8px; color: #64748b; fontSize: 14px } q-theme pbImagePlaceholderTheme { figure { pbImageFigureStyle } div { pbImageBoxStyle } figcaption { pbImageCaptionStyle } } pbImagePlaceholderTheme { figure { div { q-layout { data-pb-slot: \"imageLabel\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { imageLabel } } } } } figcaption { q-layout { data-pb-slot: \"imageCaption\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { imageCaption } } } } } q-layout { data-pb-slot: \"imageContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { imageContent } } } } } } q-slot-default imageLabel { text { Image } } q-slot-default imageCaption { text { Optional caption } } q-slot-default imageContent { text { Add image-adjacent content here. } }"
+        instance: "pb-image-placeholder { }"
+        div.pb-palette-preview.card {
+          h3 { text { Image } }
+          p { text { Figure block } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Quote"
+        component: "pb-quote-block"
+        qhtml: "q-style pbQuoteBlockStyle { margin: 0; padding: 22px; borderRadius: 20px; background: #f8fafc; borderLeft: 5px solid #f59e0b; color: #1f2937 } q-style pbQuoteTextStyle { marginTop: 0; fontSize: 20px; lineHeight: 1.45 } q-style pbQuoteCiteStyle { display: block; marginTop: 10px; color: #64748b; fontStyle: normal; fontWeight: 800 } q-theme pbQuoteBlockTheme { blockquote { pbQuoteBlockStyle } p { pbQuoteTextStyle } cite { pbQuoteCiteStyle } } pbQuoteBlockTheme { blockquote { p { q-layout { data-pb-slot: \"quoteText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { quoteText } } } } } cite { q-layout { data-pb-slot: \"quoteCite\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { quoteCite } } } } } q-layout { data-pb-slot: \"quoteContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { quoteContent } } } } } } q-slot-default quoteText { text { A concise testimonial or pull quote can go here. } } q-slot-default quoteCite { text { Customer Name } } q-slot-default quoteContent { text { Add quote context here. } }"
+        instance: "pb-quote-block { }"
+        div.pb-palette-preview.callout {
+          h3 { text { Quote } }
+          p { text { Pull quote } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Button Row"
+        component: "pb-button-row"
+        qhtml: "q-style pbButtonRowStyle { display: flex; gap: 12px; flexWrap: wrap; alignItems: center } q-style pbButtonPrimaryStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-style pbButtonGhostStyle { border: 1px solid #bfdbfe; borderRadius: 999px; background: white; color: #1d4ed8; fontWeight: 900; padding: 10px 16px } q-theme pbButtonRowTheme { div.pb-button-row { pbButtonRowStyle } button { pbButtonPrimaryStyle } .ghost { pbButtonGhostStyle } } pbButtonRowTheme { div.pb-button-row { button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"primaryButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { primaryButtonText } } } } } button { class: \"pb-demo-button ghost\" q-layout { data-pb-slot: \"secondaryButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { secondaryButtonText } } } } } q-layout { data-pb-slot: \"buttonRowContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { buttonRowContent } } } } } } q-slot-default primaryButtonText { text { Primary } } q-slot-default secondaryButtonText { text { Secondary } } q-slot-default buttonRowContent { text { Optional helper text } }"
+        instance: "pb-button-row { }"
+        div.pb-palette-preview.buttons {
+          h3 { text { Buttons } }
+          p { text { CTA pair } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Layout: 1 Column"
+        component: "pb-layout-one-col"
+        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"onecolumncontent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { onecolumncontent } } } } } } } q-slot-default onecolumncontent { text { Add one-column layout content here. } }"
+        instance: "pb-layout-one-col { }"
+        div.pb-palette-preview.layout {
+          h3 { text { 1 Column } }
+          p { text { One row, one column } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Layout: 2 Columns"
+        component: "pb-layout-two-col"
+        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }"
+        instance: "pb-layout-two-col { }"
+        div.pb-palette-preview.layout {
+          h3 { text { 2 Columns } }
+          p { text { Equal columns } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Layout: 3 Columns"
+        component: "pb-layout-three-col"
+        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"middlecolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { middlecolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default middlecolumn { text { Add middle column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }"
+        instance: "pb-layout-three-col { }"
+        div.pb-palette-preview.layout {
+          h3 { text { 3 Columns } }
+          p { text { Equal thirds } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Layout: 2 Rows"
+        component: "pb-layout-two-row"
+        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"toprow\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { toprow } } } } } } q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"bottomrow\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { bottomrow } } } } } } } q-slot-default toprow { text { Add top row content here. } } q-slot-default bottomrow { text { Add bottom row content here. } }"
+        instance: "pb-layout-two-row { }"
+        div.pb-palette-preview.layout {
+          h3 { text { 2 Rows } }
+          p { text { Vertical sections } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Layout: Nested 1+2"
+        component: "pb-layout-nested-one-two"
+        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"topcontent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { topcontent } } } } } } q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default topcontent { text { Add full-width top content here. } } q-slot-default leftcolumn { text { Add lower left content here. } } q-slot-default rightcolumn { text { Add lower right content here. } }"
+        instance: "pb-layout-nested-one-two { }"
+        div.pb-palette-preview.layout {
+          h3 { text { 1 + 2 } }
+          p { text { Header plus split row } }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-canvas {
+  section.pb-canvas-shell {
+    div.pb-canvas-meta {
+      div {
+        h2 { text { Layout Canvas } }
+        p { text { Drop blocks where they belong. Red indicators show insert position. } }
+      }
+      div.pb-status { id: "pb-builder-status" text { Ready } }
+    }
+
+    div.pb-stage {
+      q-layout {
+        id: "pb-builder-layout"
+        width: "100%"
+        gap: "14px"
+      }
+    }
+  }
+}
+
+q-component page-builder-export-panel {
+  section.pb-export-panel {
+    div.pb-export-head {
+      h2 { text { Exported QHTML } }
+      p { text { The export includes q-component definitions for palette items used in the layout, followed by the generated layout tree. } }
+    }
+    q-editor {
+      id: "pb-export-output"
+    }
+  }
+}
+
+q-component page-builder-component-builder {
+  dialog.pb-component-builder {
+    id: "pb-component-builder"
+    div.pb-component-builder-card {
+      header.pb-component-builder-head {
+        div {
+          h2 { text { New q-component } }
+          p { id: "pb-component-builder-subtitle" text { Create a palette component for this page. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close component builder"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeComponentBuilder(); } }
+          html { &times; }
+        }
+      }
+
+      nav.pb-component-builder-tabs {
+        button.active {
+          type: "button"
+          data-pb-builder-tab: "general"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("general"); } }
+          text { General }
+        }
+        button {
+          type: "button"
+          data-pb-builder-tab: "structure"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("structure"); } }
+          text { Structure }
+        }
+        button {
+          type: "button"
+          data-pb-builder-tab: "handlers"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("handlers"); } }
+          text { Handlers }
+        }
+        button {
+          type: "button"
+          data-pb-builder-tab: "animation"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("animation"); } }
+          text { Animation }
+        }
+        button {
+          type: "button"
+          data-pb-builder-tab: "preview"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("preview"); } }
+          text { Preview }
+        }
+      }
+
+      section.pb-component-builder-panel {
+        data-pb-builder-panel: "general"
+        div.pb-component-general-grid {
+          label {
+            text { q-component name }
+            input {
+              id: "pb-component-builder-name"
+              type: "text"
+              value: "my-component"
+              inputmode: "text"
+              onchange { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
+              oninput { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
+            }
+          }
+          label {
+            text { extends }
+            input {
+              id: "pb-component-builder-extends"
+              type: "text"
+              placeholder: "base-card base-panel"
+              inputmode: "text"
+              onchange { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
+              oninput { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
+            }
+          }
+        }
+      }
+
+      section.pb-component-builder-panel {
+        data-pb-builder-panel: "structure"
+        hidden: "hidden"
+        div.pb-component-builder-workbench {
+          div.pb-component-builder-tools {
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("tag"); } } text { tag } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-signal"); } } text { q-signal } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("slot"); } } html { slot } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("function"); } } text { function } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-property"); } } text { q-property } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-var"); } } text { q-var } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-layout"); } } text { q-layout } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-row"); } } text { q-row } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-col"); } } text { q-col } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-connect"); } } text { q-connect } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("html"); } } text { HTML } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("text"); } } text { text } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.indentComponentBuilderEditor(); } } text { Indent } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.outdentComponentBuilderEditor(); } } text { Outdent } }
+          }
+          q-editor {
+            id: "pb-component-builder-structure"
+          }
+        }
+      }
+
+      section.pb-component-builder-panel {
+        data-pb-builder-panel: "handlers"
+        hidden: "hidden"
+        div.pb-component-builder-workbench {
+          div.pb-component-builder-tools {
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("onclick"); } } text { onclick } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("onready"); } } text { onready } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("onpaint"); } } text { onpaint } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("on-signal"); } } text { on<signal> } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("on-property-changed"); } } text { on<property>changed } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.indentComponentBuilderEditor(); } } text { Indent } }
+            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.outdentComponentBuilderEditor(); } } text { Outdent } }
+          }
+          q-editor {
+            id: "pb-component-builder-handlers"
+          }
+        }
+      }
+
+      section.pb-component-builder-panel {
+        data-pb-builder-panel: "preview"
+        hidden: "hidden"
+        div.pb-component-builder-preview {
+          q-editor {
+            id: "pb-component-builder-preview"
+          }
+        }
+      }
+
+      section.pb-component-builder-panel {
+        data-pb-builder-panel: "animation"
+        hidden: "hidden"
+        div.pb-component-animation-panel {
+          p { text { Generate animation boilerplate for this component. The dialog targets this.component and scans current q-property declarations. } }
+          button.pb-action.primary {
+            type: "button"
+            onclick { if (window.QPageBuilder) { window.QPageBuilder.openComponentBuilderAnimationTool(); } }
+            text { Open Animation Tool }
+          }
+          q-animation-tool {
+            id: "pb-component-animation-tool"
+          }
+        }
+      }
+
+      div.pb-component-builder-error {
+        id: "pb-component-builder-error"
+      }
+
+      footer.pb-component-builder-actions {
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeComponentBuilder(); } }
+          text { Cancel }
+        }
+        button.pb-action.primary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.createComponentBuilderItem(); } }
+          text { Create }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-palette-editor {
+  dialog.pb-palette-editor {
+    id: "pb-palette-editor"
+    div.pb-palette-editor-card {
+      header.pb-palette-editor-head {
+        div {
+          h2 { text { Edit Palette Component } }
+          p { id: "pb-palette-editor-subtitle" text { Update the QHTML source used by this palette item. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close editor"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closePaletteEditor(); } }
+          html { &times; }
+        }
+      }
+      input {
+        id: "pb-palette-editor-component"
+        type: "hidden"
+      }
+      div.pb-editor-label {
+        text { QHTML Source }
+      }
+      q-editor {
+        id: "pb-palette-editor-source"
+      }
+      div.pb-palette-editor-error {
+        id: "pb-palette-editor-error"
+      }
+      footer.pb-palette-editor-actions {
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closePaletteEditor(); } }
+          text { Cancel }
+        }
+        button.pb-action.primary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.savePaletteEdit(); } }
+          text { Save Component }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-instance-editor {
+  dialog.pb-instance-editor {
+    id: "pb-instance-editor"
+    div.pb-instance-editor-card {
+      header.pb-instance-editor-head {
+        div {
+          h2 { text { Edit QHTML Instance } }
+          p { id: "pb-instance-editor-subtitle" text { Select an instance and edit one of its slots. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close instance editor"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeInstanceEditor(); } }
+          html { &times; }
+        }
+      }
+
+      div.pb-instance-controls {
+        label {
+          id: "pb-instance-editor-instance-row"
+          text { Instance }
+          select {
+            id: "pb-instance-editor-instance"
+            onchange { if (window.QPageBuilder) { window.QPageBuilder.selectInstanceEditTarget(this.value); } }
+          }
+        }
+        label {
+          id: "pb-instance-editor-slot-row"
+          text { Slot }
+          select {
+            id: "pb-instance-editor-slot"
+            onchange { if (window.QPageBuilder) { window.QPageBuilder.selectInstanceEditSlot(this.value); } }
+          }
+        }
+      }
+
+      div.pb-instance-editor-body {
+        q-editor {
+          id: "pb-instance-editor-source"
+        }
+      }
+
+      div.pb-instance-editor-error {
+        id: "pb-instance-editor-error"
+      }
+
+      footer.pb-instance-editor-actions {
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeInstanceEditor(); } }
+          text { Close }
+        }
+        button.pb-action.primary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.saveInstanceEdit(); } }
+          text { Save Instance }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-file-dialog {
+  dialog.pb-file-dialog {
+    id: "pb-file-dialog"
+    div.pb-file-card {
+      header.pb-file-head {
+        div {
+          h2 { text { Site Files } }
+          p { id: "pb-file-dialog-subtitle" text { Select a file to load, or organize pages into folders. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close files"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileDialog(); } }
+          html { &times; }
+        }
+      }
+
+      div.pb-file-toolbar {
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.newFileFolder(); } }
+          text { New folder }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.newFile(); } }
+          text { New file }
+        }
+      }
+
+      div.pb-file-body {
+        q-tree-view {
+          id: "pb-file-tree-probe"
+        }
+        div.pb-file-tree {
+          id: "pb-file-tree"
+        }
+      }
+
+      footer.pb-file-actions {
+        div.pb-file-selected {
+          id: "pb-file-selected"
+          text { / }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileDialog(); } }
+          text { Close }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-file-manager {
+  dialog.pb-file-dialog {
+    id: "pb-file-manager"
+    div.pb-file-card {
+      header.pb-file-head {
+        div {
+          h2 { text { File Manager } }
+          p { id: "pb-file-manager-subtitle" text { Select a file to rename, delete, or move. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close file manager"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileManager(); } }
+          html { &times; }
+        }
+      }
+
+      div.pb-file-body {
+        q-tree-view {
+          id: "pb-file-manager-tree-probe"
+        }
+        div.pb-file-tree {
+          id: "pb-file-manager-tree"
+        }
+      }
+
+      footer.pb-file-actions {
+        div.pb-file-selected {
+          id: "pb-file-manager-selected"
+          text { / }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.renameManagedFile(); } }
+          text { Rename }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.moveManagedFile(); } }
+          text { Move }
+        }
+        button.pb-action.danger {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.deleteManagedFile(); } }
+          text { Delete }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileManager(); } }
+          text { Close }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-folder-picker {
+  dialog.pb-file-dialog {
+    id: "pb-folder-picker"
+    div.pb-file-card {
+      header.pb-file-head {
+        div {
+          h2 {
+            id: "pb-folder-picker-title"
+            text { Select Folder }
+          }
+          p {
+            id: "pb-folder-picker-subtitle"
+            text { Choose a destination folder. }
+          }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close folder picker"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFolderPicker(); } }
+          html { &times; }
+        }
+      }
+
+      div.pb-file-body {
+        q-tree-view {
+          id: "pb-folder-tree-probe"
+        }
+        div.pb-file-tree {
+          id: "pb-folder-tree"
+        }
+      }
+
+      footer.pb-file-actions {
+        div.pb-file-selected {
+          id: "pb-folder-selected"
+          text { / }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFolderPicker(); } }
+          text { Cancel }
+        }
+        button.pb-action.primary {
+          type: "button"
+          onclick { if (window.QPageBuilder) { window.QPageBuilder.confirmFolderPicker(); } }
+          text { Choose Folder }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-app {
+  div.pb-app {
+    page-builder-toolbar { }
+    main.pb-workspace {
+      page-builder-palette { }
+      div.pb-main {
+        page-builder-canvas { }
+        page-builder-export-panel { }
+      }
+    }
+    page-builder-palette-editor { }
+    page-builder-component-builder { }
+    page-builder-instance-editor { }
+    page-builder-file-dialog { }
+    page-builder-file-manager { }
+    page-builder-folder-picker { }
+    q-popup-menu {
+      id: "pb-file-context-menu"
+      popup-contents {
+        div.pb-file-context-menu {
+          id: "pb-file-context-menu-contents"
+        }
+      }
+    }
+  }
+}

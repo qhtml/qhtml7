@@ -382,7 +382,6 @@ q-component paintedcomp {
   q-property height: 140px;
   q-property paintvars: [this.color, this.width, this.height]
   onPaintBackground(paintvars) {
-  /* use the CSS Houdini Paint worklet API */
     this.clearRect(white);
     this.setFill(this.color);
     this.drawRect(0, 0, this.width, this.height);
@@ -556,3 +555,125 @@ The order that the items appear in the theme control the final result with the e
   Setting mytimer.running to true will start the timer. You can also call mytimer.start(), mytimer.stop() and change other properties like mytimer.interval = 500; QHTMLTimer has a QHTMLSignal built in:  timeout() which is fired on each timeout. Under the hood QHTMLTimer uses the QTimer C++ implementation with either QTimer::singleShot or a QTimer object and related properties / methods. The QTimer is never exposed to the public API, and is internal to the QHTMLTimer class. It inherits context from its parent and ancestors like any other QHTML object.  Timers should not create a `this` entry in their QHTMLContext for event handlers, instead `this` should be inherited from the parent object when used declaratively.
 
   ---------
+------------------------------------------------- end of milestone 2 ------------------------------------------
+
+------------------------------------- begin milestone 3 ---------------------------------
+
+17. Comments and q-class. Comments should be ignored when used anywhere when parsing QHTML..  When /* is detected, evyerthing should be skipped until a */ is detected, which will signal the end of the comment. Do not create objects from comments.
+
+18. q-class is a special type of object.   While it is defined and parsed in QHTML C++ on the WASM side, it follows different rules than the rules we have seen thus far.  q-class is something that will be forward to the browser javascript and become a javascript class with methods, and the standard javascript syntax. Example:
+
+<q-html>
+q-class myclass {
+  myclass(param1, param2) {
+     this.myvar = 24;
+     this.othervar = param2;
+  }
+  function doWork() { this.myvar = this.othervar; alert(this.myvar); }
+
+
+}
+</q-html>
+
+
+The difference between a q-component and a q-class is that a q-class has a constructor and can have assignments directly bound to it since it will live primarily in the javascript browser context rather than the wasm context. In fact, it should be converted pretty much as-is except for the constructor which needs to be in the javascript class format. But it should be more or less shipped as-is to javascript and then created into a javascript class object where it will serve the purpose of interaction with the DOM using dynamic javascript-style interactions, but it will inherit the QHTMLContext of the parent objects as well which will be converted into actual bound properties that point to real objects before sending it to the javascript side so that it is able to resolve all of the objects from the QHTML Context and access those objects, but primarily be a javascript mechanism useful for doing things like instantiating dynamic HTML content or javascript-powered objects and then calling functions in the q-class from the wasm side and vice versa.
+
+Its essentially a bridge between the two which allows for javascript style class logic with QHTML object access. If you have any trouble with figuring out how to implement this, do not guess.  Please stop and present your situation that you cannot resolve without massive implementation.
+
+This will be a QHTMLClass-typed object in the QHTMLDomTree.
+
+Example usage:
+
+```
+q-class StressRect {
+  StressRect(stage, index, config) {
+    this.stage = stage;
+    this.index = index;
+    this.config = config;
+    this.running = false;
+    this.animations = {};
+   ....
+    }
+}
+
+q-class StressTest {
+  StressTest() {
+    this.config = {
+      boxCount: Number(new URLSearchParams(window.location.search).get("count")) || 10,
+      maxSize: 100,
+      duration: 2000,
+      properties: [ "width", "x"]
+    };
+    this.host = document.querySelector("#stress-root");
+    this.board = document.createElement("div");
+    this.board.className = "stress-board";
+    this.status = document.createElement("div");
+    this.status.className = "stress-status";
+    this.status.textContent = "Creating rectangles...";
+    this.board.appendChild(this.status);
+    this.host.appendChild(this.board);
+    this.rects = [];
+
+    for (var i = 0; i < this.config.boxCount; i += 1) {
+      this.rects.push(new StressRect(this.board, i, this.config));
+    }
+
+    this.status.textContent = "Created " + this.rects.length + " StressRect q-class instances";
+    this.start();
+  }
+
+  function start() {
+    for (var i = 0; i < this.rects.length; i += 1) {
+      this.rects[i].start();
+    }
+  }
+
+  function stop() {
+    for (var i = 0; i < this.rects.length; i += 1) {
+      this.rects[i].stop();
+    }
+  }
+}
+
+StressTest stressRoot { }
+
+```
+---------------------------------- complete --------------------------
+----------
+19. q-property-animation (QHTMLPropertyAnimation in the QHTML DOM Tree) is a wrapper for Qt's QPropertyAnimation that creates a new instance of a QPropertyAnimation under the hood with a temporary object and variable since Qt's property system cannot have new properties defined at runtime, we will use like "x" property of a new QObject. Then once the QObject is created say as i_object, we will do i_object->connect(QObject::xChanged, this, QHTMLPropertyAnimation::i_handleXChange) which will track x's value as it animates to determine where in the process the animation currently is relative to the `from` property and the `to` property and have a precalculated list of values which will corrospond to step numbers by using the total duration property, the delta between the `from` and `to` properties, and then dividing the delta up by the `steps` property and then storing the resulting number as the amount of change per step stored as `stepAmount` and create an array by starting at 0, and then adding the `stepAmount` value to the number and adding the resulting number to a QVector<int> called i_step_stones; Then, when the animation is running, if the stepAmount is not 0, and  (if x is lower than currentStep * stepAmount and x is positive) or (x is greater than stepAmount * currentStep and stepAmount is negative), then we do nothing. If (x is greater than currentStep * stepAmount  and stepAmount > 0) or (x is less than currentStep * stepAmount and stepAmount < 0) then we emit the QHTMLSignal stepped(x, currentStep) and then do currentStep++;
+The q-property-animation will also connect to the target via QHTML connection so that its `stepped` signal will update the target property with x (temporary property)
+
+20.  for loops in QHTML -- QHTML supports the syntax:
+
+```
+q-property somearrayRef: [20, 30, 40, 50]
+for (somename in somearrayRef) {
+   div,span { text { ${somename} } }
+}
+
+```
+
+this effectively creates the equivalent of
+```
+div,span { text { 20 } }
+div,span { text { 30 } }
+div,span { text { 40 } }
+div,span { text { 50 } }
+```
+but stores it as a QHTMLForNode and adds all QHTML Fragments as its .qhtmlChildren, which parses them all once the loop completes and turns all of the resulting QHTML into objects in the QHTMLDomTree individually but keeep in their metadata the UUID of the QHTMLForNode on each of the created children then move them outsidde of the for loop (directly afterwards) meaning they should be inserted into the QHTMLForNode's QHTML parent immediately after the for expression. Creation of a for loop like this should also create an event handler for the container being iterated so that whenever the container changes a value (in this case its an array but might support others in the future like iterating over key/value pairs), it will inform the QHTMLForNode of the change via QHTML Signal and then remove all of the elements which match the UUID of the QHTMLForNode in their metadata and re-evaluate the entire loop and creating the qhtmlChildren etc and rendering the new output. This will prevent stale data and make it more reactive.
+
+----------------------------------------
+
+20. Next is q-import and q-require.  The way q-import works is that it tries to import from the URL using fetch from javascript to get the contents of the file (must be a file with QHTML unparsed syntax).  Once the contents have been successfully retrieved, then the contents of the file will be parsed into the QHTML Dom Tree in C++  as if the contents of the file were inline. For this reason, all import statements must either be resolved in a blocking manner before the rest of hte page loads, or the parser must re-evaluate each time a q-import completes to scan for any new q-components or other types of QHTML definitions that can impact waht the different words mean. (Example defined q-component or q-keyword will change the fundamental structure of the other content). The second option is the q-import route so that the page can load partially while fetches happpen async, but either way is fine. q-require is for blocking any parsing until all q-require imports are completely parsed and rendered in the QHTMLDomTree and in HTML if applicable.   q-import/q-require also has a cache feature to store the contents of the fetch along with the current version number of the script in a base64 string that the parser can decode and then parse instead of doing another fetch. The two commands have the same syntax and options, just different behavior. q-require will never cause a re-parse of a page, it will wait until all q-require finish before parsing the entire page. q-import will not cause a re-parsing either of the entire host, but will re-parse any objects that currently are resolvable from the context where the q-import happens.  So if you call q-import with the parent being the host q-html root, then the entire QHTMLDomTree will be invalidated and re-parsed.  QHTMLNode* elements which are not affected by either a q-keyword or a q-component definition meaning none of their qhtmlChildren or the object itself has no references to anything matching the keywords or objects specified, then that node is just serialized from the old QHTMLDomTree and unserialized in the new QHTMLDomTree.  For this we need .serialize() and .unserialize(string) which will enumerate the entire QDomTree as into a QDataStream that can be read back. The easiest way to do this is probably to implement a data structure on QHTMLDomNode* that just makes a string with or even a hash with all the values in it. Do not use JSON on the C++ side for this. If desired, serialization can be skipped if the values can be safely copied between the trees via some other means.
+
+syntax:
+
+```
+q-import { path/to/file.qhtml }
+ q-import { https://site.com/file.qhtml }
+ q-import { :/components/file.html } /* accesses internal resorource files compiled into the WASM binary */
+ q-import { somefile.qhtml cache } /* cache the result along with the version of the script to avoid extra fetch */
+ q-import { somefile.qhtml nocache } /* send fetch request and ask not to send cached responses at all (for dynamic backend generated .qhtml files) */
+ q-require { path/to/file.qhtml }
+ etc..
+ ```

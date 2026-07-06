@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QHTML WASM Styles and Themes Visual Test 03</title>
-  <script src="../qhtml-wasm.js"></script>
+  <script src="../dist/qhtml-wasm.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -344,36 +344,33 @@ button {
     <section>
       <h2>11. q-painter and q-style-painter</h2>
       <q-html>
-q-painter painter-03k {
-  onpaint {
-    this.fillStyle = "#2563eb";
-    this.fillRect(0, 0, this.width / 2, this.height);
-    this.fillStyle = "#f97316";
-    this.fillRect(this.width / 2, 0, this.width / 2, this.height);
+
+ q-component paintedcomp {
+  q-property color: "black"
+  q-property width: 700px
+  q-property height: 240px
+  q-property paintvars: [this.color, this.width, this.height]
+  onPaintBackground(paintvars) {
+    this.clearRect(white);
+    this.setFill(color);
+    this.drawRect(0, 0, parseFloat(width), parseFloat(height));
   }
+  slot { main }
 }
-
-q-style painter-style-03k {
-  q-style-painter { background { painter-03k } }
-  width: 240px
-  minHeight: 54px
-  color: #ffffff
-  borderRadius: 8px
-  display: inline-flex
-  alignItems: center
-  justifyContent: center
-  fontWeight: 800
-}
-
-q-theme painter-theme-03k {
-  .paint-target { painter-style-03k }
-}
-
-painter-theme-03k {
-  div.paint-target {
-    text { PASSED painter target }
+ paintedcomp paintBox#paintBox {
+    div.sample {
+      text { This component receives a CSS paint background when paint worklets are available. }
+    }
   }
-}
+  button paintButton#paintButton {
+    text { Change paint color }
+    onclick {
+      var box = document.querySelector("#paintBox");
+      box.color = box.color === "black" ? "green" : "black";
+      alert("paintBox.color is now: " + box.color);
+    }
+  }
+
       </q-html>
     </section>
   </main>

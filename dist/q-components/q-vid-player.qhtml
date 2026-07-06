@@ -1,0 +1,222 @@
+q-component q-vid-player {
+  q-signal started()
+  q-signal stopped()
+  q-signal stepped(frame)
+  q-signal loaded(asset)
+  q-signal errored(error)
+
+  q-property src: ""
+  q-property currentStep: 0
+  q-property currentFrame: 0
+  q-property reverse: false
+  q-property repeat: true
+  q-property running: false
+  q-property stepDuration: 30
+  q-property frameDuration: 30
+  q-property scale: 1
+  q-property startFrame: 0
+  q-property endFrame: 0
+
+  native-vid-player.q-vid-player-native {
+    style {
+      display: block;
+      width: 100%;
+    }
+  }
+
+  onready {
+    this.installNativeQVidPlayer();
+    this.bindNativeQVidEvents();
+    this.syncNativeAttributes();
+  }
+
+  onsrcChanged(value) {
+    this.setNativeAttribute("src", value);
+  }
+
+  onframeDurationChanged(value) {
+    if (!this.__qvidDurationEventActive) {
+      this.__qvidDurationEventActive = true;
+      this.stepDuration = value;
+      this.__qvidDurationEventActive = false;
+    }
+    this.setNativeAttribute("frameDuration", value);
+  }
+
+  onstepDurationChanged(value) {
+    if (!this.__qvidDurationEventActive) {
+      this.__qvidDurationEventActive = true;
+      this.frameDuration = value;
+      this.__qvidDurationEventActive = false;
+    }
+    this.setNativeAttribute("frameDuration", value);
+  }
+
+  onreverseChanged(value) {
+    this.setNativeAttribute("reverse", value);
+  }
+
+  onrepeatChanged(value) {
+    this.setNativeAttribute("repeat", value);
+  }
+
+  onrunningChanged(value) {
+    this.setNativeAttribute("running", value);
+    if (value) {
+      this.callNativeVidPlayerMethod("start");
+    } else {
+      this.callNativeVidPlayerMethod("stop");
+    }
+  }
+
+  onscaleChanged(value) {
+    this.setNativeAttribute("scale", value);
+  }
+
+  onstartFrameChanged(value) {
+    this.setNativeAttribute("startFrame", value);
+  }
+
+  onendFrameChanged(value) {
+    this.setNativeAttribute("endFrame", value);
+  }
+
+  oncurrentFrameChanged(value) {
+    if (this.__qvidFrameEventActive) {
+      return;
+    }
+    this.__qvidFrameEventActive = true;
+    this.currentStep = Number(value || 0);
+    this.__qvidFrameEventActive = false;
+    this.callNativeVidPlayerMethod("setCurrentFrame", Number(value || 0));
+  }
+
+  oncurrentStepChanged(value) {
+    if (this.__qvidFrameEventActive) {
+      return;
+    }
+    this.__qvidFrameEventActive = true;
+    this.currentFrame = Number(value || 0);
+    this.__qvidFrameEventActive = false;
+    this.callNativeVidPlayerMethod("setCurrentFrame", Number(value || 0));
+  }
+
+  function start() {
+    this.running = true;
+    this.setNativeAttribute("running", true);
+    this.callNativeVidPlayerMethod("start");
+  }
+
+  function stop() {
+    this.running = false;
+    this.setNativeAttribute("running", false);
+    this.callNativeVidPlayerMethod("stop");
+  }
+
+  function step(count) {
+    this.callNativeVidPlayerMethod("step", count == null ? 1 : count);
+  }
+
+  function installNativeQVidPlayer() {
+    if (customElements.get("native-vid-player")) {
+      return;
+    }
+    if (document.querySelector("script[data-q-vid-player-native='1']")) {
+      return;
+    }
+
+    var script = document.createElement("script");
+    script.src = "tools/q-vid/q-vid-player.js";
+    script.setAttribute("data-q-vid-player-native", "1");
+    script.onload = function() {
+      this.syncNativeAttributes();
+    }.bind(this);
+    document.head.appendChild(script);
+  }
+
+  function bindNativeQVidEvents() {
+    if (this.__qvidNativeEventsBound) {
+      return;
+    }
+    this.__qvidNativeEventsBound = true;
+    var player = this.nativeVidPlayer();
+
+    player.addEventListener("q-vid-load", function(event) {
+      this.acceptNativeLoaded(event.detail.asset);
+    }.bind(this));
+
+    player.addEventListener("q-vid-start", function() {
+      this.acceptNativeStarted();
+    }.bind(this));
+
+    player.addEventListener("q-vid-stop", function() {
+      this.acceptNativeStopped();
+    }.bind(this));
+
+    player.addEventListener("q-vid-frame", function(event) {
+      this.acceptNativeStepped(event.detail.currentFrame);
+    }.bind(this));
+
+    player.addEventListener("q-vid-error", function(event) {
+      this.acceptNativeErrored(event.detail.error);
+    }.bind(this));
+  }
+
+  function acceptNativeLoaded(asset) {
+    this.loaded(asset);
+  }
+
+  function acceptNativeStarted() {
+    this.running = true;
+    this.started();
+  }
+
+  function acceptNativeStopped() {
+    this.running = false;
+    this.stopped();
+  }
+
+  function acceptNativeStepped(frame) {
+    this.__qvidFrameEventActive = true;
+    this.currentFrame = frame;
+    this.currentStep = frame;
+    this.__qvidFrameEventActive = false;
+    this.stepped(frame);
+  }
+
+  function acceptNativeErrored(error) {
+    this.errored(error);
+  }
+
+  function syncNativeAttributes() {
+    this.setNativeAttribute("src", this.src);
+    this.setNativeAttribute("frameDuration", this.frameDuration);
+    this.setNativeAttribute("reverse", this.reverse);
+    this.setNativeAttribute("repeat", this.repeat);
+    this.setNativeAttribute("running", this.running);
+    this.setNativeAttribute("scale", this.scale);
+    this.setNativeAttribute("startFrame", this.startFrame);
+    this.setNativeAttribute("endFrame", this.endFrame);
+    this.callNativeVidPlayerMethod("setCurrentFrame", Number(this.currentFrame || this.currentStep || 0));
+  }
+
+  function setNativeAttribute(name, value) {
+    this.nativeVidPlayer().setAttribute(name, String(value == null ? "" : value));
+  }
+
+  function nativeVidPlayer() {
+    return this.querySelector("native-vid-player");
+  }
+
+  function callNativeVidPlayerMethod(methodName, arg0) {
+    var player = this.nativeVidPlayer();
+    var method = player[methodName];
+    if (typeof method !== "function") {
+      return;
+    }
+    if (arguments.length > 1) {
+      return method.call(player, arg0);
+    }
+    return method.call(player);
+  }
+}

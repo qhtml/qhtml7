@@ -22,6 +22,452 @@
     return { parser, tree };
   }
 
+  function qhtmlImportCache() {
+    if (!globalScope.QHTML7.importCache) {
+      globalScope.QHTML7.importCache = new Map();
+    }
+    return globalScope.QHTML7.importCache;
+  }
+
+  function importCacheVersion() {
+    return String(globalScope.QHTML7.importVersion || globalScope.QHTML7.version || "1");
+  }
+
+  function unicodeToBase64(value) {
+    return btoa(unescape(encodeURIComponent(String(value || ""))));
+  }
+
+  function base64ToUnicode(value) {
+    return decodeURIComponent(escape(atob(String(value || ""))));
+  }
+
+  function importStorageKey(path) {
+    return `qhtml7:import:${importCacheVersion()}:${path}`;
+  }
+
+  function importNodePath(node) {
+    return node && typeof node.path === "function" ? String(node.path() || "").trim() : "";
+  }
+
+  function importNodeCacheMode(node) {
+    return node && typeof node.cacheMode === "function" ? String(node.cacheMode() || "default").trim().toLowerCase() : "default";
+  }
+
+  function importNodeIsRequire(node) {
+    return !!(node && typeof node.isRequire === "function" && node.isRequire());
+  }
+
+  function collectImportNodes(tree) {
+    const imports = [];
+    const root = tree && typeof tree.root === "function" ? tree.root() : tree;
+    walkQHTMLNode(root, (node) => {
+      if (qhtmlNodeType(node) !== "QHTMLImportNode") {
+        return;
+      }
+      const path = importNodePath(node);
+      if (!path) {
+        return;
+      }
+      imports.push({
+        node,
+        kind: importNodeIsRequire(node) ? "q-require" : "q-import",
+        path,
+        cacheMode: importNodeCacheMode(node)
+      });
+    });
+    return imports;
+  }
+
+  function qhtmlResourceText(path) {
+    const resources = globalScope.QHTML7.resources || globalScope.QHTML7.qrc || {};
+    if (Object.prototype.hasOwnProperty.call(resources, path)) {
+      return String(resources[path] == null ? "" : resources[path]);
+    }
+    const moduleResource = globalScope.QHTML7.Module && globalScope.QHTML7.Module.qhtmlResource;
+    if (typeof moduleResource === "function") {
+      const value = moduleResource(path);
+      if (value != null) {
+        return String(value);
+      }
+    }
+    return null;
+  }
+
+  async function fetchImportSource(importDef) {
+    const path = importDef.path;
+    const cacheMode = importDef.cacheMode || "default";
+    const memoryCacheKey = `${importCacheVersion()}:${path}`;
+    const memoryCache = qhtmlImportCache();
+
+    if (cacheMode === "cache" && memoryCache.has(memoryCacheKey)) {
+      return rebaseNestedImportPaths(memoryCache.get(memoryCacheKey), path);
+    }
+
+    if (cacheMode === "cache" && globalScope.localStorage) {
+      const cached = globalScope.localStorage.getItem(importStorageKey(path));
+      if (cached) {
+        const source = base64ToUnicode(cached);
+        memoryCache.set(memoryCacheKey, source);
+        return rebaseNestedImportPaths(source, path);
+      }
+    }
+
+    let source = null;
+    if (path.startsWith(":/")) {
+      source = qhtmlResourceText(path);
+      if (source == null) {
+        throw new Error(`QHTML resource not found: ${path}`);
+      }
+    } else {
+      const response = await fetch(path, { cache: cacheMode === "nocache" ? "no-store" : "default" });
+      if (!response.ok) {
+        throw new Error(`QHTML ${importDef.kind} failed for ${path}: ${response.status} ${response.statusText}`);
+      }
+      source = await response.text();
+    }
+
+    if (cacheMode === "cache") {
+      memoryCache.set(memoryCacheKey, source);
+      if (globalScope.localStorage) {
+        globalScope.localStorage.setItem(importStorageKey(path), unicodeToBase64(source));
+      }
+    }
+    return rebaseNestedImportPaths(source, path);
+  }
+
+  function isRelativeImportPath(path) {
+    const text = String(path || "").trim();
+    return !!text &&
+      !text.startsWith(":/") &&
+      !text.startsWith("/") &&
+      !text.startsWith("//") &&
+      !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(text);
+  }
+
+  function normalizeResourcePath(path) {
+    const parts = String(path || "").split("/");
+    const out = [];
+    parts.forEach((part) => {
+      if (!part || part === ".") {
+        return;
+      }
+      if (part === "..") {
+        if (out.length > 1) {
+          out.pop();
+        }
+        return;
+      }
+      out.push(part);
+    });
+    return out.join("/");
+  }
+
+  function resolveImportPath(path, basePath) {
+    const childPath = String(path || "").trim();
+    const parentPath = String(basePath || "").trim();
+    if (!isRelativeImportPath(childPath) || !parentPath) {
+      return childPath;
+    }
+
+    if (parentPath.startsWith(":/")) {
+      const parentDirectory = parentPath.slice(0, parentPath.lastIndexOf("/") + 1);
+      return normalizeResourcePath(parentDirectory + childPath);
+    }
+
+    try {
+      return new URL(childPath, new URL(parentPath, document.baseURI)).href;
+    } catch (error) {
+      const parentDirectory = parentPath.slice(0, parentPath.lastIndexOf("/") + 1);
+      return parentDirectory + childPath;
+    }
+  }
+
+  function quoteImportPath(path, originalToken) {
+    const token = String(originalToken || "");
+    const quote = token[0];
+    if (quote === "\"" || quote === "'" || quote === "`") {
+      return quote + String(path || "").replaceAll("\\", "\\\\").replaceAll(quote, "\\" + quote) + quote;
+    }
+    return String(path || "");
+  }
+
+  function firstDirectiveTokenSpan(source, bodyStart, bodyEnd) {
+    let cursor = bodyStart;
+    while (cursor < bodyEnd && /\s/.test(source[cursor])) {
+      cursor += 1;
+    }
+    if (cursor >= bodyEnd) {
+      return null;
+    }
+
+    const start = cursor;
+    const quote = source[cursor];
+    if (quote === "\"" || quote === "'" || quote === "`") {
+      cursor += 1;
+      let escape = false;
+      while (cursor < bodyEnd) {
+        const ch = source[cursor];
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          cursor += 1;
+          break;
+        }
+        cursor += 1;
+      }
+      return { start, end: cursor, token: source.slice(start, cursor) };
+    }
+
+    while (cursor < bodyEnd && !/\s/.test(source[cursor])) {
+      cursor += 1;
+    }
+    return { start, end: cursor, token: source.slice(start, cursor) };
+  }
+
+  function rebaseNestedImportPaths(source, basePath) {
+    const text = String(source || "");
+    if (!basePath) {
+      return text;
+    }
+
+    const declarations = collectImportDeclarationsFromSource(text, 0, text.length, []);
+    let rebased = text;
+    declarations.reverse().forEach((declaration) => {
+      if (!declaration.pathIsRelative || !declaration.pathToken) {
+        return;
+      }
+      const resolvedPath = resolveImportPath(declaration.path, basePath);
+      const replacement = quoteImportPath(resolvedPath, declaration.pathToken);
+      rebased = rebased.slice(0, declaration.pathStart) + replacement + rebased.slice(declaration.pathEnd);
+    });
+    return rebased;
+  }
+
+  function findMatchingSourceBrace(source, openIndex) {
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    let blockComment = false;
+    for (let index = openIndex; index < source.length; index += 1) {
+      const ch = source[index];
+      const next = source[index + 1] || "";
+      if (blockComment) {
+        if (ch === "*" && next === "/") {
+          blockComment = false;
+          index += 1;
+        }
+        continue;
+      }
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        blockComment = true;
+        index += 1;
+        continue;
+      }
+      if (ch === "\"" || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
+
+  function headerStartForBlock(source, cursor, openIndex) {
+    for (let index = openIndex - 1; index >= cursor; index -= 1) {
+      const ch = source[index];
+      if (ch === "\n" || ch === ";" || ch === "}") {
+        return index + 1;
+      }
+    }
+    return cursor;
+  }
+
+  function collectImportDeclarationsFromSource(source, start, end, out) {
+    let cursor = start || 0;
+    const stop = typeof end === "number" ? end : source.length;
+    while (cursor < stop) {
+      const openIndex = source.indexOf("{", cursor);
+      if (openIndex < 0 || openIndex >= stop) {
+        break;
+      }
+      const closeIndex = findMatchingSourceBrace(source, openIndex);
+      if (closeIndex < 0) {
+        break;
+      }
+      const headerStart = headerStartForBlock(source, cursor, openIndex);
+      const header = source.slice(headerStart, openIndex).trim();
+      if (header === "q-import" || header === "q-require") {
+        const bodyStart = openIndex + 1;
+        const bodyEnd = closeIndex;
+        const body = source.slice(bodyStart, bodyEnd).trim();
+        const pathSpan = firstDirectiveTokenSpan(source, bodyStart, bodyEnd);
+        const parts = body.split(/\s+/).filter(Boolean);
+        const rawPath = pathSpan ? pathSpan.token : parts[0] || "";
+        const path = rawPath.replace(/^["'`]|["'`]$/g, "");
+        let cacheMode = "default";
+        parts.slice(1).forEach((part) => {
+          const token = part.toLowerCase();
+          if (token === "cache" || token === "nocache") {
+            cacheMode = token;
+          }
+        });
+        out.push({
+          kind: header,
+          path,
+          cacheMode,
+          bodyStart,
+          bodyEnd,
+          pathStart: pathSpan ? pathSpan.start : bodyStart,
+          pathEnd: pathSpan ? pathSpan.end : bodyStart,
+          pathToken: pathSpan ? pathSpan.token : rawPath,
+          pathIsRelative: isRelativeImportPath(path),
+          start: headerStart,
+          end: closeIndex + 1
+        });
+      } else {
+        collectImportDeclarationsFromSource(source, openIndex + 1, closeIndex, out);
+      }
+      cursor = closeIndex + 1;
+    }
+    return out;
+  }
+
+  function importKey(importDef) {
+    return `${importDef.kind}|${importDef.path}`;
+  }
+
+  function expandSourceWithImports(source, fetchedImports) {
+    const declarations = collectImportDeclarationsFromSource(String(source || ""), 0, String(source || "").length, []);
+    const fetchedByKey = new Map();
+    fetchedImports.forEach((entry) => {
+      fetchedByKey.set(importKey(entry), entry.source);
+    });
+
+    let expanded = String(source || "");
+    let replaced = 0;
+    declarations.reverse().forEach((declaration) => {
+      const key = importKey(declaration);
+      if (!fetchedByKey.has(key)) {
+        return;
+      }
+      expanded = expanded.slice(0, declaration.start) + "\n" + fetchedByKey.get(key) + "\n" + expanded.slice(declaration.end);
+      replaced += 1;
+    });
+
+    if (replaced < fetchedImports.length) {
+      const appended = fetchedImports
+        .filter((entry) => !declarations.some((declaration) => importKey(declaration) === importKey(entry)))
+        .map((entry) => entry.source)
+        .join("\n");
+      if (appended) {
+        expanded += "\n" + appended;
+      }
+    }
+    return expanded;
+  }
+
+  async function resolveBlockingRequires(source) {
+    let expandedSource = String(source || "");
+    for (let pass = 0; pass < 8; pass += 1) {
+      const parsed = instantiateParserTree(expandedSource);
+      const requires = collectImportNodes(parsed.tree).filter((entry) => entry.kind === "q-require");
+      if (requires.length === 0) {
+        return expandedSource;
+      }
+      const fetched = await Promise.all(requires.map(async (entry) => Object.assign({}, entry, {
+        source: await fetchImportSource(entry)
+      })));
+      const nextSource = expandSourceWithImports(expandedSource, fetched);
+      if (nextSource === expandedSource) {
+        return expandedSource;
+      }
+      expandedSource = nextSource;
+    }
+    throw new Error("QHTML q-require nesting exceeded 8 expansion passes");
+  }
+
+  async function resolveAllImportsBeforeParse(source, basePath) {
+    let expandedSource = String(source || "");
+    let currentBasePath = basePath || document.baseURI || globalScope.location.href || "";
+
+    for (let pass = 0; pass < 32; pass += 1) {
+      const declarations = collectImportDeclarationsFromSource(expandedSource, 0, expandedSource.length, []);
+      if (declarations.length === 0) {
+        return expandedSource;
+      }
+
+      const fetched = await Promise.all(declarations.map(async (declaration) => {
+        const resolvedPath = resolveImportPath(declaration.path, currentBasePath);
+        const sourceText = await fetchImportSource({
+          kind: declaration.kind,
+          path: resolvedPath,
+          cacheMode: declaration.cacheMode
+        });
+        return { declaration, source: sourceText };
+      }));
+
+      fetched.sort((a, b) => b.declaration.start - a.declaration.start);
+      let nextSource = expandedSource;
+      fetched.forEach((entry) => {
+        nextSource =
+          nextSource.slice(0, entry.declaration.start) +
+          "\n" + entry.source + "\n" +
+          nextSource.slice(entry.declaration.end);
+      });
+
+      if (nextSource === expandedSource) {
+        return expandedSource;
+      }
+      expandedSource = nextSource;
+      currentBasePath = basePath || document.baseURI || globalScope.location.href || "";
+    }
+
+    throw new Error("QHTML q-import/q-require expansion exceeded 32 passes");
+  }
+
+  async function applyAsyncImports(element, source, tree) {
+    const imports = collectImportNodes(tree).filter((entry) => entry.kind === "q-import");
+    if (imports.length === 0) {
+      return;
+    }
+    try {
+      const fetched = await Promise.all(imports.map(async (entry) => Object.assign({}, entry, {
+        source: await fetchImportSource(entry)
+      })));
+      const expandedSource = expandSourceWithImports(source, fetched);
+      if (expandedSource !== source && element.isConnected) {
+        element.__qhtmlExpandedSource = expandedSource;
+        element.__qhtml7Mounted = false;
+        await mountElement(element, { force: true });
+      }
+    } catch (error) {
+      element.dispatchEvent(new CustomEvent("QHTMLImportError", {
+        bubbles: true,
+        detail: { error }
+      }));
+      throw error;
+    }
+  }
+
   function splitList(value) {
     return String(value || "")
       .split(",")
@@ -87,6 +533,36 @@
     return node && typeof node.qhtmlName === "function" ? node.qhtmlName() : "";
   }
 
+  function createQHTMLSelectorHelper(domElement, registry) {
+    return function qhtmlSelect(selector, callback, rootOverride) {
+      const selectorText = String(selector || "").trim();
+      if (!selectorText) {
+        return selectorText.startsWith("#") ? null : [];
+      }
+      const root =
+        rootOverride ||
+        (domElement && domElement.ownerDocument) ||
+        (registry && registry.rootElement && registry.rootElement.ownerDocument) ||
+        document;
+
+      if (selectorText.startsWith("#")) {
+        const element = root.querySelector(selectorText);
+        if (element && typeof callback === "function") {
+          callback.call(element, element, 0, [element]);
+        }
+        return element;
+      }
+
+      const elements = Array.from(root.querySelectorAll(selectorText));
+      if (typeof callback === "function") {
+        elements.forEach((element, index) => {
+          callback.call(element, element, index, elements);
+        });
+      }
+      return elements;
+    };
+  }
+
   function executionContextFor(domElement, registry, parameterNames) {
     const names = [];
     const values = [];
@@ -107,10 +583,20 @@
       if (sourceRegistry.componentDefinitionsByName) {
         sourceRegistry.componentDefinitionsByName.forEach((definition, name) => add(name, definition));
       }
+      if (sourceRegistry.qhtmlClassesByName) {
+        sourceRegistry.qhtmlClassesByName.forEach((classObject, name) => add(name, classObject));
+      }
+      if (sourceRegistry.qhtmlClassInstancesByName) {
+        sourceRegistry.qhtmlClassInstancesByName.forEach((classInstance, name) => add(name, classInstance));
+      }
       if (sourceRegistry.timersByName) {
         sourceRegistry.timersByName.forEach((timer, name) => add(name, timer));
       }
+      if (sourceRegistry.animationsByName) {
+        sourceRegistry.animationsByName.forEach((animation, name) => add(name, animation));
+      }
     }
+    add("$", createQHTMLSelectorHelper(domElement, sourceRegistry));
     return { names, values };
   }
 
@@ -179,6 +665,8 @@
           }
         });
       }
+      names.push("$");
+      values.push(createQHTMLSelectorHelper(domElement, registry));
       return Function(...names, `return (${text});`).apply(domElement, values);
     } catch (error) {
       return undefined;
@@ -196,6 +684,18 @@
       value = selfElement;
     } else {
       value = registry.elementsByName.get(parts[0]);
+    }
+    if (typeof value === "undefined") {
+      value = selfElement ? selfElement[parts[0]] : undefined;
+    }
+    if (typeof value === "undefined" && registry.qhtmlClassInstancesByName) {
+      value = registry.qhtmlClassInstancesByName.get(parts[0]);
+    }
+    if (typeof value === "undefined" && registry.qhtmlClassesByName) {
+      value = registry.qhtmlClassesByName.get(parts[0]);
+    }
+    if (typeof value === "undefined" && registry.animationsByName) {
+      value = registry.animationsByName.get(parts[0]);
     }
     if (typeof value === "undefined") {
       value = registry.globals && registry.globals[parts[0]];
@@ -359,7 +859,12 @@
       return;
     }
 
-    domElement[signalName] = createDomSignal(domElement, signalName, signalNode);
+    const signal = createDomSignal(domElement, signalName, signalNode);
+    domElement[signalName] = signal;
+    const normalizedName = String(signalName).toLowerCase();
+    if (normalizedName && normalizedName !== signalName && typeof domElement[normalizedName] !== "function") {
+      domElement[normalizedName] = signal;
+    }
   }
 
   function eventNameForDom(eventName) {
@@ -402,6 +907,66 @@
       }
       return invoke(event);
     });
+  }
+
+  function connectDeclarations(body) {
+    const text = String(body || "")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/.*$/gm, " ")
+      .replace(/;/g, " ");
+    const tokens = text.split(/\s+/).map((token) => token.trim()).filter(Boolean);
+    const declarations = [];
+    for (let index = 0; index + 1 < tokens.length; index += 2) {
+      declarations.push({ sourcePath: tokens[index], targetPath: tokens[index + 1] });
+    }
+    return declarations;
+  }
+
+  function bindConnect(domElement, connectNode, registry) {
+    if (!domElement || !connectNode) {
+      return;
+    }
+    const connectUuid = typeof connectNode.qhtmlUUID === "function" ? connectNode.qhtmlUUID() : "";
+    if (connectUuid && registry && registry.boundConnectNodes && registry.boundConnectNodes.has(connectUuid)) {
+      return;
+    }
+
+    let declarations = connectDeclarations(typeof connectNode.body === "function" ? connectNode.body() : "");
+    const sourcePath = typeof connectNode.sourcePath === "function" ? connectNode.sourcePath() : "";
+    const targetPath = typeof connectNode.targetPath === "function" ? connectNode.targetPath() : "";
+    if (declarations.length === 0 && sourcePath && targetPath) {
+      declarations.push({ sourcePath, targetPath });
+    }
+
+    domElement.__qhtmlConnections = domElement.__qhtmlConnections || [];
+    declarations.forEach((declaration) => {
+      const source = resolvePath(declaration.sourcePath, registry, domElement);
+      const target = resolvePath(declaration.targetPath, registry, domElement);
+      if (!source || typeof source.connect !== "function" || typeof target !== "function") {
+        domElement.dispatchEvent(new CustomEvent("QHTMLConnectError", {
+          bubbles: true,
+          detail: { qhtmlNode: connectNode, sourcePath: declaration.sourcePath, targetPath: declaration.targetPath, source, target }
+        }));
+        return;
+      }
+
+      const connected = source.connect(target);
+      domElement.__qhtmlConnections.push({
+        qhtmlNode: connectNode,
+        sourcePath: declaration.sourcePath,
+        targetPath: declaration.targetPath,
+        source,
+        target,
+        connected
+      });
+      domElement.dispatchEvent(new CustomEvent("QHTMLConnect", {
+        bubbles: true,
+        detail: { qhtmlNode: connectNode, sourcePath: declaration.sourcePath, targetPath: declaration.targetPath, source, target, connected }
+      }));
+    });
+    if (connectUuid && registry && registry.boundConnectNodes) {
+      registry.boundConnectNodes.add(connectUuid);
+    }
   }
 
   function bindProperty(domElement, propertyNode, registry) {
@@ -535,6 +1100,166 @@
     return definitionProxy;
   }
 
+  function escapeRegExp(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function qhtmlClassBodyForJavaScript(className, body) {
+    let classBody = String(body || "");
+    if (!className) {
+      return classBody;
+    }
+    classBody = classBody.replace(
+      new RegExp(`(^|\\n)(\\s*)${escapeRegExp(className)}\\s*\\(`, "g"),
+      "$1$2constructor("
+    );
+    classBody = classBody.replace(
+      /(^|\n)(\s*)function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g,
+      "$1$2$3("
+    );
+    return classBody;
+  }
+
+  function bindClassInstanceMethods(instance) {
+    if (!instance || !instance.constructor || !instance.constructor.prototype) {
+      return;
+    }
+    Object.getOwnPropertyNames(instance.constructor.prototype).forEach((name) => {
+      if (name === "constructor" || typeof instance[name] !== "function") {
+        return;
+      }
+      instance[name] = instance[name].bind(instance);
+      instance[name].__qhtmlClassInstance = instance;
+    });
+  }
+
+  function registerQHTMLClass(classNode, registry) {
+    const className = qhtmlNodeName(classNode);
+    if (!className || !registry) {
+      return null;
+    }
+    if (registry.qhtmlClassesByName.has(className)) {
+      return registry.qhtmlClassesByName.get(className);
+    }
+
+    const body = typeof classNode.body === "function" ? classNode.body() : "";
+    const classBody = qhtmlClassBodyForJavaScript(className, body);
+    const context = executionContextFor(registry.rootElement, registry, []);
+    try {
+      const factory = new Function(
+        ...context.names,
+        `"use strict"; return class ${className} { ${classBody} };`
+      );
+      const classObject = factory.apply(registry.rootElement, context.values);
+      classObject.qhtmlNode = classNode;
+      classObject.qhtmlName = className;
+      classObject.qhtmlUUID = typeof classNode.qhtmlUUID === "function" ? classNode.qhtmlUUID() : "";
+      classObject.qhtmlBody = body;
+      registry.qhtmlClassesByName.set(className, classObject);
+      if (classObject.qhtmlUUID) {
+        registry.qhtmlClassesByUuid.set(classObject.qhtmlUUID, classObject);
+      }
+      registry.qhtmlClasses[className] = classObject;
+      globalScope[className] = classObject;
+      registry.rootElement.dispatchEvent(new CustomEvent("QHTMLClassRegistered", {
+        bubbles: true,
+        detail: { qhtmlNode: classNode, name: className, classObject }
+      }));
+      return classObject;
+    } catch (error) {
+      registry.rootElement.dispatchEvent(new CustomEvent("QHTMLClassError", {
+        bubbles: true,
+        detail: { qhtmlNode: classNode, name: className, body, error }
+      }));
+      console.error("Unable to register QHTML class", className, error);
+      return null;
+    }
+  }
+
+  function registerQHTMLClasses(registry) {
+    if (!registry || !registry.nodesByUuid) {
+      return;
+    }
+    registry.nodesByUuid.forEach((node) => {
+      if (qhtmlNodeType(node) === "QHTMLClass") {
+        registerQHTMLClass(node, registry);
+      }
+    });
+  }
+
+  function constructorArgumentsForClassInstance(instanceNode, ownerElement, registry) {
+    const args = [];
+    const count = typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = instanceNode.childAt(index);
+      if (qhtmlNodeType(child) !== "QHTMLPropertyAssignment") {
+        continue;
+      }
+      const rawValue = typeof child.value === "function" ? child.value() : "";
+      args.push(resolvePropertyValue(rawValue, ownerElement, child, registry));
+    }
+    return args;
+  }
+
+  function instantiateQHTMLClassNode(instanceNode, registry) {
+    if (!instanceNode || !registry || typeof instanceNode.keyword !== "function") {
+      return null;
+    }
+    const className = instanceNode.keyword();
+    const instanceName = qhtmlNodeName(instanceNode);
+    const classObject = registry.qhtmlClassesByName.get(className);
+    if (!classObject || !instanceName) {
+      return null;
+    }
+    const instanceUuid = typeof instanceNode.qhtmlUUID === "function" ? instanceNode.qhtmlUUID() : "";
+    if (instanceUuid && registry.qhtmlClassInstancesByUuid.has(instanceUuid)) {
+      return registry.qhtmlClassInstancesByUuid.get(instanceUuid);
+    }
+
+    const ownerElement = ownerElementForQHTMLNode(instanceNode, registry) || registry.rootElement;
+    const args = constructorArgumentsForClassInstance(instanceNode, ownerElement, registry);
+    try {
+      const instance = new classObject(...args);
+      bindClassInstanceMethods(instance);
+      instance.qhtmlNode = instanceNode;
+      instance.qhtmlName = instanceName;
+      instance.qhtmlUUID = instanceUuid;
+      instance.qhtmlClass = classObject;
+      instance.qhtmlRegistry = registry;
+      registry.qhtmlClassInstancesByName.set(instanceName, instance);
+      registry.qhtmlClassInstances[instanceName] = instance;
+      if (instanceUuid) {
+        registry.qhtmlClassInstancesByUuid.set(instanceUuid, instance);
+      }
+      registry.rootElement.dispatchEvent(new CustomEvent("QHTMLClassInstanceCreated", {
+        bubbles: true,
+        detail: { qhtmlNode: instanceNode, name: instanceName, className, instance }
+      }));
+      return instance;
+    } catch (error) {
+      registry.rootElement.dispatchEvent(new CustomEvent("QHTMLClassError", {
+        bubbles: true,
+        detail: { qhtmlNode: instanceNode, name: instanceName, className, error }
+      }));
+      console.error("Unable to instantiate QHTML class", className, instanceName, error);
+      return null;
+    }
+  }
+
+  function instantiateQHTMLClassNodes(registry) {
+    if (!registry || !registry.nodesByUuid) {
+      return;
+    }
+    registry.nodesByUuid.forEach((node) => {
+      if (qhtmlNodeType(node) !== "QHTMLTypedNode" || typeof node.keyword !== "function") {
+        return;
+      }
+      if (registry.qhtmlClassesByName.has(node.keyword())) {
+        instantiateQHTMLClassNode(node, registry);
+      }
+    });
+  }
+
   function isPaintEventName(eventName) {
     return eventName === "paintbackground" || eventName === "paintborder" || eventName === "paintmask";
   }
@@ -554,6 +1279,32 @@
       current = typeof current.parent === "function" ? current.parent() : null;
     }
     return insideDefinition ? null : registry.rootElement;
+  }
+
+  function ownerElementsForQHTMLNode(node, registry) {
+    let current = node && typeof node.parent === "function" ? node.parent() : null;
+    let insideDefinition = false;
+    while (current) {
+      const type = qhtmlNodeType(current);
+      if (type === "QHTMLComponentInstance") {
+        const uuid = typeof current.qhtmlUUID === "function" ? current.qhtmlUUID() : "";
+        if (!uuid || !registry.rootElement || !registry.rootElement.querySelectorAll) {
+          const singleOwner = uuid ? registry.elementsByUuid.get(uuid) : null;
+          return singleOwner ? [singleOwner] : [registry.rootElement];
+        }
+        const rendered = Array.from(registry.rootElement.querySelectorAll(`[component-instance="${uuid}"]`));
+        if (rendered.length > 0) {
+          return rendered;
+        }
+        const singleOwner = registry.elementsByUuid.get(uuid);
+        return singleOwner ? [singleOwner] : [registry.rootElement];
+      }
+      if (type === "QHTMLComponentDefinition") {
+        insideDefinition = true;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return insideDefinition ? [] : [registry.rootElement];
   }
 
   function timerAssignmentValue(timerNode, name, ownerElement, registry, fallback) {
@@ -753,6 +1504,328 @@
       liveTimer.start();
     }
     return liveTimer;
+  }
+
+  function createObjectSignal(ownerObject, signalNode, signalName) {
+    const connections = [];
+    const signalFunction = function (...args) {
+      if (signalNode && typeof signalNode.emit === "function") {
+        signalNode.emit(args.map((arg) => String(arg)).join(", "));
+      }
+      return connections.map((target) => {
+        if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
+          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: ownerObject });
+        }
+        return typeof target === "function" ? target.apply(ownerObject, args) : undefined;
+      });
+    };
+    signalFunction.connect = function (target) {
+      if (!target) {
+        return false;
+      }
+      connections.push(target);
+      return true;
+    };
+    signalFunction.disconnectAll = function () {
+      connections.length = 0;
+    };
+    signalFunction.connections = function () {
+      return connections.slice();
+    };
+    signalFunction.__qhtmlElement = ownerObject;
+    signalFunction.__qhtmlSignalNode = signalNode || null;
+    signalFunction.__qhtmlSignalName = signalName || "";
+    return signalFunction;
+  }
+
+  function animationSignalNode(animationNode, name) {
+    const count = typeof animationNode.childCount === "function" ? animationNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = animationNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLSignal" && qhtmlNodeName(child).toLowerCase() === name) {
+        return child;
+      }
+    }
+    return null;
+  }
+
+  function animationAssignment(animationNode, name, ownerElement, registry, fallback) {
+    const lowerName = String(name || "").toLowerCase();
+    const count = typeof animationNode.childCount === "function" ? animationNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = animationNode.childAt(index);
+      if (qhtmlNodeType(child) !== "QHTMLPropertyAssignment") {
+        continue;
+      }
+      if (qhtmlNodeName(child).toLowerCase() !== lowerName) {
+        continue;
+      }
+      const rawValue = typeof child.value === "function" ? child.value() : "";
+      const resolved = resolvePropertyValue(rawValue, ownerElement, child, registry);
+      return typeof resolved === "undefined" ? fallback : resolved;
+    }
+    return fallback;
+  }
+
+  function animationHasAssignment(animationNode, name) {
+    const lowerName = String(name || "").toLowerCase();
+    const count = typeof animationNode.childCount === "function" ? animationNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = animationNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLPropertyAssignment" && qhtmlNodeName(child).toLowerCase() === lowerName) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function animationEventHandlers(animationNode) {
+    const handlers = [];
+    const count = typeof animationNode.childCount === "function" ? animationNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = animationNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLEventHandler") {
+        handlers.push(child);
+      }
+    }
+    return handlers;
+  }
+
+  function inferAnimationPropertyName(animationName) {
+    let propertyName = String(animationName || "").trim();
+    propertyName = propertyName.replace(/(?:Animation|Anim)$/i, "");
+    return propertyName || String(animationName || "").trim();
+  }
+
+  function numericValue(value, fallback) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    const parsed = Number.parseFloat(String(value == null ? "" : value));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function readTargetProperty(target, propertyName) {
+    if (!target || !propertyName) {
+      return 0;
+    }
+    if (typeof target[propertyName] !== "undefined") {
+      return numericValue(target[propertyName], 0);
+    }
+    if (target.style && typeof target.style[propertyName] !== "undefined") {
+      const inlineValue = target.style[propertyName];
+      if (inlineValue !== "") {
+        return numericValue(inlineValue, 0);
+      }
+    }
+    if (target.ownerDocument && target.ownerDocument.defaultView && target.style) {
+      const computed = target.ownerDocument.defaultView.getComputedStyle(target);
+      if (computed && typeof computed[propertyName] !== "undefined") {
+        return numericValue(computed[propertyName], 0);
+      }
+    }
+    return 0;
+  }
+
+  function cssValueForProperty(propertyName, value) {
+    const unitless = /^(?:opacity|zIndex|fontWeight|lineHeight|flexGrow|flexShrink|order)$/i;
+    return unitless.test(propertyName) ? String(value) : `${value}px`;
+  }
+
+  function writeTargetProperty(target, propertyName, value) {
+    if (!target || !propertyName) {
+      return;
+    }
+    if (typeof target[propertyName] !== "undefined" && !(target.style && typeof target.style[propertyName] !== "undefined")) {
+      target[propertyName] = value;
+      return;
+    }
+    if (target.style && typeof target.style[propertyName] !== "undefined") {
+      target.style[propertyName] = cssValueForProperty(propertyName, value);
+      return;
+    }
+    target[propertyName] = value;
+  }
+
+  function createLivePropertyAnimation(animationNode, ownerElement, registry) {
+    const animationName = qhtmlNodeName(animationNode);
+    const animationObject = {
+      qhtmlNode: animationNode,
+      qhtmlName: animationName,
+      qhtmlUUID: typeof animationNode.qhtmlUUID === "function" ? animationNode.qhtmlUUID() : "",
+      ownerElement,
+      component: null,
+      __qhtmlRegistry: registry,
+      __qhtmlFrame: 0,
+      __qhtmlStartedAt: 0,
+      __qhtmlStartValue: 0,
+      __qhtmlEndValue: 0,
+      __qhtmlDirection: 1,
+      __qhtmlRunning: false,
+      currentStep: 0,
+      stepAmount: 0,
+      stepStones: []
+    };
+    animationObject.component = animationObject;
+    animationObject.started = createObjectSignal(animationObject, animationSignalNode(animationNode, "started"), "started");
+    animationObject.stopped = createObjectSignal(animationObject, animationSignalNode(animationNode, "stopped"), "stopped");
+    animationObject.stepped = createObjectSignal(animationObject, animationSignalNode(animationNode, "stepped"), "stepped");
+    animationObject.ended = createObjectSignal(animationObject, animationSignalNode(animationNode, "ended"), "ended");
+    animationObject.finished = createObjectSignal(animationObject, animationSignalNode(animationNode, "finished"), "finished");
+
+    animationObject.__qhtmlApplyStep = function (value) {
+      writeTargetProperty(animationObject.target, animationObject.property, value);
+    };
+    animationObject.stepped.connect(animationObject.__qhtmlApplyStep);
+
+    animationObject.refresh = function () {
+      animationObject.target = animationAssignment(animationNode, "target", ownerElement, registry, ownerElement);
+      animationObject.property = animationAssignment(animationNode, "property", ownerElement, registry,
+        animationAssignment(animationNode, "propertyName", ownerElement, registry,
+          animationAssignment(animationNode, "targetProperty", ownerElement, registry, inferAnimationPropertyName(animationName))));
+      animationObject.duration = timerNumber(animationAssignment(animationNode, "duration", ownerElement, registry, 0), 0);
+      animationObject.steps = timerNumber(animationAssignment(animationNode, "steps", ownerElement, registry, 60), 60);
+      animationObject.easing = animationAssignment(animationNode, "easing", ownerElement, registry, "linear");
+      animationObject.repeat = timerBool(animationAssignment(animationNode, "repeat", ownerElement, registry, false), false);
+      animationObject.from = animationAssignment(animationNode, "from", ownerElement, registry,
+        animationAssignment(animationNode, "startValue", ownerElement, registry,
+          animationAssignment(animationNode, "start", ownerElement, registry, undefined)));
+      animationObject.to = animationAssignment(animationNode, "to", ownerElement, registry,
+        animationAssignment(animationNode, "endValue", ownerElement, registry,
+          animationAssignment(animationNode, "end", ownerElement, registry, undefined)));
+      animationObject.__qhtmlInitialRunning = timerBool(animationAssignment(animationNode, "running", ownerElement, registry, false), false);
+      return animationObject;
+    };
+
+    Object.defineProperty(animationObject, "running", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return animationObject.__qhtmlRunning;
+      },
+      set(value) {
+        if (timerBool(value, false)) {
+          if (!animationObject.__qhtmlRunning) {
+            animationObject.start();
+          } else {
+            animationObject.__qhtmlRunning = true;
+          }
+        } else {
+          animationObject.stop();
+        }
+      }
+    });
+
+    animationObject.valueAt = function (progress) {
+      const eased = String(animationObject.easing || "linear").toLowerCase() === "linear"
+        ? progress
+        : 0.5 - Math.cos(progress * Math.PI) / 2;
+      return animationObject.__qhtmlStartValue +
+        (animationObject.__qhtmlEndValue - animationObject.__qhtmlStartValue) * eased;
+    };
+
+    animationObject.rebuildStepStones = function () {
+      const stepCount = Math.max(0, Math.floor(Number(animationObject.steps) || 0));
+      const startValue = Number(animationObject.__qhtmlStartValue) || 0;
+      const endValue = Number(animationObject.__qhtmlEndValue) || 0;
+      const delta = endValue - startValue;
+      animationObject.stepStones = [];
+      animationObject.stepAmount = stepCount > 0 ? delta / stepCount : delta;
+      animationObject.__qhtmlDirection = animationObject.stepAmount < 0 ? -1 : 1;
+      if (stepCount <= 0 || delta === 0) {
+        return animationObject.stepStones;
+      }
+      for (let i = 1; i <= stepCount; i += 1) {
+        animationObject.stepStones.push(startValue + animationObject.stepAmount * i);
+      }
+      return animationObject.stepStones;
+    };
+
+    animationObject.crossedStepStone = function (value, stone) {
+      if (animationObject.__qhtmlDirection < 0) {
+        return value <= stone;
+      }
+      return value >= stone;
+    };
+
+    animationObject.emitCrossedSteps = function (value, forceAll) {
+      while (animationObject.currentStep < animationObject.stepStones.length) {
+        const stone = animationObject.stepStones[animationObject.currentStep];
+        if (!forceAll && !animationObject.crossedStepStone(value, stone)) {
+          break;
+        }
+        animationObject.currentStep += 1;
+        animationObject.stepped(value, animationObject.currentStep);
+      }
+    };
+
+    animationObject.step = function (timestamp) {
+      if (!animationObject.running) {
+        return;
+      }
+      const elapsed = timestamp - animationObject.__qhtmlStartedAt;
+      const duration = Math.max(0, Number(animationObject.duration) || 0);
+      const progress = duration === 0 ? 1 : Math.min(1, elapsed / duration);
+      const value = animationObject.valueAt(progress);
+      animationObject.emitCrossedSteps(value, false);
+      if (progress < 1) {
+        animationObject.__qhtmlFrame = requestAnimationFrame(animationObject.step);
+        return;
+      }
+      animationObject.emitCrossedSteps(animationObject.__qhtmlEndValue, true);
+      if (animationObject.stepStones.length === 0) {
+        writeTargetProperty(animationObject.target, animationObject.property, animationObject.__qhtmlEndValue);
+      }
+      animationObject.__qhtmlRunning = false;
+      animationObject.ended();
+      animationObject.finished();
+      if (timerBool(animationObject.repeat, false)) {
+        animationObject.start();
+      }
+    };
+
+    animationObject.start = function () {
+      const currentValue = readTargetProperty(animationObject.target, animationObject.property);
+      const hasFrom = animationHasAssignment(animationNode, "from") ||
+        animationHasAssignment(animationNode, "startValue") ||
+        animationHasAssignment(animationNode, "start");
+      const hasTo = animationHasAssignment(animationNode, "to") ||
+        animationHasAssignment(animationNode, "endValue") ||
+        animationHasAssignment(animationNode, "end");
+      animationObject.__qhtmlStartValue = numericValue((hasFrom || typeof animationObject.from !== "undefined") ? animationObject.from : currentValue, currentValue);
+      animationObject.__qhtmlEndValue = numericValue((hasTo || typeof animationObject.to !== "undefined") ? animationObject.to : currentValue, currentValue);
+      animationObject.currentStep = 0;
+      animationObject.rebuildStepStones();
+      animationObject.__qhtmlRunning = true;
+      writeTargetProperty(animationObject.target, animationObject.property, animationObject.__qhtmlStartValue);
+      animationObject.started();
+      animationObject.__qhtmlStartedAt = performance.now();
+      if (animationObject.__qhtmlFrame) {
+        cancelAnimationFrame(animationObject.__qhtmlFrame);
+      }
+      animationObject.__qhtmlFrame = requestAnimationFrame(animationObject.step);
+      return animationObject;
+    };
+
+    animationObject.stop = function () {
+      const wasRunning = animationObject.__qhtmlRunning;
+      animationObject.__qhtmlRunning = false;
+      if (animationObject.__qhtmlFrame) {
+        cancelAnimationFrame(animationObject.__qhtmlFrame);
+        animationObject.__qhtmlFrame = 0;
+      }
+      if (wasRunning) {
+        animationObject.stopped();
+      }
+      return animationObject;
+    };
+
+    animationObject.refresh();
+    animationEventHandlers(animationNode).forEach((handler) => bindEventHandler(animationObject, handler));
+    if (timerBool(animationObject.__qhtmlInitialRunning, false)) {
+      setTimeout(() => animationObject.start(), 0);
+    }
+    return animationObject;
   }
 
   function splitTopLevel(value) {
@@ -956,6 +2029,19 @@
     reapplyPaintTargetsForElement(domElement, registry);
   }
 
+  function applyInlineChildStyles(domElement, qhtmlNode, registry) {
+    if (!domElement || !qhtmlNode) {
+      return;
+    }
+    const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLStyle") {
+        applyQHTMLStyle(domElement, child, { registry });
+      }
+    }
+  }
+
   function unwrapApplication(applicationElement) {
     if (!applicationElement || !applicationElement.parentNode) {
       return;
@@ -967,52 +2053,118 @@
     parent.removeChild(applicationElement);
   }
 
-  function parseThemeRules(body) {
+  function findThemeBlockClose(text, openIndex) {
+    let depth = 1;
+    let index = openIndex + 1;
+    let quote = "";
+    let escape = false;
+    for (; index < text.length; index += 1) {
+      const ch = text[index];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === "\"" || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
+
+  function parseThemeBlocks(body) {
     const text = String(body || "");
-    const rules = [];
+    const blocks = [];
     let cursor = 0;
     while (cursor < text.length) {
       const openIndex = text.indexOf("{", cursor);
       if (openIndex < 0) {
         break;
       }
+      const closeIndex = findThemeBlockClose(text, openIndex);
+      if (closeIndex < 0) {
+        break;
+      }
       const selector = text.slice(cursor, openIndex).trim();
-      let depth = 1;
-      let index = openIndex + 1;
-      let quote = "";
-      let escape = false;
-      for (; index < text.length; index += 1) {
-        const ch = text[index];
-        if (quote) {
-          if (escape) {
-            escape = false;
-          } else if (ch === "\\") {
-            escape = true;
-          } else if (ch === quote) {
-            quote = "";
-          }
-          continue;
-        }
-        if (ch === "\"" || ch === "'" || ch === "`") {
-          quote = ch;
-          continue;
-        }
-        if (ch === "{") {
-          depth += 1;
-        } else if (ch === "}") {
-          depth -= 1;
-          if (depth === 0) {
-            break;
-          }
-        }
+      if (selector) {
+        blocks.push({
+          selector,
+          body: text.slice(openIndex + 1, closeIndex).trim(),
+          start: cursor,
+          open: openIndex,
+          end: closeIndex + 1
+        });
       }
-      const styleNames = text.slice(openIndex + 1, index).trim().split(/\s+/).filter(Boolean);
-      if (selector && styleNames.length > 0) {
-        rules.push({ selector, styleNames });
-      }
-      cursor = index + 1;
+      cursor = closeIndex + 1;
     }
-    return rules;
+    return blocks;
+  }
+
+  function parseThemeRuleBody(body) {
+    let namedStyleText = String(body || "");
+    const inlineStyles = [];
+    const childBlocks = parseThemeBlocks(namedStyleText);
+
+    childBlocks.slice().reverse().forEach((block) => {
+      if (block.selector === "q-style") {
+        inlineStyles.unshift(block.body);
+        namedStyleText = namedStyleText.slice(0, block.start) + " " + namedStyleText.slice(block.end);
+      }
+    });
+
+    const trimmed = namedStyleText.trim();
+    const styleNames = [];
+    if (trimmed) {
+      if (/[;:]/.test(trimmed)) {
+        inlineStyles.push(trimmed);
+      } else {
+        styleNames.push(...trimmed.split(/\s+/).filter(Boolean));
+      }
+    }
+
+    return { styleNames, inlineStyles };
+  }
+
+  function parseThemeRules(body) {
+    return parseThemeBlocks(body).map((block) => {
+      const parsed = parseThemeRuleBody(block.body);
+      return {
+        selector: block.selector,
+        styleNames: parsed.styleNames,
+        inlineStyles: parsed.inlineStyles
+      };
+    });
+  }
+
+  function applyInlineQHTMLStyle(element, cssText, options) {
+    if (!element) {
+      return;
+    }
+    const registry = options && options.registry ? options.registry : null;
+    const defaultOnly = options && options.defaultOnly === true;
+    cssDeclarations(cssText).forEach((decl) => {
+      if (defaultOnly && element.style.getPropertyValue(decl.name)) {
+        return;
+      }
+      element.style.setProperty(decl.name, decl.value);
+    });
+    if (registry) {
+      reapplyPaintTargetsForElement(element, registry);
+    }
   }
 
   function applyThemeToScope(scopeElement, themeDef, registry, seen) {
@@ -1044,6 +2196,13 @@
         return;
       }
 
+      if (registry.themesByName.has(rule.selector) &&
+          rule.styleNames.length === 0 &&
+          rule.inlineStyles.length === 0) {
+        applyThemeToScope(scopeElement, registry.themesByName.get(rule.selector), registry, seenThemes);
+        return;
+      }
+
       let matches = [];
       try {
         matches = Array.from(scopeElement.querySelectorAll(rule.selector));
@@ -1052,6 +2211,9 @@
         return;
       }
       matches.forEach((element) => {
+        rule.inlineStyles.forEach((cssText) => {
+          applyInlineQHTMLStyle(element, cssText, { defaultOnly, registry });
+        });
         rule.styleNames.forEach((styleName) => {
           const styleDef = registry.stylesByName.get(styleName);
           if (styleDef) {
@@ -1365,6 +2527,46 @@
     }
   }
 
+  function bindRuntimeChildren(domElement, qhtmlNode, registry) {
+    if (!domElement || !qhtmlNode) {
+      return;
+    }
+
+    const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      const childType = qhtmlNodeType(child);
+      if (childType === "QHTMLFunction") {
+        bindFunction(domElement, child);
+      } else if (childType === "QHTMLSignal") {
+        bindSignal(domElement, child);
+      }
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLProperty") {
+        bindPropertyChangeSignal(domElement, child, registry);
+      }
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLProperty") {
+        bindProperty(domElement, child, registry);
+      }
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLEventHandler") {
+        bindEventHandler(domElement, child);
+      }
+    }
+
+    applyInlineChildStyles(domElement, qhtmlNode, registry);
+  }
+
   function bindDomElementHandlers(rootElement, registry) {
     if (!rootElement || !registry || !registry.nodesByUuid) {
       return;
@@ -1377,18 +2579,252 @@
         return;
       }
       const node = registry.nodesByUuid.get(domElement.getAttribute("qhtml-node"));
-      if (!node || qhtmlNodeType(node) !== "QHTMLDomElement") {
+      const nodeType = qhtmlNodeType(node);
+      if (!node ||
+          (nodeType !== "QHTMLDomElement" &&
+           nodeType !== "QHTMLLayout" &&
+           nodeType !== "QHTMLRowLayout" &&
+           nodeType !== "QHTMLColumnLayout")) {
         return;
       }
       domElement.qhtmlNode = node;
+      domElement.qhtmlDomTree = registry.tree || null;
       domElement.__qhtmlRegistry = registry;
-      const count = typeof node.childCount === "function" ? node.childCount() : 0;
-      for (let index = 0; index < count; index += 1) {
-        const child = node.childAt(index);
-        if (qhtmlNodeType(child) === "QHTMLEventHandler") {
-          bindEventHandler(domElement, child);
-        }
+      registry.elementsByUuid.set(domElement.getAttribute("qhtml-node"), domElement);
+      bindRuntimeChildren(domElement, node, registry);
+    });
+  }
+
+  function bindConnectNodes(registry) {
+    if (!registry || !registry.nodesByUuid) {
+      return;
+    }
+    registry.nodesByUuid.forEach((node) => {
+      if (qhtmlNodeType(node) !== "QHTMLConnect") {
+        return;
       }
+      const ownerElement = ownerElementForQHTMLNode(node, registry);
+      if (ownerElement) {
+        bindConnect(ownerElement, node, registry);
+      }
+    });
+  }
+
+  function forNodeVariableName(forNode) {
+    if (forNode && typeof forNode.variableName === "function") {
+      return String(forNode.variableName() || "");
+    }
+    return qhtmlNodeName(forNode);
+  }
+
+  function forNodeCollectionExpression(forNode) {
+    if (forNode && typeof forNode.collectionExpression === "function") {
+      return String(forNode.collectionExpression() || "");
+    }
+    return "";
+  }
+
+  function loopValuesFromCollection(collection, fallbackExpression, ownerElement, registry) {
+    if (Array.isArray(collection)) {
+      return collection.slice();
+    }
+    if (collection && typeof collection.valuesLiteral === "function") {
+      const parsedLiteral = parseStructuredProperty(String(collection.valuesLiteral() || ""), ownerElement, registry);
+      return Array.isArray(parsedLiteral) ? parsedLiteral : [];
+    }
+    const parsed = parseStructuredProperty(String(fallbackExpression || ""), ownerElement, registry);
+    return Array.isArray(parsed) ? parsed : [];
+  }
+
+  function interpolateForHtml(html, variableName, value) {
+    return String(html || "").replace(/\$\{\s*([^}]+?)\s*\}/g, (match, expression) => {
+      let trimmed = String(expression || "").trim();
+      if (trimmed.startsWith("this.")) {
+        trimmed = trimmed.slice(5).trim();
+      }
+      if (trimmed === variableName || trimmed === `this.${variableName}`) {
+        return String(value == null ? "" : value);
+      }
+      const prefix = `${variableName}.`;
+      if (trimmed.startsWith(prefix)) {
+        let resolved = value;
+        const parts = trimmed.slice(prefix.length).split(".").filter(Boolean);
+        for (const part of parts) {
+          if (resolved == null) {
+            return "";
+          }
+          resolved = resolved[part];
+        }
+        return String(resolved == null ? "" : resolved);
+      }
+      return match;
+    });
+  }
+
+  function addForMetadataToHtml(html, forUuid) {
+    if (!forUuid) {
+      return html;
+    }
+    return String(html || "").replace(/<([A-Za-z][A-Za-z0-9_+\-]*)([^>]*)>/g, (match, tagName, rest) => {
+      if (/\sqhtml-for-node=/.test(match)) {
+        return match;
+      }
+      return `<${tagName} qhtml-for-node="${forUuid}"${rest}>`;
+    });
+  }
+
+  function renderForNodeItems(forNode, values) {
+    const variableName = forNodeVariableName(forNode);
+    const forUuid = typeof forNode.qhtmlUUID === "function" ? forNode.qhtmlUUID() : "";
+    const count = typeof forNode.childCount === "function" ? forNode.childCount() : 0;
+    let html = "";
+    values.forEach((value) => {
+      for (let index = 0; index < count; index += 1) {
+        const child = forNode.childAt(index);
+        if (!child || typeof child.renderHtml !== "function") {
+          continue;
+        }
+        html += addForMetadataToHtml(interpolateForHtml(child.renderHtml(), variableName, value), forUuid);
+      }
+    });
+    return html;
+  }
+
+  function findForComment(rootElement, kind, forUuid) {
+    if (!rootElement || !forUuid || !rootElement.ownerDocument) {
+      return null;
+    }
+    const expected = `qhtml-for-${kind}:${forUuid}`;
+    const nodeFilter = rootElement.ownerDocument.defaultView
+      ? rootElement.ownerDocument.defaultView.NodeFilter
+      : NodeFilter;
+    const walker = rootElement.ownerDocument.createTreeWalker(rootElement, nodeFilter.SHOW_COMMENT);
+    let node = walker.nextNode();
+    while (node) {
+      if (String(node.nodeValue || "").trim() === expected) {
+        return node;
+      }
+      node = walker.nextNode();
+    }
+    return null;
+  }
+
+  function replaceForRange(rootElement, forUuid, html) {
+    const start = findForComment(rootElement, "start", forUuid);
+    const end = findForComment(rootElement, "end", forUuid);
+    if (!start || !end || start.parentNode !== end.parentNode) {
+      return false;
+    }
+    const doc = rootElement.ownerDocument;
+    const range = doc.createRange();
+    range.setStartAfter(start);
+    range.setEndBefore(end);
+    range.deleteContents();
+    const template = doc.createElement("template");
+    template.innerHTML = html;
+    end.parentNode.insertBefore(template.content, end);
+    return true;
+  }
+
+  function observeLoopCollection(collection, refresh) {
+    if (!Array.isArray(collection) || typeof refresh !== "function") {
+      return;
+    }
+    if (!collection.__qhtmlForObservers) {
+      Object.defineProperty(collection, "__qhtmlForObservers", {
+        configurable: true,
+        enumerable: false,
+        value: []
+      });
+    }
+    if (!collection.__qhtmlForObservers.includes(refresh)) {
+      collection.__qhtmlForObservers.push(refresh);
+    }
+    if (collection.__qhtmlForObserved === true) {
+      return;
+    }
+    Object.defineProperty(collection, "__qhtmlForObserved", {
+      configurable: true,
+      enumerable: false,
+      value: true
+    });
+    ["push", "pop", "shift", "unshift", "splice", "sort", "reverse"].forEach((methodName) => {
+      const original = collection[methodName];
+      if (typeof original !== "function") {
+        return;
+      }
+      Object.defineProperty(collection, methodName, {
+        configurable: true,
+        enumerable: false,
+        value: function (...args) {
+          const result = original.apply(this, args);
+          (this.__qhtmlForObservers || []).slice().forEach((observer) => observer());
+          return result;
+        }
+      });
+    });
+  }
+
+  function setupForLoopRuntime(rootElement, registry) {
+    if (!rootElement || !registry || !registry.nodesByUuid) {
+      return;
+    }
+    registry.forLoopsByUuid = registry.forLoopsByUuid || new Map();
+    registry.nodesByUuid.forEach((node) => {
+      if (qhtmlNodeType(node) !== "QHTMLForNode") {
+        return;
+      }
+      const forUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
+      const ownerElement = ownerElementForQHTMLNode(node, registry) || rootElement;
+      const collectionExpression = forNodeCollectionExpression(node);
+      const refresh = () => {
+        const collection = resolvePath(collectionExpression, registry, ownerElement);
+        const values = loopValuesFromCollection(collection, collectionExpression, ownerElement, registry);
+        replaceForRange(rootElement, forUuid, renderForNodeItems(node, values));
+        bindDomElementHandlers(rootElement, registry);
+      };
+      registry.forLoopsByUuid.set(forUuid, { node, ownerElement, refresh });
+      observeLoopCollection(resolvePath(collectionExpression, registry, ownerElement), refresh);
+      ownerElement.addEventListener("QHTMLPropertyChanged", (event) => {
+        const changedProperty = event && event.detail ? event.detail.property : "";
+        const collectionName = collectionExpression.replace(/^this\./, "").split(".")[0];
+        if (changedProperty === collectionName) {
+          observeLoopCollection(resolvePath(collectionExpression, registry, ownerElement), refresh);
+          refresh();
+        }
+      });
+    });
+  }
+
+  function emitReadySignals(rootElement, registry) {
+    if (!rootElement || !registry) {
+      return;
+    }
+
+    const readyElements = [];
+    const seen = new Set();
+    const collect = (domElement) => {
+      if (!domElement || seen.has(domElement)) {
+        return;
+      }
+      seen.add(domElement);
+      readyElements.push(domElement);
+    };
+
+    if (rootElement.querySelectorAll) {
+      rootElement.querySelectorAll("[component-instance]").forEach(collect);
+      rootElement.querySelectorAll("[qhtml-node]").forEach(collect);
+    }
+
+    readyElements.forEach((domElement) => {
+      const qhtmlNode = domElement.qhtmlNode || null;
+      if (typeof domElement.ready === "function") {
+        domElement.ready();
+      }
+      domElement.dispatchEvent(new CustomEvent("QHTMLNodeReady", {
+        bubbles: true,
+        detail: { qhtmlNode, qhtmlDom: registry.tree || null }
+      }));
     });
   }
 
@@ -1404,15 +2840,24 @@
       elementsByUuid: new Map(),
       componentDefinitionsByName: new Map(),
       componentDefinitionsByUuid: new Map(),
+      qhtmlClassesByName: new Map(),
+      qhtmlClassesByUuid: new Map(),
+      qhtmlClassInstancesByName: new Map(),
+      qhtmlClassInstancesByUuid: new Map(),
       futurePropertySignalConnections: new Map(),
       stylesByName: new Map(),
       themesByName: new Map(),
       timersByName: new Map(),
       timersByUuid: new Map(),
+      animationsByName: new Map(),
+      animationsByUuid: new Map(),
+      forLoopsByUuid: new Map(),
       styleTargetsByName: new Map(),
       themeScopesByName: new Map(),
       paintBindingsByElement: new Map(),
+      boundConnectNodes: new Set(),
       rootElement,
+      tree,
       globals: globalScope
     };
     nodesByUuid.forEach((node) => {
@@ -1445,7 +2890,10 @@
     registry.styles = {};
     registry.themes = {};
     registry.timers = {};
+    registry.animations = {};
     registry.definitions = {};
+    registry.qhtmlClasses = {};
+    registry.qhtmlClassInstances = {};
     registry.stylesByName.forEach((styleDef, styleName) => {
       registry.styles[styleName] = styleDef;
     });
@@ -1461,7 +2909,14 @@
           timer.stop();
         }
       });
+      registry.animationsByUuid.forEach((animation) => {
+        if (animation && typeof animation.stop === "function") {
+          animation.stop();
+        }
+      });
     };
+
+    bindRuntimeChildren(rootElement, tree, registry);
 
     const renderedComponents = rootElement.querySelectorAll
       ? rootElement.querySelectorAll("[component-instance]")
@@ -1488,64 +2943,7 @@
       if (!instanceNode) {
         return;
       }
-
-      const count = typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
-      for (let index = 0; index < count; index += 1) {
-        const child = instanceNode.childAt(index);
-        const childType = child && typeof child.qhtmlType === "function" ? child.qhtmlType() : "";
-        if (childType === "QHTMLFunction") {
-          bindFunction(domElement, child);
-        } else if (childType === "QHTMLSignal") {
-          bindSignal(domElement, child);
-        }
-      }
-    });
-
-    renderedComponents.forEach((domElement) => {
-      const instanceNode = domElement.qhtmlNode;
-      if (!instanceNode) {
-        return;
-      }
-
-      const count = typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
-      for (let index = 0; index < count; index += 1) {
-        const child = instanceNode.childAt(index);
-        if (qhtmlNodeType(child) === "QHTMLProperty") {
-          bindPropertyChangeSignal(domElement, child, registry);
-        }
-      }
-    });
-
-    renderedComponents.forEach((domElement) => {
-      const instanceNode = domElement.qhtmlNode;
-      if (!instanceNode) {
-        return;
-      }
-
-      const count = typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
-      for (let index = 0; index < count; index += 1) {
-        const child = instanceNode.childAt(index);
-        const childType = child && typeof child.qhtmlType === "function" ? child.qhtmlType() : "";
-        if (childType === "QHTMLEventHandler") {
-          bindEventHandler(domElement, child);
-        }
-      }
-    });
-
-    renderedComponents.forEach((domElement) => {
-      const instanceNode = domElement.qhtmlNode;
-      if (!instanceNode) {
-        return;
-      }
-
-      const count = typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
-      for (let index = 0; index < count; index += 1) {
-        const child = instanceNode.childAt(index);
-        const childType = child && typeof child.qhtmlType === "function" ? child.qhtmlType() : "";
-        if (childType === "QHTMLProperty") {
-          bindProperty(domElement, child, registry);
-        }
-      }
+      bindRuntimeChildren(domElement, instanceNode, registry);
 
       domElement.dispatchEvent(new CustomEvent("QHTMLComponentReady", {
         bubbles: true,
@@ -1558,27 +2956,55 @@
     });
 
     bindDomElementHandlers(rootElement, registry);
+    setupForLoopRuntime(rootElement, registry);
 
     nodesByUuid.forEach((node) => {
       if (qhtmlNodeType(node) !== "QHTMLTimer") {
         return;
       }
-      const ownerElement = ownerElementForQHTMLNode(node, registry);
-      if (!ownerElement) {
+      ownerElementsForQHTMLNode(node, registry).forEach((ownerElement) => {
+        if (!ownerElement) {
+          return;
+        }
+        const timerName = qhtmlNodeName(node);
+        const timerUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
+        const timerObject = createLiveTimer(node, ownerElement, registry);
+        if (timerName) {
+          ownerElement[timerName] = timerObject;
+          registry.timersByName.set(timerName, timerObject);
+          registry.timers[timerName] = timerObject;
+        }
+        if (timerUuid) {
+          registry.timersByUuid.set(timerUuid, timerObject);
+        }
+      });
+    });
+
+    nodesByUuid.forEach((node) => {
+      if (qhtmlNodeType(node) !== "QHTMLPropertyAnimation") {
         return;
       }
-      const timerName = qhtmlNodeName(node);
-      const timerUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
-      const timerObject = createLiveTimer(node, ownerElement, registry);
-      if (timerName) {
-        ownerElement[timerName] = timerObject;
-        registry.timersByName.set(timerName, timerObject);
-        registry.timers[timerName] = timerObject;
-      }
-      if (timerUuid) {
-        registry.timersByUuid.set(timerUuid, timerObject);
-      }
+      ownerElementsForQHTMLNode(node, registry).forEach((ownerElement) => {
+        if (!ownerElement) {
+          return;
+        }
+        const animationName = qhtmlNodeName(node);
+        const animationUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
+        const animationObject = createLivePropertyAnimation(node, ownerElement, registry);
+        if (animationName) {
+          ownerElement[animationName] = animationObject;
+          registry.animationsByName.set(animationName, animationObject);
+          registry.animations[animationName] = animationObject;
+        }
+        if (animationUuid) {
+          registry.animationsByUuid.set(animationUuid, animationObject);
+        }
+      });
     });
+
+    registerQHTMLClasses(registry);
+    instantiateQHTMLClassNodes(registry);
+    bindConnectNodes(registry);
 
     applyStyleAndThemeApplications(rootElement, registry);
 
@@ -1586,21 +3012,26 @@
     rootElement.qhtmlStyles = registry.styles;
     rootElement.qhtmlThemes = registry.themes;
     rootElement.qhtmlTimers = registry.timers;
+    rootElement.qhtmlAnimations = registry.animations;
     rootElement.qhtmlComponentDefinitions = registry.definitions;
+    rootElement.qhtmlClasses = registry.qhtmlClasses;
+    rootElement.qhtmlClassInstances = registry.qhtmlClassInstances;
+
+    emitReadySignals(rootElement, registry);
   }
 
-  function mountElement(element, options) {
+  async function mountElement(element, options) {
     if (!element || element.__qhtml7Mounting === true) {
-      return;
+      return element ? element.__qhtml7MountPromise || null : null;
     }
     if (!options || options.force !== true) {
       if (element.__qhtml7Mounted === true && element.qhtmlDomTree) {
-        return;
+        return element.qhtmlDomTree;
       }
     }
 
     element.__qhtml7Mounting = true;
-    try {
+    element.__qhtml7MountPromise = (async () => {
       element.setAttribute("ready", "0");
 
       if (typeof element.qhtmlSource !== "string" || element.qhtmlSource.length === 0) {
@@ -1612,7 +3043,13 @@
       }
 
       element.innerHTML = "";
-      const parsed = instantiateParserTree(element.qhtmlSource);
+      let sourceToParse = element.__qhtmlExpandedSource || element.qhtmlSource;
+      if (!options || options.importsResolved !== true) {
+        sourceToParse = await resolveAllImportsBeforeParse(sourceToParse, element.__qhtmlBaseUrl || document.baseURI);
+      }
+      element.qhtmlResolvedSource = sourceToParse;
+
+      const parsed = instantiateParserTree(sourceToParse);
       element.qhtmlParser = parsed.parser;
       element.qhtmlDomTree = parsed.tree;
       element.qhtmlDom = parsed.tree;
@@ -1630,8 +3067,14 @@
       element.__qhtml7Mounted = true;
       element.dispatchEvent(new CustomEvent("QHTMLReady", {
         bubbles: true,
-        detail: { source: element.qhtmlSource, qhtmlDom: element.qhtmlDomTree }
+        detail: { source: sourceToParse, qhtmlDom: element.qhtmlDomTree }
       }));
+
+      return element.qhtmlDomTree;
+    })();
+
+    try {
+      return await element.__qhtml7MountPromise;
     } catch (error) {
       element.qhtmlError = error;
       element.setAttribute("ready", "-1");
@@ -1639,20 +3082,21 @@
         bubbles: true,
         detail: { error }
       }));
-      throw error;
+      return null;
     } finally {
       element.__qhtml7Mounting = false;
+      element.__qhtml7MountPromise = null;
     }
   }
 
   class QHTMLElement extends HTMLElement {
     constructor() {
       super();
-      this.setAttribute("ready", "0");
       this.qhtmlSource = "";
       this.qhtmlParser = null;
       this.qhtmlDomTree = null;
       this.qhtmlDom = null;
+      this.qhtmlResolvedSource = "";
       this.qhtmlError = null;
     }
 
@@ -1672,13 +3116,41 @@
       return this.qhtmlDomTree;
     }
 
+    setQHTMLSource(source, baseUrl) {
+      const nextSource = String(source || "");
+      const nextBaseUrl = String(baseUrl || document.baseURI || globalScope.location.href || "");
+      if (this.__qhtml7Mounting === true) {
+        this.__qhtmlPendingSource = nextSource;
+        this.__qhtmlPendingBaseUrl = nextBaseUrl;
+        const activeMount = this.__qhtml7MountPromise || Promise.resolve(this.qhtmlDomTree || null);
+        return activeMount.then(() => {
+          const pendingSource = this.__qhtmlPendingSource;
+          const pendingBaseUrl = this.__qhtmlPendingBaseUrl;
+          this.__qhtmlPendingSource = "";
+          this.__qhtmlPendingBaseUrl = "";
+          if (typeof pendingSource === "string") {
+            return this.setQHTMLSource(pendingSource, pendingBaseUrl);
+          }
+          return this.qhtmlDomTree || null;
+        });
+      }
+
+      this.qhtmlSource = nextSource;
+      this.__qhtmlBaseUrl = nextBaseUrl;
+      this.__qhtmlExpandedSource = "";
+      this.qhtmlResolvedSource = "";
+      this.qhtmlError = null;
+      this.__qhtml7Mounted = false;
+      this.innerHTML = "";
+      return mountElement(this, { force: true });
+    }
+
     refresh(source) {
       if (typeof source === "string") {
-        this.qhtmlSource = source;
+        return this.setQHTMLSource(source);
       }
       this.__qhtml7Mounted = false;
-      mountElement(this, { force: true });
-      return this.qhtmlDomTree;
+      return mountElement(this, { force: true });
     }
   }
 

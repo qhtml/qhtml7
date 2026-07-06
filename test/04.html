@@ -4,7 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QHTML WASM Signals Visual Test 04</title>
-  <script src="../qhtml-wasm.js"></script>
+  <script src="../dist/qhtml-wasm.js"></script>
+  <script>
+    window.qhtmlMakeSignal = function qhtmlMakeSignal(owner) {
+      var connections = [];
+      var signal = function () {
+        var args = Array.prototype.slice.call(arguments);
+        return connections.map(function (target) {
+          if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
+            return target.__qhtmlInvokeFromSignal(args, { sender: owner });
+          }
+          return typeof target === "function" ? target.apply(owner, args) : undefined;
+        });
+      };
+      signal.connect = function (target) {
+        if (!target) {
+          return false;
+        }
+        connections.push(target);
+        return true;
+      };
+      signal.disconnectAll = function () {
+        connections.length = 0;
+      };
+      signal.connections = function () {
+        return connections.slice();
+      };
+      return signal;
+    };
+  </script>
   <style>
     :root {
       color-scheme: light;
@@ -77,7 +105,7 @@
 <body>
   <main>
     <h1>QHTML WASM Signals Visual Test 04</h1>
-    <p class="intro">Each section focuses on q-signal, on&lt;signal&gt; hooks, q-connect, QObject-backed q-class signals, and property changed hooks.</p>
+    <p class="intro">Each section focuses on q-signal, on&lt;signal&gt; hooks, q-connect, q-class JavaScript signals, and property changed hooks.</p>
 
     <section>
       <h2>1. on&lt;signal&gt;(param) lifecycle hook</h2>
@@ -146,7 +174,7 @@ q-component direct-receiver {
 direct-sender directSender { }
 direct-receiver directReceiver { }
 
-q-connect { directSender.sent(message) directReceiver.accept(message) }
+q-connect { directSender.sent directReceiver.accept }
 
 q-component direct-driver {
   onready {
@@ -154,7 +182,7 @@ q-component direct-driver {
   }
 }
 
-direct-driver { }
+direct-driver obj1 { }
       </q-html>
     </section>
 
@@ -169,7 +197,7 @@ q-component internal-connect-card {
     this.querySelector("#internal-connect-out").className = "pass";
   }
 
-  q-connect { this.internalPing(message) this.mark(message) }
+  q-connect { this.internalPing this.mark }
 
   onready {
     this.internalPing("PASSED");
@@ -210,9 +238,9 @@ q-component dotwalk-receiver {
 
 dotwalk-sender dotSender { }
 dotwalk-receiver dotReceiver { }
-routeHolder routes(dotReceiver) { }
+routeHolder routes { target: dotReceiver }
 
-q-connect { dotSender.routed(message) routes.target.capture(message) }
+q-connect { dotSender.routed routes.target.capture }
 
 q-component dotwalk-driver {
   onready {
@@ -225,17 +253,15 @@ dotwalk-driver { }
     </section>
 
     <section>
-      <h2>6. WASM QObject signal into QHTML JavaScript</h2>
+      <h2>6. q-class JavaScript signal into QHTML JavaScript</h2>
       <q-html>
 q-class wasmSignalSource {
-  q-signal fromWasm(payload)
-
   wasmSignalSource() {
-    this.native = this.qobject();
+    this.fromWasm = window.qhtmlMakeSignal(this);
   }
 
   function emitFromWasm(payload) {
-    this.native.emit("fromWasm", payload);
+    this.fromWasm(payload);
   }
 }
 
@@ -251,7 +277,7 @@ q-component wasm-signal-receiver {
 wasmSignalSource wasmSource { }
 wasm-signal-receiver wasmReceiver { }
 
-q-connect { wasmSource.fromWasm(payload) wasmReceiver.accept(payload) }
+q-connect { wasmSource.fromWasm wasmReceiver.accept }
 
 q-component wasm-signal-driver {
   onready {
@@ -264,17 +290,15 @@ wasm-signal-driver { }
     </section>
 
     <section>
-      <h2>7. QHTML signal into WASM QObject and back</h2>
+      <h2>7. QHTML signal into q-class and back</h2>
       <q-html>
 q-class wasmRoundTrip {
-  q-signal completed(payload)
-
   wasmRoundTrip() {
-    this.native = this.qobject();
+    this.completed = window.qhtmlMakeSignal(this);
   }
 
   function receiveFromQhtml(payload) {
-    this.native.emit("completed", { message: payload.message });
+    this.completed({ message: payload.message });
   }
 }
 
@@ -292,8 +316,8 @@ q-component qhtml-wasm-roundtrip-card {
 wasmRoundTrip wasmRoundTripBus { }
 qhtml-wasm-roundtrip-card qhtmlRoundTrip { }
 
-q-connect { qhtmlRoundTrip.toWasm(payload) wasmRoundTripBus.receiveFromQhtml(payload) }
-q-connect { wasmRoundTripBus.completed(payload) qhtmlRoundTrip.acceptBack(payload) }
+q-connect { qhtmlRoundTrip.toWasm wasmRoundTripBus.receiveFromQhtml }
+q-connect { wasmRoundTripBus.completed qhtmlRoundTrip.acceptBack }
 
 q-component qhtml-wasm-roundtrip-driver {
   onready {
@@ -309,7 +333,9 @@ qhtml-wasm-roundtrip-driver { }
       <h2>8. q-class signal connected to q-component function</h2>
       <q-html>
 q-class classSignalModel {
-  q-signal fired(message)
+  classSignalModel() {
+    this.fired = window.qhtmlMakeSignal(this);
+  }
 
   function fire(message) {
     this.fired(message);
@@ -328,7 +354,7 @@ q-component class-signal-view {
 classSignalModel classModel { }
 class-signal-view classSignalView { }
 
-q-connect { classModel.fired(message) classSignalView.show(message) }
+q-connect { classModel.fired classSignalView.show }
 
 q-component class-signal-driver {
   onready {
@@ -344,7 +370,9 @@ class-signal-driver { }
       <h2>9. q-component signal connected to q-class function</h2>
       <q-html>
 q-class classSignalSink {
-  q-signal confirmed(message)
+  classSignalSink() {
+    this.confirmed = window.qhtmlMakeSignal(this);
+  }
 
   function receive(message) {
     this.confirmed(message);
@@ -365,8 +393,8 @@ q-component component-signal-source {
 classSignalSink classSink { }
 component-signal-source componentSource { }
 
-q-connect { componentSource.submitted(message) classSink.receive(message) }
-q-connect { classSink.confirmed(message) componentSource.complete(message) }
+q-connect { componentSource.submitted classSink.receive }
+q-connect { classSink.confirmed componentSource.complete }
 
 q-component component-to-class-driver {
   onready {

@@ -1,0 +1,323 @@
+q-default-theme q-form-theme {
+  q-form {
+    q-style {
+      display: block;
+      boxSizing: border-box;
+      color: #102a43;
+      fontFamily: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+  }
+
+  .q-form-root {
+    q-style {
+      display: grid;
+      gap: 14px;
+      boxSizing: border-box;
+      width: 100%;
+      maxWidth: 720px;
+      padding: 20px;
+      backgroundColor: #eef4fb;
+      color: #102a43;
+      border: 1px solid #c7d8ef;
+      borderRadius: 12px;
+      boxShadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+  }
+
+  .q-form-field {
+    q-style {
+      display: grid;
+      gap: 6px;
+      boxSizing: border-box;
+    }
+  }
+
+  .q-form-label {
+    q-style {
+      color: #243b53;
+      fontSize: 13px;
+      fontWeight: 700;
+      lineHeight: 1.2;
+    }
+  }
+
+  .q-form-input {
+    q-style {
+      display: block;
+      boxSizing: border-box;
+      width: 100%;
+      minHeight: 42px;
+      padding: 9px 11px;
+      backgroundColor: #f8fbff;
+      color: #102a43;
+      border: 1px solid #c7d8ef;
+      borderRadius: 8px;
+      fontSize: 15px;
+      lineHeight: 1.35;
+    }
+  }
+
+  .q-form-textarea {
+    q-style {
+      minHeight: 120px;
+      resize: vertical;
+    }
+  }
+
+  .q-form-actions {
+    q-style {
+      display: flex;
+      justifyContent: flex-end;
+      gap: 10px;
+      boxSizing: border-box;
+    }
+  }
+
+  .q-form-submit {
+    q-style {
+      minHeight: 42px;
+      padding: 9px 16px;
+      backgroundColor: #334155;
+      color: #f8fbff;
+      border: 1px solid #1e293b;
+      borderRadius: 8px;
+      fontSize: 15px;
+      fontWeight: 700;
+      cursor: pointer;
+    }
+  }
+}
+
+q-component q-form {
+  q-property url: ""
+  q-property type: "GET"
+  q-property enctype: "multipart/form-data"
+  q-property submitting: false
+  q-property response: ""
+
+  q-signal beforeSubmit(formData, data)
+  q-signal submitted(response, data)
+  q-signal failed(error)
+
+  function formElement() {
+    return this.querySelector("form.q-form-root");
+  }
+
+  function formData() {
+    return new FormData(this.formElement());
+  }
+
+  function data() {
+    return Object.fromEntries(this.formData().entries());
+  }
+
+  function submit() {
+    const form = this.formElement();
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    const method = String(this.type).toUpperCase();
+    const query = new URLSearchParams(formData).toString();
+    const requestUrl = method === "GET" && query
+      ? String(this.url) + (String(this.url).indexOf("?") === -1 ? "?" : "&") + query
+      : String(this.url);
+    const options = { method: method };
+    if (method !== "GET") {
+      options.body = formData;
+    }
+    this.submitting = true;
+    this.beforeSubmit(formData, data);
+    return fetch(requestUrl, options).then((response) => {
+      this.response = response;
+      this.submitting = false;
+      this.submitted(response, data);
+      return response;
+    }).catch((error) => {
+      this.submitting = false;
+      this.failed(error);
+      throw error;
+    });
+  }
+
+  q-form-theme {
+    form.q-form-root {
+      action: this.url
+      method: this.type
+      enctype: this.enctype
+
+      onsubmit {
+        event.preventDefault();
+        this.closest("q-form").submit();
+      }
+
+      slot { default }
+    }
+  }
+}
+
+q-component q-form-input-textbox {
+  q-property name: ""
+  q-property label: ""
+  q-property value: ""
+  q-property placeholder: ""
+
+  div.q-form-field {
+    label.q-form-label {
+      for: this.name
+      text { ${this.label} }
+    }
+    input.q-form-input {
+      id: this.name
+      name: this.name
+      type: "text"
+      value: this.value
+      placeholder: this.placeholder
+    }
+  }
+}
+
+q-component q-form-input-text {
+  q-property name: ""
+  q-property label: ""
+  q-property value: ""
+  q-property placeholder: ""
+
+  div.q-form-field {
+    label.q-form-label {
+      for: this.name
+      text { ${this.label} }
+    }
+    input.q-form-input {
+      id: this.name
+      name: this.name
+      type: "text"
+      value: this.value
+      placeholder: this.placeholder
+    }
+  }
+}
+
+q-component q-form-input-email {
+  q-property name: ""
+  q-property label: ""
+  q-property value: ""
+  q-property placeholder: ""
+
+  div.q-form-field {
+    label.q-form-label {
+      for: this.name
+      text { ${this.label} }
+    }
+    input.q-form-input {
+      id: this.name
+      name: this.name
+      type: "email"
+      value: this.value
+      placeholder: this.placeholder
+    }
+  }
+}
+
+q-component q-form-input-phone {
+  q-property name: ""
+  q-property label: ""
+  q-property value: ""
+  q-property placeholder: ""
+
+  div.q-form-field {
+    label.q-form-label {
+      for: this.name
+      text { ${this.label} }
+    }
+    input.q-form-input {
+      id: this.name
+      name: this.name
+      type: "tel"
+      value: this.value
+      placeholder: this.placeholder
+    }
+  }
+}
+
+q-component q-form-input-password {
+  q-property name: ""
+  q-property label: ""
+  q-property value: ""
+  q-property placeholder: ""
+
+  div.q-form-field {
+    label.q-form-label {
+      for: this.name
+      text { ${this.label} }
+    }
+    input.q-form-input {
+      id: this.name
+      name: this.name
+      type: "password"
+      value: this.value
+      placeholder: this.placeholder
+    }
+  }
+}
+
+q-component q-form-input-hidden {
+  q-property name: ""
+  q-property value: ""
+
+  input {
+    name: this.name
+    type: "hidden"
+    value: this.value
+  }
+}
+
+q-component q-form-input-textarea {
+  q-property name: ""
+  q-property label: ""
+  q-property value: ""
+  q-property placeholder: ""
+
+  div.q-form-field {
+    label.q-form-label {
+      for: this.name
+      text { ${this.label} }
+    }
+    textarea.q-form-input.q-form-textarea {
+      id: this.name
+      name: this.name
+      placeholder: this.placeholder
+      text { ${this.value} }
+    }
+  }
+}
+
+q-component q-form-input-checkbox {
+  q-property name: ""
+  q-property label: ""
+  q-property value: "1"
+
+  label.q-form-field {
+    span.q-form-label {
+      text { ${this.label} }
+    }
+    input.q-form-checkbox {
+      name: this.name
+      type: "checkbox"
+      value: this.value
+    }
+  }
+}
+
+q-component q-form-input-submit {
+  q-property name: "submit"
+  q-property label: "Submit"
+  q-property value: "1"
+
+  div.q-form-actions {
+    button.q-form-submit {
+      name: this.name
+      type: "submit"
+      value: this.value
+      text { ${this.label} }
+    }
+  }
+}
