@@ -220,7 +220,7 @@ tiny-card { }
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-form.qhtml }
 
 q-style form-shell-custom {
   background-color: #fff7ed
@@ -241,7 +241,7 @@ q-style form-submit-custom {
 
 q-theme form-demo-theme {
   q-form-theme { }
-  .q-form-shell { form-shell-custom }
+  .q-form-root { form-shell-custom }
   .q-form-input { form-input-custom }
   .q-form-submit { form-submit-custom }
 }
@@ -252,26 +252,25 @@ form-demo-theme {
     type: "GET"
 
     h3 { text { Quick Form } }
-    q-form-input-textbox firstName {
-      name: "firstName"
+
+    q-form-input-textbox nameField {
+      name: "name"
       label: "Name"
-      placeholder: "Your name"
+      placeholder: "Name"
     }
+
     q-form-input-email emailField {
       name: "email"
       label: "Email"
-      placeholder: "you@example.com"
+      placeholder: "Email"
     }
+
     q-form-input-textarea projectNotes {
       name: "notes"
       label: "Project notes"
       placeholder: "Tell us what you are building..."
     }
-    q-form-input-checkbox followup {
-      name: "followup"
-      label: "Send me a follow-up"
-      value: "yes"
-    }
+
     q-form-input-submit sendButton {
       name: "submit"
       label: "Send"
@@ -282,43 +281,54 @@ form-demo-theme {
         </div>
       </section>
 
-      <section class="example-class" id="q-grid" data-title="q-grid.qhtml usage">
+      <section class="example-class" id="q-layout" data-title="q-layout declarative layout usage">
         <div class="example-head">
-          <h3>q-grid.qhtml usage</h3>
-          <p>Create a simple grid with declarative columns.</p>
+          <h3>q-layout usage</h3>
+          <p>Use the built-in <code>q-layout</code>, <code>q-row</code>, and <code>q-col</code> objects instead of the removed grid helper component.</p>
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
-
-q-style cell-a-style {
+q-style layout-cell-a-style {
   background-color: #eff6ff
   color: #1e3a8a
   border: 1px solid #93c5fd
 }
-q-style cell-b-style {
+q-style layout-cell-b-style {
   background-color: #ecfeff
   color: #155e75
   border: 1px solid #67e8f9
 }
-q-style cell-c-style {
+q-style layout-cell-c-style {
   background-color: #f0fdf4
   color: #166534
   border: 1px solid #86efac
 }
-
-q-theme grid-cells-theme {
-  .cell-a { cell-a-style }
-  .cell-b { cell-b-style }
-  .cell-c { cell-c-style }
+q-style layout-cell-style {
+  minHeight: 90px
+  padding: 14px
+  display: flex
+  alignItems: center
+  justifyContent: center
 }
 
-grid-cells-theme {
-  q-grid {
-    columns: 3;
-    div.cell-a.w3-panel.w3-border { text { Cell A } }
-    div.cell-b.w3-panel.w3-border { text { Cell B } }
-    div.cell-c.w3-panel.w3-border { text { Cell C } }
+q-theme layout-cells-theme {
+  .layout-cell { layout-cell-style }
+  .cell-a { layout-cell-a-style }
+  .cell-b { layout-cell-b-style }
+  .cell-c { layout-cell-c-style }
+}
+
+layout-cells-theme {
+  q-layout {
+    width: "100%"
+    gap: "10px"
+
+    q-row {
+      gap: "10px"
+      q-col { div.layout-cell.cell-a.w3-round-large { text { Cell A } } }
+      q-col { div.layout-cell.cell-b.w3-round-large { text { Cell B } } }
+      q-col { div.layout-cell.cell-c.w3-round-large { text { Cell C } } }
+    }
   }
 }
           </q-editor>
@@ -332,49 +342,39 @@ grid-cells-theme {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { q-components.qhtml nocache }
+q-import { ../dist/q-components/q-modal.qhtml }
+q-import { ../dist/q-components/dark-theme.qhtml }
+
 dark-theme {
   q-modal mymodal {
     id: "mymodal"
     visible: false
-    titlebar {
-        text { System Configuration }
-      }
 
-      header {
-        text { My Dialog Main Title }
-      }
+    titlebar { text { System Configuration } }
+    header { text { My Dialog Main Title } }
 
-       main {
-        div {
-          text {
-            Here is the main dialog content.
-          }
-        }
+    main {
+      div { text { Here is the main dialog content. } }
+      span { text { This area scrolls while the titlebar, header, and footer remain visible. } }
+    }
 
-        span {
-          text {
-            This area scrolls while the titlebar, header,
-            and footer remain visible.
-          }
-        }
-      }
-
-      footer {
-     text { Custom Foooter }
-        button {
-          text { Close }
-
-          onClick {
-            mymodal.visible = false
-          }
-        }
+    footer {
+      text { Custom Footer }
+      button {
+        text { Close }
+        onclick { mymodal.visible = false; }
       }
     }
-button { text { Open Modal } onclick { $("#mymodal").visible = true;
-console.log("click event received", $("q-modal").visible);   } }
-}
+  }
 
+  button {
+    text { Open Modal }
+    onclick {
+      mymodal.visible = true;
+      mymodal.style.display = "block";
+    }
+  }
+}
           </q-editor>
         </div>
       </section>
@@ -386,7 +386,7 @@ console.log("click event received", $("q-modal").visible);   } }
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-sidebar.qhtml }
 
 q-style sidebar-toggle-override-style {
   background-color: #16a34a
@@ -460,7 +460,7 @@ sidebar-demo-theme {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { q-components/lcars-sidebar.qhtml }
+q-import { ../dist/q-components/lcars-sidebar.qhtml }
 
 lcars-sidebar {
   sidebar {
@@ -522,11 +522,11 @@ lcars-sidebar {
       <section class="example-class" id="q-popup-menu" data-title="q-popup-menu.qhtml usage">
         <div class="example-head">
           <h3>q-popup-menu.qhtml usage</h3>
-          <p>Minimal popup menu using <code>popup-contents</code> and explicit <code>show(x, y)</code>.</p>
+          <p>Minimal popup menu using <code>popup-contents</code>, <code>oncontextmenu</code>, and <code>show(x, y, event)</code>.</p>
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-popup-menu.qhtml }
 
 div.w3-container.w3-border.w3-round-large.w3-padding {
   h4 { text { Right-click inside the dashed area } }
@@ -539,17 +539,16 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
     }
     oncontextmenu {
       event.preventDefault();
-      ctxUsage.show(event.clientX + "px", event.clientY + "px");
+      ctxUsage.show(event.clientX, event.clientY, event);
       var ctxLog = document.querySelector("#ctx-log");
       if (ctxLog) {
         ctxLog.textContent = "Last open: " + String(event.clientX) + ", " + String(event.clientY);
       }
     }
 
-    p { text { This context menu uses explicit show(event.clientX, event.clientY). } }
-      q-popup-menu ctxUsage {
+    p { text { This context menu uses explicit show(event.clientX, event.clientY, event). } }
+    q-popup-menu ctxUsage {
       id: "ctx-usage"
-      style { position: fixed;   background-color: #f8fafc; }
       popup-contents {
         ul.w3-ul.w3-small.w3-card {
           li { text { Rename } }
@@ -559,16 +558,14 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
           li { text { Delete } }
         }
       }
-      onready { this.closest("q-popup-menu").style.display = 'none'; }
     }
-
   }
+
   p#ctx-log {
     class: "w3-small"
     style { color: #334155; }
     text { Last open: none }
   }
-
 }
           </q-editor>
         </div>
@@ -581,7 +578,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-tabs.qhtml }
 
 q-style tabs-show-btn-style {
   background-color: #334155
@@ -591,13 +588,13 @@ q-style tabs-show-btn-style {
 q-style tabs-nav-override-style {
   background-color: #ffedd5
 }
-q-style tabs-content-override-style {
+q-style tabs-panel-override-style {
   background-color: #fffaf0
 }
 q-theme tabs-demo-theme {
   .tabs-show-btn { tabs-show-btn-style }
-  .q-tabs-nav { tabs-nav-override-style }
-  .q-tabs-content-themed { tabs-content-override-style }
+  .q-tabs-container { tabs-nav-override-style }
+  .q-tab-panel { tabs-panel-override-style }
 }
 
 tabs-demo-theme {
@@ -619,11 +616,11 @@ tabs-demo-theme {
       <section class="example-class" id="dynamic-tab-widget" data-title="dynamicTabWidget (q-tabs + for loop)">
         <div class="example-head">
           <h3>dynamicTabWidget</h3>
-          <p>Data-driven tabs using declarative composition: <code>q-tabs</code> + <code>for</code>.</p>
+          <p>Model-driven tabs using declarative composition: <code>q-tabs</code> + <code>for</code>.</p>
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-tabs.qhtml }
 
 q-component dynamicTabWidget {
   q-property tabs: [
@@ -632,7 +629,7 @@ q-component dynamicTabWidget {
   ]
 
   q-tabs {
-    for (tabObject in tabs) {
+    for (tabObject in this.tabs) {
       q-tab {
         name { div { text { ${tabObject.name} } } }
         content { div { text { ${tabObject.content} } } }
@@ -649,18 +646,11 @@ dynamicTabWidget { }
       <section class="example-class" id="q-tree-view" data-title="q-tree-view implementation example">
         <div class="example-head">
           <h3>q-tree-view quick usage</h3>
-          <p>Collapsible tree using HTML5 <code>details/summary</code> from a <code>q-model</code>.</p>
+          <p>Collapsible tree using HTML5 <code>details/summary</code> from inline JSON-style object data.</p>
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
-
-q-model my-tree {
-  q-map {
-    src: q-array { "index.js", "parser.js", q-map { utils: q-array { "path.js", "net.js" } } }
-    docs: q-array { "README.md", "MODULE-API.md" }
-  }
-}
+q-import { ../dist/q-components/q-tree-view.qhtml }
 
 q-style tree-list-style {
   margin: 0.25rem 0
@@ -749,7 +739,10 @@ q-theme tree-demo-theme {
 
 tree-demo-theme {
   q-tree-view#my-view {
-    model: "my-tree"
+    treeModel: {
+      src: ["index.js", "parser.js", { utils: ["path.js", "net.js"] }],
+      docs: ["README.md", "MODULE-API.md"]
+    }
   }
 }
           </q-editor>
@@ -759,18 +752,18 @@ tree-demo-theme {
       <section class="example-class" id="q-list-view" data-title="q-list-view.qhtml usage">
         <div class="example-head">
           <h3>q-list-view.qhtml usage</h3>
-          <p>Render a simple list from a <code>q-array</code> model using <code>for</code>.</p>
+          <p>Render a simple list from JSON-style array data using <code>for</code>.</p>
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-list-view.qhtml }
 
 q-component demo-list-view extends q-list-view {
-  q-property model: q-array {
+  q-property model: [
     "hello world",
     "item 2",
     "item 3"
-  }
+  ]
 }
 
 demo-list-view#my-list { }
@@ -785,12 +778,12 @@ demo-list-view#my-list { }
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-estore.qhtml }
 
 button.w3-button.w3-small.w3-border.w3-round {
   text { Load Alternate Products }
   onclick {
-    demoestore.products = QArray([
+    demoestore.setProducts([
       { SKU: "ALT-001", name: "Travel Bottle", description: "Insulated stainless steel", price: "29.00" },
       { SKU: "ALT-002", name: "Desk Mat", description: "Felt anti-slip surface", price: "22.50" },
       { SKU: "ALT-003", name: "Pen Set", description: "Fine-tip gel pens", price: "12.99" },
@@ -813,12 +806,12 @@ q-estore demoestore {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-spritesheet.qhtml }
 
 q-component sprite-demo-status {
   q-property textValue: "frame: 0"
   div.w3-small.w3-text-indigo {
-    text { ${this.component.textValue} }
+    text { ${this.textValue} }
   }
 }
 
@@ -967,9 +960,9 @@ q-component paint-mask-card {
     var h = this.geom.height;
     var tw = Number(this.topWidth || 62);
     var th = Number(this.topHeight || 34);
-    if (!Number.isFinite(tw) || tw < 10) { tw = 10; }
+    if (!Number.isFinite(tw) || tw &lt; 10) { tw = 10; }
     if (tw > 95) { tw = 95; }
-    if (!Number.isFinite(th) || th < 10) { th = 10; }
+    if (!Number.isFinite(th) || th &lt; 10) { th = 10; }
     if (th > 90) { th = 90; }
     var topWidth = w * tw / 100;
     var left = (w - topWidth) / 2;
@@ -1068,7 +1061,7 @@ onready {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-tech-panel.qhtml }
 
 q-style tech-panel-stage {
   display: grid
@@ -1184,7 +1177,8 @@ techPanelDemoTheme {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { ../dist/q-components.qhtml }
+q-import { ../dist/q-components/q-toolbar.qhtml }
+q-import { ../dist/q-components/q-toolbutton.qhtml }
 
 div.w3-container.w3-border.w3-round-large.w3-padding {
   h4 { text { Toolbar Demo } }
@@ -1203,19 +1197,19 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
     height: 72
 
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Open File"
       onclick { alert("file open clicked") }
     }
 
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Save"
       onclick { alert("save clicked") }
     }
 
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Settings"
       onclick { alert("settings clicked") }
     }
@@ -1232,55 +1226,48 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { q-components/q-sidebar.qhtml?v=drawer-width }
-q-import { q-components/q-tabs.qhtml }
-q-import { q-components/q-modal.qhtml }
-q-import { q-components/q-popup-menu.qhtml?v=popup-redesign-6 }
-q-import { q-components/q-toolbar.qhtml }
-q-import { q-components/q-estore.qhtml }
-q-import { q-components/q-spritesheet.qhtml?v=6.3.2 }
-q-import { q-components/q-grid.qhtml }
-q-import { q-components/q-form.qhtml }
-q-import { q-components/q-list-view.qhtml }
-q-import { q-components/q-tree-view.qhtml?v=tree-css-28 }
-q-import { q-components/q-tech-tag.qhtml }
-
-q-model hubTreeModel {
-  q-map {
-    storefront: q-array { "catalog", "checkout", "orders" }
-    runtime: q-array { "signals", "timers", "workers" }
-    assets: q-array { "spritesheet", "icons", "theme" }
-  }
-}
+q-import { ../dist/q-components/q-sidebar.qhtml }
+q-import { ../dist/q-components/q-tabs.qhtml }
+q-import { ../dist/q-components/q-modal.qhtml }
+q-import { ../dist/q-components/q-popup-menu.qhtml }
+q-import { ../dist/q-components/q-toolbar.qhtml }
+q-import { ../dist/q-components/q-toolbutton.qhtml }
+q-import { ../dist/q-components/q-estore.qhtml }
+q-import { ../dist/q-components/q-spritesheet.qhtml }
+q-import { ../dist/q-components/q-form.qhtml }
+q-import { ../dist/q-components/q-list-view.qhtml }
+q-import { ../dist/q-components/q-tree-view.qhtml }
+q-import { ../dist/q-components/q-tech-tag.qhtml }
 
 q-component hub-status-pill {
   q-property textValue: "frame: 0"
   div.w3-small.w3-padding-small.w3-round.w3-border.w3-pale-blue {
-    text { ${this.component.textValue} }
+    text { ${this.textValue} }
   }
 }
 
 q-component hub-activity-list extends q-list-view {
-  q-property model: q-array {
+  q-property model: [
     "hub initialized",
     "catalog loaded",
     "sprite ready"
-  }
+  ]
 }
 
 q-modal hubInfoModal {
-  title { h4 { text { Hub Command Summary } } }
-  body {
+  visible: false
+  titlebar { text { Hub Command Summary } }
+  header { text { Command Surface } }
+  main {
     p { text { This unified hub combines storefront controls, runtime observability, and quick command actions. } }
     p { text { Use the left navigation, floating toolbar, and context menu to drive one shared workspace. } }
   }
   footer {
     button.w3-button.w3-border.w3-round {
       text { Close }
-      onclick { hubInfoModal.hide(); }
+      onclick { hubInfoModal.visible = false; }
     }
   }
-  onready { this.component.hide(); }
 }
 
 q-popup-menu hubContextMenu {
@@ -1291,10 +1278,9 @@ q-popup-menu hubContextMenu {
       li { text { Open Store } onclick { hubTabs.showTab(1); } }
       li { text { Start Sprite } onclick { hubSprite.start(); } }
       hr { }
-      li { text { Open Summary Modal } onclick { hubInfoModal.show(); } }
+      li { text { Open Summary Modal } onclick { hubInfoModal.visible = true; hubInfoModal.style.display = "block"; } }
     }
   }
-  onready { this.closest("q-popup-menu").style.display = "none"; }
 }
 
 div.w3-container.w3-border.w3-round-large.w3-padding {
@@ -1326,7 +1312,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
         }
         button.w3-button.w3-small.w3-border.w3-round {
           text { Hub Summary }
-          onclick { hubInfoModal.show(); }
+          onclick { hubInfoModal.visible = true; hubInfoModal.style.display = "block"; }
         }
       }
     }
@@ -1335,7 +1321,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
       div#hub-workspace.w3-padding.w3-round-large.w3-border {
         oncontextmenu {
           event.preventDefault();
-          hubContextMenu.show(event.clientX + "px", event.clientY + "px");
+          hubContextMenu.show(event.clientX, event.clientY, event);
         }
 
         q-tabs hubTabs {
@@ -1369,11 +1355,10 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
                 }
               }
 
-              q-grid {
-                columns: 3
-                div.w3-panel.w3-border.w3-round { text { active frame: ${hubSprite.currentFrame} } }
-                div.w3-panel.w3-border.w3-round { text { frame count: ${hubSprite.frameCount} } }
-                div.w3-panel.w3-border.w3-round { text { playback: ${hubSprite.running} } }
+              div.w3-row-padding.w3-margin-top {
+                div.w3-third { div.w3-panel.w3-border.w3-round { text { active frame: ${hubSprite.currentFrame} } } }
+                div.w3-third { div.w3-panel.w3-border.w3-round { text { frame count: ${hubSprite.frameCount} } } }
+                div.w3-third { div.w3-panel.w3-border.w3-round { text { playback: ${hubSprite.running} } } }
               }
             }
           }
@@ -1384,7 +1369,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
               button.w3-button.w3-small.w3-border.w3-round.w3-margin-bottom {
                 text { Load Alternate Products }
                 onclick {
-                  hubStore.products = QArray([
+                  hubStore.setProducts([
                     { SKU: "ALT-001", name: "Travel Bottle", description: "Insulated stainless steel", price: "29.00" },
                     { SKU: "ALT-002", name: "Desk Mat", description: "Felt anti-slip surface", price: "22.50" },
                     { SKU: "ALT-003", name: "Pen Set", description: "Fine-tip gel pens", price: "12.99" },
@@ -1400,10 +1385,16 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
             name { text { Runtime } }
             content {
               q-tree-view {
-                model: "hubTreeModel"
+                treeModel: {
+                  storefront: ["catalog", "checkout", "orders"],
+                  runtime: ["signals", "timers", "workers"],
+                  assets: ["spritesheet", "icons", "theme"]
+                }
               }
               hub-activity-list hubLog { }
-              q-form runtimeNoteForm {
+              q-form runtimeNotes {
+                url: "#"
+                type: "GET"
                 h4 { text { Runtime Notes } }
                 q-form-input-textbox operatorName {
                   name: "operator"
@@ -1415,9 +1406,14 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
                   label: "Note"
                   placeholder: "Enter a runtime note..."
                 }
-                q-form-input-submit addActivityEntry {
-                  name: "submit"
-                  label: "Add Activity Entry"
+                div.q-form-actions {
+                  button.q-form-submit {
+                    type: "button"
+                    text { Add Activity Entry }
+                    onclick {
+                      hubLog.model.push("note captured at frame " + String(hubSprite.currentFrame));
+                    }
+                  }
                 }
               }
             }
@@ -1436,29 +1432,29 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
     height: 70
 
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Overview"
       onclick { hubTabs.showTab(0); }
     }
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Store"
       onclick { hubTabs.showTab(1); }
     }
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Start"
       onclick { hubSprite.start(); }
     }
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Stop"
       onclick { hubSprite.stop(); }
     }
     q-toolbutton {
-      src: "q-components/expand-collapse.svg"
+      src: "../dist/q-components/expand-collapse.svg"
       label: "Summary"
-      onclick { hubInfoModal.show(); }
+      onclick { hubInfoModal.visible = true; hubInfoModal.style.display = "block"; }
     }
   }
 }
@@ -1473,7 +1469,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
         </div>
         <div class="example-body">
           <q-editor>
-q-import { q-components/q-tech-tag.qhtml }
+q-import { ../dist/q-components/q-tech-tag.qhtml }
 
 q-style tech-note-style {
   background-color: #eef4ff

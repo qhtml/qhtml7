@@ -677,3 +677,78 @@ q-import { path/to/file.qhtml }
  q-require { path/to/file.qhtml }
  etc..
  ```
+
+ -----------------------------------------------------------
+
+ 21. q-painter -- q-painter is essentially a CSS houdini javascript worklet rolled into a Javascript class that can be loaded as a blob and then added using the CSS houdini paint API. It is equivalent in functionality to the onPaintBackground, onPaintMask, and onPaintBorder commands, with the difference of that it can be applied to multiple different paint contexts using either q-style + q-theme   or by specifying it inside of an onPaintBackground, onPaintMask, or onPaintBorder command.  Additionally, q-painter  is parsed into a QHTMLPainter object, so it can be accessed / saved as a q-property  or passed into different contexts such as q-canvas onPaint event handlers. (More on q-canvas in in section 22).
+
+
+ QHTMLPainter is parsed using this format / syntax:
+
+ ```
+ q-painter mypainter {
+  onpaint {
+    this.fillStyle = "#2563eb";
+    this.fillRect(0, 0, this.width / 2, this.height);
+    this.fillStyle = "#f97316";
+    this.fillRect(this.width / 2, 0, this.width / 2, this.height);
+  }
+}
+
+q-style mystyle {
+  q-style-painter { background { mypainter } }
+}
+
+q-theme painter-theme {
+  .paint-target { mystyle }
+}
+
+painter-theme {
+  div.paint-target {
+    style {
+      width: 240px
+      height: 110px
+    }
+    text { Painter target }
+  }
+}
+```
+
+It is also possible to simply reference a QPainter inside of a q-canvas or paint event handler like this:
+
+```
+q-canvas mycanvas {
+  onpaint {
+    mypainter { }
+  }
+}
+```
+
+or you can use it inside of onPaintBackground { }, onPaintMask { } or onPaintBorder { } in the same way
+
+```
+div {
+  onPaintBackground { mypainter { } }
+}
+```
+
+All QHTMLNode* elements which render anything into the HTML DOM must support onPaintBackground, onPaintMask and onPaintBorder event handlers whether they are just plain HTML, or q-components with HTML contents in them.
+
+----------------
+
+22. q-canvas is a <canvas> </canvas> implementation that uses the onPaint { } event handler to allow for free painting by using the context property which is automatically set to getContext2d().
+
+```
+q-canvas mycanvas {
+  width: 50vw
+  height: 50vh
+  onPaint {
+    context.fillStyle = "#2563eb";
+    context.fillRect(0, 0, this.width / 2, this.height);
+    context.fillStyle = "#f97316";
+    context.fillRect(this.width / 2, 0, this.width / 2, this.height);
+  }
+}
+```
+
+* Note*  if you specify the width or height (or anything really in QHTML) in CSS units like 50% or 100vh, they are converted into pixels when getting the value of those properties by performing the necessary calculations to determine what the exact pixel size is of the value you specified. When accessing this.width and this.height, they will return a single integer regardless of what type of unit you put in there, and if the dimensions change, some of those units will automatically re-adjust and return new values depending on the nature of the change and the units you choose.  This can cause flickering or re-painting calls to happen in environments that frequently adjust the layout and dimensions or when animating objects containing a q-canvas inside of it.

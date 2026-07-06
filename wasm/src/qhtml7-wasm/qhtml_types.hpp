@@ -26,6 +26,8 @@ class QHTMLComponentSlot;
 class QHTMLStyle;
 class QHTMLTheme;
 class QHTMLImportNode;
+class QHTMLPainter;
+class QHTMLCanvas;
 
 class QHTMLReference
 {
@@ -2241,6 +2243,490 @@ inline QHTMLJsonObject *QHTMLJsonValue::objectJs() const
     return object();
 }
 
+
+class QHTMLArray final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLArray(const QString &name = QString(),
+                        const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-array"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLArray"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("array"));
+    }
+
+    QJsonArray jsonArray() const;
+    QHTMLJsonArray *arrayValue() const;
+    QHTMLJsonArray *arrayValueJs() const;
+    QHTMLJsonDocument *jsonDocument() const;
+    QHTMLJsonDocument *jsonDocumentJs() const;
+    QString valuesLiteral() const;
+    std::string valuesLiteralJs() const { return valuesLiteral().toStdString(); }
+    QHTMLArray *cloneArrayBlock() const;
+    QString renderHtml() const override { return QString(); }
+
+    static QJsonArray jsonArrayFromChildren(const QHTMLNode *scope);
+};
+
+class QHTMLMap final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLMap(const QString &name = QString(),
+                      const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-map"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLMap"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("map"));
+    }
+
+    QJsonObject jsonObject() const;
+    QHTMLJsonObject *objectValue() const;
+    QHTMLJsonObject *objectValueJs() const;
+    QHTMLJsonDocument *jsonDocument() const;
+    QHTMLJsonDocument *jsonDocumentJs() const;
+    QString value(const QString &key) const;
+    std::string valueJs(const std::string &key) const { return value(QString::fromStdString(key)).toStdString(); }
+    QString keysLiteral() const;
+    std::string keysLiteralJs() const { return keysLiteral().toStdString(); }
+    QString valuesLiteral() const;
+    std::string valuesLiteralJs() const { return valuesLiteral().toStdString(); }
+    QHTMLMap *cloneMapBlock() const;
+    QString renderHtml() const override { return QString(); }
+
+    static QJsonObject jsonObjectFromChildren(const QHTMLNode *scope);
+};
+
+class QHTMLModel final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLModel(const QString &name = QString(),
+                        const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-model"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLModel"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("model"));
+    }
+
+    QJsonValue jsonValue() const;
+    QHTMLJsonDocument *jsonDocument() const;
+    QHTMLJsonDocument *jsonDocumentJs() const { return jsonDocument(); }
+    QString valuesLiteral() const;
+    std::string valuesLiteralJs() const { return valuesLiteral().toStdString(); }
+    QHTMLModel *cloneModelBlock() const;
+    QString renderHtml() const override { return QString(); }
+};
+
+inline QString qhtmlLegacyStripTrailingSeparators(QString value)
+{
+    value = value.trimmed();
+    while (!value.isEmpty() && (value.endsWith(QLatin1Char(',')) || value.endsWith(QLatin1Char(';')))) {
+        value.chop(1);
+        value = value.trimmed();
+    }
+    return value;
+}
+
+inline QString qhtmlLegacyStripQuotes(QString value)
+{
+    value = value.trimmed();
+    if (value.size() >= 2) {
+        const QChar first = value.at(0);
+        const QChar last = value.at(value.size() - 1);
+        if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+            (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+            (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+            return value.mid(1, value.size() - 2);
+        }
+    }
+    return value;
+}
+
+inline int qhtmlLegacyTopLevelColonIndex(const QString &source)
+{
+    int depth = 0;
+    QChar quote;
+    bool escape = false;
+    for (int i = 0; i < source.size(); ++i) {
+        const QChar ch = source.at(i);
+        if (!quote.isNull()) {
+            if (escape) {
+                escape = false;
+            } else if (ch == QLatin1Char('\\')) {
+                escape = true;
+            } else if (ch == quote) {
+                quote = QChar();
+            }
+            continue;
+        }
+        if (ch == QLatin1Char('"') || ch == QLatin1Char('\'') || ch == QLatin1Char('`')) {
+            quote = ch;
+            continue;
+        }
+        if (ch == QLatin1Char('[') || ch == QLatin1Char('{') || ch == QLatin1Char('(')) {
+            ++depth;
+            continue;
+        }
+        if (ch == QLatin1Char(']') || ch == QLatin1Char('}') || ch == QLatin1Char(')')) {
+            if (depth > 0) {
+                --depth;
+            }
+            continue;
+        }
+        if (ch == QLatin1Char(':') && depth == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+inline QJsonValue qhtmlLegacyParseJsonValue(QString value)
+{
+    value = qhtmlLegacyStripTrailingSeparators(value);
+    if (value.isEmpty()) {
+        return QJsonValue(QString());
+    }
+    return QHTMLJsonTools::parseValue(value);
+}
+
+inline void qhtmlLegacyAppendArrayItemsFromSource(QJsonArray &array, QString source)
+{
+    source = qhtmlLegacyStripTrailingSeparators(source);
+    if (source.isEmpty()) {
+        return;
+    }
+    for (QString value : QHTMLArrayNode::splitTopLevel(source)) {
+        value = qhtmlLegacyStripTrailingSeparators(value);
+        if (!value.isEmpty()) {
+            array.append(qhtmlLegacyParseJsonValue(value));
+        }
+    }
+}
+
+inline void qhtmlLegacyAppendMapEntriesFromSource(QJsonObject &object, QString source)
+{
+    source = qhtmlLegacyStripTrailingSeparators(source);
+    if (source.isEmpty()) {
+        return;
+    }
+    for (QString entry : QHTMLArrayNode::splitTopLevel(source)) {
+        entry = qhtmlLegacyStripTrailingSeparators(entry);
+        if (entry.isEmpty()) {
+            continue;
+        }
+        const int colon = qhtmlLegacyTopLevelColonIndex(entry);
+        if (colon <= 0) {
+            continue;
+        }
+        const QString key = qhtmlLegacyStripQuotes(entry.left(colon));
+        if (key.trimmed().isEmpty()) {
+            continue;
+        }
+        object.insert(key.trimmed(), qhtmlLegacyParseJsonValue(entry.mid(colon + 1)));
+    }
+}
+
+inline QHTMLNode *qhtmlLegacyCloneDataChild(QHTMLNode *child)
+{
+    if (!child) {
+        return nullptr;
+    }
+    if (QHTMLArray *array = dynamic_cast<QHTMLArray *>(child)) {
+        return array->cloneArrayBlock();
+    }
+    if (QHTMLMap *map = dynamic_cast<QHTMLMap *>(child)) {
+        return map->cloneMapBlock();
+    }
+    if (QHTMLModel *model = dynamic_cast<QHTMLModel *>(child)) {
+        return model->cloneModelBlock();
+    }
+    if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+        return assignment->cloneAssignment();
+    }
+    if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(child)) {
+        return new QHTMLTextFragment(text->value());
+    }
+    if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(child)) {
+        return new QHTMLHTMLFragment(html->value());
+    }
+    if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(child)) {
+        return new QHTMLUnknownFragment(unknown->value());
+    }
+    if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(child)) {
+        QHTMLDomElement *cloned = new QHTMLDomElement(element->tagName(), element->attributes());
+        for (QHTMLNode *nested : element->children()) {
+            if (QHTMLNode *nestedClone = qhtmlLegacyCloneDataChild(nested)) {
+                cloned->appendChild(nestedClone);
+            }
+        }
+        return cloned;
+    }
+    return nullptr;
+}
+
+inline QJsonArray QHTMLArray::jsonArrayFromChildren(const QHTMLNode *scope)
+{
+    QJsonArray array;
+    if (!scope) {
+        return array;
+    }
+    for (QHTMLNode *child : scope->children()) {
+        if (!child) {
+            continue;
+        }
+        if (QHTMLArray *nestedArray = dynamic_cast<QHTMLArray *>(child)) {
+            array.append(QJsonValue(nestedArray->jsonArray()));
+            continue;
+        }
+        if (QHTMLMap *nestedMap = dynamic_cast<QHTMLMap *>(child)) {
+            array.append(QJsonValue(nestedMap->jsonObject()));
+            continue;
+        }
+        if (QHTMLModel *model = dynamic_cast<QHTMLModel *>(child)) {
+            array.append(model->jsonValue());
+            continue;
+        }
+        if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+            qhtmlLegacyAppendArrayItemsFromSource(array, assignment->value());
+            continue;
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(child)) {
+            qhtmlLegacyAppendArrayItemsFromSource(array, text->value());
+            continue;
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(child)) {
+            qhtmlLegacyAppendArrayItemsFromSource(array, html->value());
+            continue;
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(child)) {
+            qhtmlLegacyAppendArrayItemsFromSource(array, unknown->value());
+            continue;
+        }
+    }
+    return array;
+}
+
+inline QJsonArray QHTMLArray::jsonArray() const
+{
+    return jsonArrayFromChildren(this);
+}
+
+inline QHTMLJsonArray *QHTMLArray::arrayValue() const
+{
+    return new QHTMLJsonArray(jsonArray());
+}
+
+inline QHTMLJsonArray *QHTMLArray::arrayValueJs() const
+{
+    return arrayValue();
+}
+
+inline QHTMLJsonDocument *QHTMLArray::jsonDocument() const
+{
+    return new QHTMLJsonDocument(QJsonDocument(jsonArray()));
+}
+
+inline QHTMLJsonDocument *QHTMLArray::jsonDocumentJs() const
+{
+    return jsonDocument();
+}
+
+inline QString QHTMLArray::valuesLiteral() const
+{
+    return QHTMLJsonTools::valueToJson(QJsonValue(jsonArray()));
+}
+
+inline QHTMLArray *QHTMLArray::cloneArrayBlock() const
+{
+    QHTMLArray *cloned = new QHTMLArray(qhtmlName(), attributes());
+    for (QHTMLNode *child : children()) {
+        if (QHTMLNode *childClone = qhtmlLegacyCloneDataChild(child)) {
+            cloned->appendChild(childClone);
+        }
+    }
+    return cloned;
+}
+
+inline QJsonObject QHTMLMap::jsonObjectFromChildren(const QHTMLNode *scope)
+{
+    QJsonObject object;
+    if (!scope) {
+        return object;
+    }
+    for (QHTMLNode *child : scope->children()) {
+        if (!child) {
+            continue;
+        }
+        if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+            qhtmlLegacyAppendMapEntriesFromSource(object, assignment->qhtmlName() + QStringLiteral(": ") + assignment->value());
+            continue;
+        }
+        if (QHTMLArray *nestedArray = dynamic_cast<QHTMLArray *>(child)) {
+            if (!nestedArray->qhtmlName().trimmed().isEmpty()) {
+                object.insert(nestedArray->qhtmlName().trimmed(), QJsonValue(nestedArray->jsonArray()));
+            }
+            continue;
+        }
+        if (QHTMLMap *nestedMap = dynamic_cast<QHTMLMap *>(child)) {
+            if (!nestedMap->qhtmlName().trimmed().isEmpty()) {
+                object.insert(nestedMap->qhtmlName().trimmed(), QJsonValue(nestedMap->jsonObject()));
+            }
+            continue;
+        }
+        if (QHTMLModel *model = dynamic_cast<QHTMLModel *>(child)) {
+            if (!model->qhtmlName().trimmed().isEmpty()) {
+                object.insert(model->qhtmlName().trimmed(), model->jsonValue());
+            }
+            continue;
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(child)) {
+            qhtmlLegacyAppendMapEntriesFromSource(object, text->value());
+            continue;
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(child)) {
+            qhtmlLegacyAppendMapEntriesFromSource(object, html->value());
+            continue;
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(child)) {
+            qhtmlLegacyAppendMapEntriesFromSource(object, unknown->value());
+            continue;
+        }
+    }
+    return object;
+}
+
+inline QJsonObject QHTMLMap::jsonObject() const
+{
+    return jsonObjectFromChildren(this);
+}
+
+inline QHTMLJsonObject *QHTMLMap::objectValue() const
+{
+    return new QHTMLJsonObject(jsonObject());
+}
+
+inline QHTMLJsonObject *QHTMLMap::objectValueJs() const
+{
+    return objectValue();
+}
+
+inline QHTMLJsonDocument *QHTMLMap::jsonDocument() const
+{
+    return new QHTMLJsonDocument(QJsonDocument(jsonObject()));
+}
+
+inline QHTMLJsonDocument *QHTMLMap::jsonDocumentJs() const
+{
+    return jsonDocument();
+}
+
+inline QString QHTMLMap::value(const QString &key) const
+{
+    return QHTMLJsonTools::valueToString(jsonObject().value(key));
+}
+
+inline QString QHTMLMap::keysLiteral() const
+{
+    return jsonObject().keys().join(QStringLiteral(", "));
+}
+
+inline QString QHTMLMap::valuesLiteral() const
+{
+    return QHTMLJsonTools::valueToJson(QJsonValue(jsonObject()));
+}
+
+inline QHTMLMap *QHTMLMap::cloneMapBlock() const
+{
+    QHTMLMap *cloned = new QHTMLMap(qhtmlName(), attributes());
+    for (QHTMLNode *child : children()) {
+        if (QHTMLNode *childClone = qhtmlLegacyCloneDataChild(child)) {
+            cloned->appendChild(childClone);
+        }
+    }
+    return cloned;
+}
+
+inline QJsonValue QHTMLModel::jsonValue() const
+{
+    QJsonObject objectFromAssignments;
+    bool hasAssignments = false;
+    QString literalSource;
+
+    for (QHTMLNode *child : children()) {
+        if (!child) {
+            continue;
+        }
+        if (QHTMLArray *array = dynamic_cast<QHTMLArray *>(child)) {
+            return QJsonValue(array->jsonArray());
+        }
+        if (QHTMLMap *map = dynamic_cast<QHTMLMap *>(child)) {
+            return QJsonValue(map->jsonObject());
+        }
+        if (QHTMLModel *model = dynamic_cast<QHTMLModel *>(child)) {
+            return model->jsonValue();
+        }
+        if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+            hasAssignments = true;
+            qhtmlLegacyAppendMapEntriesFromSource(objectFromAssignments,
+                                                 assignment->qhtmlName() + QStringLiteral(": ") + assignment->value());
+            continue;
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(child)) {
+            literalSource += text->value() + QLatin1Char('\n');
+            continue;
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(child)) {
+            literalSource += html->value() + QLatin1Char('\n');
+            continue;
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(child)) {
+            literalSource += unknown->value() + QLatin1Char('\n');
+            continue;
+        }
+    }
+
+    if (hasAssignments) {
+        return QJsonValue(objectFromAssignments);
+    }
+
+    literalSource = qhtmlLegacyStripTrailingSeparators(literalSource);
+    if (!literalSource.isEmpty()) {
+        return qhtmlLegacyParseJsonValue(literalSource);
+    }
+
+    return QJsonValue(QJsonArray());
+}
+
+inline QHTMLJsonDocument *QHTMLModel::jsonDocument() const
+{
+    const QJsonValue root = jsonValue();
+    if (root.isArray()) {
+        return new QHTMLJsonDocument(QJsonDocument(root.toArray()));
+    }
+    if (root.isObject()) {
+        return new QHTMLJsonDocument(QJsonDocument(root.toObject()));
+    }
+    QJsonArray wrapper;
+    wrapper.append(root);
+    return new QHTMLJsonDocument(QJsonDocument(wrapper));
+}
+
+inline QString QHTMLModel::valuesLiteral() const
+{
+    const QJsonValue root = jsonValue();
+    return QHTMLJsonTools::valueToJson(root);
+}
+
+inline QHTMLModel *QHTMLModel::cloneModelBlock() const
+{
+    QHTMLModel *cloned = new QHTMLModel(qhtmlName(), attributes());
+    for (QHTMLNode *child : children()) {
+        if (QHTMLNode *childClone = qhtmlLegacyCloneDataChild(child)) {
+            cloned->appendChild(childClone);
+        }
+    }
+    return cloned;
+}
+
 class QHTMLProperty final : public QHTMLTypedNode
 {
 public:
@@ -2254,7 +2740,11 @@ public:
         m_valueNode = createValueNode(m_value);
     }
 
-    ~QHTMLProperty() override { delete m_valueNode; }
+    ~QHTMLProperty() override
+    {
+        delete m_valueNode;
+        delete m_legacyValueNode;
+    }
 
     QString value() const { return m_value; }
     std::string valueJs() const { return m_value.toStdString(); }
@@ -2262,19 +2752,37 @@ public:
     {
         m_value = value;
         delete m_valueNode;
+        delete m_legacyValueNode;
+        m_legacyValueNode = nullptr;
         m_valueNode = createValueNode(m_value);
     }
     void setValueJs(const std::string &value) { setValue(QString::fromStdString(value)); }
-    QString structuredType() const { return m_valueNode ? m_valueNode->qhtmlType() : QString(); }
+    QString structuredType() const
+    {
+        QHTMLNode *node = structuredValue();
+        return node ? node->qhtmlType() : QString();
+    }
     std::string structuredTypeJs() const { return structuredType().toStdString(); }
-    QHTMLNode *structuredValue() const { return m_valueNode; }
-    QHTMLNode *structuredValueJs() const { return m_valueNode; }
+    QHTMLNode *structuredValue() const
+    {
+        if (m_valueNode) {
+            return m_valueNode;
+        }
+        return legacyStructuredValue();
+    }
+    QHTMLNode *structuredValueJs() const { return structuredValue(); }
 
     QHTMLProperty *cloneProperty() const
     {
         QHash<QString, QString> clonedAttributes = attributes();
         clonedAttributes.insert(QStringLiteral("value"), m_value);
-        return new QHTMLProperty(qhtmlName(), clonedAttributes);
+        QHTMLProperty *cloned = new QHTMLProperty(qhtmlName(), clonedAttributes);
+        for (QHTMLNode *child : children()) {
+            if (QHTMLNode *childClone = qhtmlLegacyCloneDataChild(child)) {
+                cloned->appendChild(childClone);
+            }
+        }
+        return cloned;
     }
 
     QString renderHtml() const override { return QString(); }
@@ -2292,8 +2800,36 @@ private:
         return nullptr;
     }
 
+    QHTMLNode *legacyStructuredValue() const
+    {
+        const QString type = m_value.trimmed();
+        if (type != QStringLiteral("q-array") &&
+            type != QStringLiteral("q-map") &&
+            type != QStringLiteral("q-model")) {
+            return nullptr;
+        }
+        if (m_legacyValueNode) {
+            return m_legacyValueNode;
+        }
+        if (type == QStringLiteral("q-array")) {
+            m_legacyValueNode = new QHTMLJsonDocument(QJsonDocument(QHTMLArray::jsonArrayFromChildren(this)));
+        } else if (type == QStringLiteral("q-map")) {
+            m_legacyValueNode = new QHTMLJsonDocument(QJsonDocument(QHTMLMap::jsonObjectFromChildren(this)));
+        } else {
+            QHTMLModel model;
+            for (QHTMLNode *child : children()) {
+                if (QHTMLNode *childClone = qhtmlLegacyCloneDataChild(child)) {
+                    model.appendChild(childClone);
+                }
+            }
+            m_legacyValueNode = model.jsonDocument();
+        }
+        return m_legacyValueNode;
+    }
+
     QString m_value;
     QHTMLNode *m_valueNode = nullptr;
+    mutable QHTMLNode *m_legacyValueNode = nullptr;
 };
 
 class QHTMLImportNode final : public QHTMLTypedNode
@@ -2703,6 +3239,225 @@ private:
     QString m_eventName;
     QStringList m_parameters;
     QString m_body;
+};
+
+
+class QHTMLPainter final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLPainter(const QString &name = QString(),
+                          const QHash<QString, QString> &attributes = {},
+                          const QString &body = QString())
+        : QHTMLTypedNode(QStringLiteral("q-painter"), name, attributes),
+          m_body(body.trimmed())
+    {
+        setQHTMLType(QStringLiteral("QHTMLPainter"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("painter"));
+    }
+
+    QString body() const
+    {
+        const QString childBody = paintHandlerBody();
+        return childBody.isEmpty() ? m_body : childBody;
+    }
+    std::string bodyJs() const { return body().toStdString(); }
+
+    void setBody(const QString &body) { m_body = body.trimmed(); }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
+
+    QHTMLEventHandler *paintHandler() const
+    {
+        for (QHTMLNode *child : children()) {
+            QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child);
+            if (handler && handler->eventName() == QStringLiteral("paint")) {
+                return handler;
+            }
+        }
+        return nullptr;
+    }
+
+    QHTMLEventHandler *paintHandlerJs() const { return paintHandler(); }
+
+    QHTMLPainter *clonePainter() const
+    {
+        QHTMLPainter *cloned = new QHTMLPainter(qhtmlName(), attributes(), m_body);
+        for (QHTMLNode *child : children()) {
+            if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child)) {
+                cloned->appendChild(handler->cloneEventHandler());
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                cloned->appendChild(assignment->cloneAssignment());
+            } else if (QHTMLProperty *property = dynamic_cast<QHTMLProperty *>(child)) {
+                cloned->appendChild(property->cloneProperty());
+            }
+        }
+        return cloned;
+    }
+
+    QString renderHtml() const override { return QString(); }
+
+private:
+    QString paintHandlerBody() const
+    {
+        QHTMLEventHandler *handler = paintHandler();
+        return handler ? handler->body() : QString();
+    }
+
+    QString m_body;
+};
+
+class QHTMLCanvas final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLCanvas(const QString &name = QString(),
+                         const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-canvas"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLCanvas"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("canvas"));
+    }
+
+    QString renderHtml() const override
+    {
+        QString out = QStringLiteral("<canvas qhtml-canvas=\"1\" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
+        const QString nameValue = qhtmlName().trimmed();
+        if (!nameValue.isEmpty()) {
+            out += QStringLiteral(" name=\"") + escapeAttribute(nameValue) + QStringLiteral("\"");
+        }
+        const QString idValue = assignmentValue(QStringLiteral("id"));
+        if (!idValue.isEmpty()) {
+            out += QStringLiteral(" id=\"") + escapeAttribute(stripQuotes(idValue)) + QStringLiteral("\"");
+        }
+        const QString classValue = assignmentValue(QStringLiteral("class"));
+        if (!classValue.isEmpty()) {
+            out += QStringLiteral(" class=\"") + escapeAttribute(stripQuotes(classValue)) + QStringLiteral("\"");
+        }
+        out += QStringLiteral(" style=\"") + escapeAttribute(canvasStyle()) + QStringLiteral("\"");
+        out += QStringLiteral(">");
+        out += renderFallbackChildren();
+        out += QStringLiteral("</canvas>");
+        return out;
+    }
+
+    QString paintBody() const
+    {
+        for (QHTMLNode *child : children()) {
+            QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child);
+            if (handler && handler->eventName() == QStringLiteral("paint")) {
+                return handler->body();
+            }
+        }
+        return QString();
+    }
+    std::string paintBodyJs() const { return paintBody().toStdString(); }
+
+    QHTMLEventHandler *paintHandler() const
+    {
+        for (QHTMLNode *child : children()) {
+            QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child);
+            if (handler && handler->eventName() == QStringLiteral("paint")) {
+                return handler;
+            }
+        }
+        return nullptr;
+    }
+    QHTMLEventHandler *paintHandlerJs() const { return paintHandler(); }
+
+private:
+    QString assignmentValue(const QString &name, const QString &fallback = QString()) const
+    {
+        const QString lowerName = name.toLower();
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment) {
+                continue;
+            }
+            if (assignment->qhtmlName().toLower() == lowerName) {
+                return assignment->value().trimmed();
+            }
+        }
+        return fallback;
+    }
+
+    static QString stripQuotes(QString value)
+    {
+        value = value.trimmed();
+        if (value.size() >= 2) {
+            const QChar first = value.at(0);
+            const QChar last = value.at(value.size() - 1);
+            if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+                (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+                (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+                return value.mid(1, value.size() - 2);
+            }
+        }
+        return value;
+    }
+
+    static QString cssValue(QString value)
+    {
+        value = stripQuotes(value);
+        if (value.endsWith(QLatin1Char(';'))) {
+            value.chop(1);
+        }
+        return value.trimmed();
+    }
+
+    void appendOptionalDeclaration(QStringList &declarations,
+                                   const QString &cssName,
+                                   const QString &assignmentName = QString()) const
+    {
+        QString value = assignmentValue(assignmentName.isEmpty() ? cssName : assignmentName);
+        if (value.isEmpty() && !assignmentName.isEmpty()) {
+            value = assignmentValue(cssName);
+        }
+        if (!value.isEmpty()) {
+            declarations << cssName + QStringLiteral(":") + cssValue(value);
+        }
+    }
+
+    QString canvasStyle() const
+    {
+        QStringList declarations;
+        declarations << QStringLiteral("display:block");
+        declarations << QStringLiteral("box-sizing:border-box");
+        declarations << QStringLiteral("width:") + cssValue(assignmentValue(QStringLiteral("width"), QStringLiteral("300px")));
+        declarations << QStringLiteral("height:") + cssValue(assignmentValue(QStringLiteral("height"), QStringLiteral("150px")));
+        appendOptionalDeclaration(declarations, QStringLiteral("min-width"), QStringLiteral("minWidth"));
+        appendOptionalDeclaration(declarations, QStringLiteral("min-height"), QStringLiteral("minHeight"));
+        appendOptionalDeclaration(declarations, QStringLiteral("max-width"), QStringLiteral("maxWidth"));
+        appendOptionalDeclaration(declarations, QStringLiteral("max-height"), QStringLiteral("maxHeight"));
+        appendOptionalDeclaration(declarations, QStringLiteral("background"));
+        appendOptionalDeclaration(declarations, QStringLiteral("border"));
+        appendOptionalDeclaration(declarations, QStringLiteral("border-radius"), QStringLiteral("borderRadius"));
+        appendOptionalDeclaration(declarations, QStringLiteral("margin"));
+        appendOptionalDeclaration(declarations, QStringLiteral("padding"));
+        return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
+    }
+
+    static bool isRuntimeChild(QHTMLNode *child)
+    {
+        if (!child) {
+            return true;
+        }
+        const QString type = child->qhtmlType();
+        return type == QStringLiteral("QHTMLPropertyAssignment") ||
+               type == QStringLiteral("QHTMLProperty") ||
+               type == QStringLiteral("QHTMLEventHandler") ||
+               type == QStringLiteral("QHTMLSignal") ||
+               type == QStringLiteral("QHTMLFunction") ||
+               type == QStringLiteral("QHTMLStyle");
+    }
+
+    QString renderFallbackChildren() const
+    {
+        QString out;
+        for (QHTMLNode *child : children()) {
+            if (!isRuntimeChild(child)) {
+                out += child->renderHtml();
+            }
+        }
+        return out;
+    }
 };
 
 class QHTMLConnect final : public QHTMLTypedNode
@@ -3373,26 +4128,6 @@ public:
     }
 };
 
-class QHTMLArray final : public QHTMLTypedNode
-{
-public:
-    explicit QHTMLArray(const QString &name = QString(),
-                        const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("q-array"), name, attributes)
-    {
-    }
-};
-
-class QHTMLMap final : public QHTMLTypedNode
-{
-public:
-    explicit QHTMLMap(const QString &name = QString(),
-                      const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("q-map"), name, attributes)
-    {
-    }
-};
-
 class QHTMLTemplate final : public QHTMLTypedNode
 {
 public:
@@ -3413,6 +4148,7 @@ public:
     }
 };
 
+
 class QHTMLModelView final : public QHTMLTypedNode
 {
 public:
@@ -3420,6 +4156,326 @@ public:
                             const QHash<QString, QString> &attributes = {})
         : QHTMLTypedNode(QStringLiteral("q-model-view"), name, attributes)
     {
+        setQHTMLType(QStringLiteral("QHTMLModelView"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("model-view"));
+    }
+
+    QString aliasName() const
+    {
+        if (QHTMLNode *alias = controlSlot(QStringLiteral("as"))) {
+            const QString value = nodeText(alias).trimmed();
+            if (!value.isEmpty()) {
+                return value;
+            }
+        }
+        return attributes().value(QStringLiteral("as")).trimmed();
+    }
+    std::string aliasNameJs() const { return aliasName().toStdString(); }
+
+    QHTMLJsonDocument *modelDocument() const
+    {
+        if (QHTMLNode *source = modelSourceNode()) {
+            return jsonDocumentFromSourceNode(source);
+        }
+        return new QHTMLJsonDocument(QStringLiteral("[]"));
+    }
+    QHTMLJsonDocument *modelDocumentJs() const { return modelDocument(); }
+
+    QString renderHtml() const override
+    {
+        const QString variable = aliasName().isEmpty() ? QStringLiteral("item") : aliasName();
+        QHTMLJsonDocument *document = modelDocument();
+        const QStringList values = document && document->isArray() ? document->arrayValues() : QStringList();
+        delete document;
+
+        QString out = QStringLiteral("<!--qhtml-model-view-start:") + qhtmlUUID() + QStringLiteral("-->");
+        for (const QString &value : values) {
+            for (QHTMLNode *child : repeatTemplateChildren()) {
+                out += renderNodeForValue(child, variable, value);
+            }
+        }
+        out += QStringLiteral("<!--qhtml-model-view-end:") + qhtmlUUID() + QStringLiteral("-->");
+        return out;
+    }
+
+private:
+    static bool isNamedWrapper(QHTMLNode *node, const QString &name)
+    {
+        return node && node->qhtmlName().compare(name, Qt::CaseInsensitive) == 0;
+    }
+
+    static bool isIgnorableTextNode(QHTMLNode *node)
+    {
+        QString value;
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            value = text->value();
+        } else if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            value = html->value();
+        } else if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            value = unknown->value();
+        } else {
+            return false;
+        }
+        value = value.trimmed();
+        return value.isEmpty() || value == QStringLiteral(",") || value == QStringLiteral(";");
+    }
+
+    static bool isControlSlot(QHTMLNode *node)
+    {
+        return isNamedWrapper(node, QStringLiteral("model")) ||
+               isNamedWrapper(node, QStringLiteral("as"));
+    }
+
+    static QString nodeText(QHTMLNode *node)
+    {
+        if (!node) {
+            return QString();
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return text->value();
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return html->value();
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return unknown->value();
+        }
+        QString out;
+        for (QHTMLNode *child : node->children()) {
+            out += nodeText(child);
+        }
+        return out;
+    }
+
+    QHTMLNode *controlSlot(const QString &name) const
+    {
+        for (QHTMLNode *child : children()) {
+            if (isNamedWrapper(child, name)) {
+                return child;
+            }
+        }
+        return nullptr;
+    }
+
+    QList<QHTMLNode *> repeatTemplateChildren() const
+    {
+        QList<QHTMLNode *> out;
+        for (QHTMLNode *child : children()) {
+            if (!child || isControlSlot(child) || isIgnorableTextNode(child)) {
+                continue;
+            }
+            out.append(child);
+        }
+        return out;
+    }
+
+    QHTMLNode *modelSourceNode() const
+    {
+        if (QHTMLNode *slot = controlSlot(QStringLiteral("model"))) {
+            return firstMeaningfulChild(slot);
+        }
+
+        // Compatibility for older/direct forms such as:
+        // q-model-view { q-model { ... } as { item } ... }
+        // q-model-view { q-array { ... } as { item } ... }
+        for (QHTMLNode *child : children()) {
+            if (!child || isControlSlot(child) || isIgnorableTextNode(child)) {
+                continue;
+            }
+            if (dynamic_cast<QHTMLModel *>(child) ||
+                dynamic_cast<QHTMLArray *>(child) ||
+                dynamic_cast<QHTMLMap *>(child) ||
+                dynamic_cast<QHTMLJsonDocument *>(child) ||
+                dynamic_cast<QHTMLProperty *>(child)) {
+                return child;
+            }
+        }
+        return nullptr;
+    }
+
+    static QHTMLNode *firstMeaningfulChild(QHTMLNode *slot)
+    {
+        if (!slot) {
+            return nullptr;
+        }
+        for (QHTMLNode *child : slot->children()) {
+            if (!child || isIgnorableTextNode(child)) {
+                continue;
+            }
+            return child;
+        }
+        return nullptr;
+    }
+
+    static QHTMLJsonDocument *jsonDocumentFromValue(const QJsonValue &value)
+    {
+        if (value.isArray()) {
+            return new QHTMLJsonDocument(QJsonDocument(value.toArray()));
+        }
+        if (value.isObject()) {
+            return new QHTMLJsonDocument(QJsonDocument(value.toObject()));
+        }
+        QJsonArray wrapper;
+        wrapper.append(value);
+        return new QHTMLJsonDocument(QJsonDocument(wrapper));
+    }
+
+    static QHTMLJsonDocument *jsonDocumentFromText(QString value)
+    {
+        value = qhtmlLegacyStripTrailingSeparators(value);
+        if (value.isEmpty()) {
+            return new QHTMLJsonDocument(QStringLiteral("[]"));
+        }
+        return jsonDocumentFromValue(qhtmlLegacyParseJsonValue(value));
+    }
+
+    static QHTMLJsonDocument *jsonDocumentFromSourceNode(QHTMLNode *node)
+    {
+        if (!node) {
+            return new QHTMLJsonDocument(QStringLiteral("[]"));
+        }
+        if (QHTMLArray *array = dynamic_cast<QHTMLArray *>(node)) {
+            return array->jsonDocument();
+        }
+        if (QHTMLMap *map = dynamic_cast<QHTMLMap *>(node)) {
+            return map->jsonDocument();
+        }
+        if (QHTMLModel *model = dynamic_cast<QHTMLModel *>(node)) {
+            return model->jsonDocument();
+        }
+        if (QHTMLJsonDocument *document = dynamic_cast<QHTMLJsonDocument *>(node)) {
+            return document->cloneDocument();
+        }
+        if (QHTMLProperty *property = dynamic_cast<QHTMLProperty *>(node)) {
+            if (QHTMLJsonDocument *document = dynamic_cast<QHTMLJsonDocument *>(property->structuredValue())) {
+                return document->cloneDocument();
+            }
+            return jsonDocumentFromText(property->value());
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return jsonDocumentFromText(text->value());
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return jsonDocumentFromText(html->value());
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return jsonDocumentFromText(unknown->value());
+        }
+
+        // Last-resort adapter for wrapper-like nodes: preserve the slot semantics by
+        // adapting only the first meaningful child, not by recursively collecting every
+        // q-model in the subtree.
+        if (QHTMLNode *first = firstMeaningfulChild(node)) {
+            return jsonDocumentFromSourceNode(first);
+        }
+        return new QHTMLJsonDocument(QStringLiteral("[]"));
+    }
+
+    static QString normalizeLoopValue(QString value)
+    {
+        value = value.trimmed();
+        if (value.size() >= 2) {
+            const QChar first = value.at(0);
+            const QChar last = value.at(value.size() - 1);
+            if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+                (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+                (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+                return value.mid(1, value.size() - 2);
+            }
+        }
+        return value;
+    }
+
+    static QString interpolate(QString value, const QString &variable, const QString &loopValue)
+    {
+        static const QRegularExpression rx(QStringLiteral("\\$\\{\\s*([^}]+?)\\s*\\}"));
+        QRegularExpressionMatchIterator it = rx.globalMatch(value);
+        int offset = 0;
+        while (it.hasNext()) {
+            const QRegularExpressionMatch match = it.next();
+            const QString replacement = resolveLoopExpression(match.captured(1).trimmed(), variable, loopValue);
+            value.replace(match.capturedStart(0) + offset, match.capturedLength(0), replacement);
+            offset += replacement.size() - match.capturedLength(0);
+        }
+        return value;
+    }
+
+    static QString resolveLoopExpression(QString expression, const QString &variable, const QString &loopValue)
+    {
+        expression = expression.trimmed();
+        if (expression.startsWith(QStringLiteral("this."))) {
+            expression = expression.mid(5).trimmed();
+        }
+        if (expression == variable) {
+            return normalizeLoopValue(loopValue);
+        }
+        const QString prefix = variable + QLatin1Char('.');
+        if (!expression.startsWith(prefix)) {
+            return QStringLiteral("${") + expression + QStringLiteral("}");
+        }
+        const QString fieldPath = expression.mid(prefix.size()).trimmed();
+        if (fieldPath.isEmpty()) {
+            return QString();
+        }
+        QHTMLJsonDocument document(loopValue);
+        return document.valueAtPath(fieldPath);
+    }
+
+    QString renderNodeForValue(QHTMLNode *node, const QString &variable, const QString &loopValue) const
+    {
+        if (!node) {
+            return QString();
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return escapeText(interpolate(text->value(), variable, loopValue));
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return interpolate(html->value(), variable, loopValue);
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return escapeText(interpolate(unknown->value(), variable, loopValue));
+        }
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(node)) {
+            QString out = QStringLiteral("<") + element->tagName();
+            const QHash<QString, QString> localAttributes = element->attributes();
+            const QStringList keys = localAttributes.keys();
+            for (const QString &key : keys) {
+                const QString attrValue = localAttributes.value(key);
+                if (!attrValue.isEmpty()) {
+                    out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(interpolate(attrValue, variable, loopValue)) + QStringLiteral("\"");
+                }
+            }
+            out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(element->qhtmlUUID()) + QStringLiteral("\"");
+            out += QStringLiteral(" qhtml-model-view-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
+            out += QStringLiteral(">");
+            for (QHTMLNode *child : element->children()) {
+                out += renderNodeForValue(child, variable, loopValue);
+            }
+            out += QStringLiteral("</") + element->tagName() + QStringLiteral(">");
+            return out;
+        }
+
+        QString html = node->renderHtml();
+        html = interpolate(html, variable, loopValue);
+        return addModelViewMetadataToHtml(html);
+    }
+
+    QString addModelViewMetadataToHtml(QString html) const
+    {
+        static const QRegularExpression tagRx(QStringLiteral("<([A-Za-z][A-Za-z0-9_+\\-]*)([^>]*)>"));
+        int offset = 0;
+        QRegularExpressionMatchIterator it = tagRx.globalMatch(html);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch match = it.next();
+            if (match.captured(0).contains(QStringLiteral(" qhtml-model-view-node="))) {
+                continue;
+            }
+            const int insertAt = match.capturedStart(2) + offset;
+            const QString attribute = QStringLiteral(" qhtml-model-view-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
+            html.insert(insertAt, attribute);
+            offset += attribute.size();
+        }
+        return html;
     }
 };
 

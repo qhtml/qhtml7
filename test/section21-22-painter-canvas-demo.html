@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QHTML7 Painter and Canvas Smoke Test</title>
+  <script src="../dist/qhtml-wasm.js"></script>
+</head>
+<body>
+<q-html>
+q-painter splitPainter {
+  onpaint {
+    this.fillStyle = "#2563eb";
+    this.fillRect(0, 0, this.width / 2, this.height);
+    this.fillStyle = "#f97316";
+    this.fillRect(this.width / 2, 0, this.width / 2, this.height);
+    this.fillStyle = "rgba(255,255,255,0.85)";
+    this.font = "16px sans-serif";
+    this.fillText("q-painter", 18, 32);
+  }
+}
+
+q-style paintedBoxStyle {
+  width: 240px
+  height: 110px
+  color: white
+  display: inline-flex
+  alignItems: center
+  justifyContent: center
+  q-style-painter {
+    background { splitPainter }
+  }
+}
+
+q-theme painterTheme {
+  .paint-target { paintedBoxStyle }
+}
+
+painterTheme {
+  div.paint-target { text { style painter target } }
+
+  div {
+    style {
+      width: 240px
+      height: 110px
+      marginTop: 16px
+      color: white
+    }
+    onPaintBackground {
+      splitPainter { }
+    }
+    text { direct onPaintBackground target }
+  }
+
+  q-canvas mainCanvas {
+    width: 50vw
+    height: 220px
+    border: 1px solid #334155
+    onPaint {
+      context.fillStyle = "#111827";
+      context.fillRect(0, 0, this.width, this.height);
+      splitPainter { }
+      context.fillStyle = "white";
+      context.font = "18px sans-serif";
+      context.fillText("q-canvas onPaint", 18, this.height - 24);
+    }
+  }
+}
+</q-html>
+</body>
+</html>

@@ -561,7 +561,7 @@ q-component q-sidebar {
       q-sidebar-item {
         q-var cls { item.active ? "active" : "" }
 
-        class: "${cls}"
+        class: cls
 
         text { ${item.label} }
       }
@@ -637,7 +637,7 @@ q-component q-pricebox {
     slot { actions }
 
     q-button.wide {
-      label: "${cta}"
+      label: cta
     }
   }
 }

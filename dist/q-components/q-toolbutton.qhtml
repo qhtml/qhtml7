@@ -29,8 +29,8 @@ q-component q-toolbutton {
   button.q-toolbutton-root {
     q-toolbutton-root: "1"
     type: "button"
-    title: "${this.label}"
-    aria-label: "${this.label}"
+    title: this.label
+    aria-label: this.label
     style {
       width: var(--q-toolbutton-size, 44px);
       height: var(--q-toolbutton-size, 44px);
@@ -47,8 +47,8 @@ q-component q-toolbutton {
 
     img.q-toolbutton-image {
       q-toolbutton-image: "1"
-      src: "${this.src}"
-      alt: "${this.label}"
+      src: this.src
+      alt: this.label
       draggable: "false"
       style {
         width: 100%;

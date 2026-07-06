@@ -631,14 +631,14 @@ q-component hud-button {
 
   button.hud-button {
     type: "button"
-    data-url: "${this.url}"
-    data-label: "${this.label}"
-    data-accent: "${this.accent}"
-    data-warn: "${this.warn}"
+    data-url: this.url
+    data-label: this.label
+    data-accent: this.accent
+    data-warn: this.warn
 
     style {
-      --hud-accent: "${this.accent}"
-      --hud-warn: "${this.warn}"
+      --hud-accent: this.accent
+      --hud-warn: this.warn
     }
 
     onmouseenter {
@@ -932,7 +932,7 @@ q-component hud-system {
             div.hud-panel-slot {
               div.hud-metal-panel {
                 iframe.hud-frame {
-                  src: "${this.defaultUrl}"
+                  src: this.defaultUrl
                 }
               }
             }
@@ -1374,15 +1374,15 @@ q-component hud-container {
   hudContainerTheme {
     div.hud-container-root {
       style {
-        --hud-accent: "${this.accent}"
-        --hud-warn: "${this.warn}"
-        --hud-yellow: "${this.yellow}"
-        --hud-line-alpha: "${this.lineAlpha}"
-        --hud-line-scale: "${this.lineScale}"
-        --hud-top-height: "${this.topHeight}"
-        --hud-bottom-height: "${this.bottomHeight}"
-        --hud-left-overhang: "${this.leftOverhang}"
-        --hud-right-overhang: "${this.rightOverhang}"
+        --hud-accent: this.accent
+        --hud-warn: this.warn
+        --hud-yellow: this.yellow
+        --hud-line-alpha: this.lineAlpha
+        --hud-line-scale: this.lineScale
+        --hud-top-height: this.topHeight
+        --hud-bottom-height: this.bottomHeight
+        --hud-left-overhang: this.leftOverhang
+        --hud-right-overhang: this.rightOverhang
       }
 
       onReady {

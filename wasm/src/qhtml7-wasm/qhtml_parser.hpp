@@ -145,12 +145,16 @@ protected:
             QStringLiteral("q-var"),
             QStringLiteral("q-array"),
             QStringLiteral("q-map"),
+            QStringLiteral("q-model"),
             QStringLiteral("q-template"),
             QStringLiteral("q-script"),
             QStringLiteral("q-model-view"),
             QStringLiteral("q-factory"),
             QStringLiteral("q-timer"),
             QStringLiteral("q-property-animation"),
+            QStringLiteral("q-painter"),
+            QStringLiteral("q-canvas"),
+            QStringLiteral("q-style-painter"),
             QStringLiteral("q-layout"),
             QStringLiteral("q-row"),
             QStringLiteral("q-col"),
@@ -356,6 +360,9 @@ private:
         if (qhtmlKeyword == QStringLiteral("q-map")) {
             return new QHTMLMap(qhtmlName, m_attributes);
         }
+        if (qhtmlKeyword == QStringLiteral("q-model")) {
+            return new QHTMLModel(qhtmlName, m_attributes);
+        }
         if (qhtmlKeyword == QStringLiteral("q-template")) {
             return new QHTMLTemplate(qhtmlName, m_attributes);
         }
@@ -373,6 +380,12 @@ private:
         }
         if (qhtmlKeyword == QStringLiteral("q-property-animation")) {
             return new QHTMLPropertyAnimation(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-painter")) {
+            return new QHTMLPainter(qhtmlName, m_attributes, qhtmlContent);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-canvas")) {
+            return new QHTMLCanvas(qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("q-layout")) {
             return new QHTMLLayout(qhtmlKeyword, qhtmlName, m_attributes);
@@ -743,6 +756,342 @@ inline int findMatchingBrace(const QString &source, int openIndex)
     return -1;
 }
 
+
+inline bool headerLooksLikeInlineValueStatement(const QString &header)
+{
+    const QString text = header.trimmed();
+    if (text.isEmpty()) {
+        return false;
+    }
+
+    static const QRegularExpression propertyRx(
+        QStringLiteral("^\\s*q-property\\s+[A-Za-z_][A-Za-z0-9_+\\-]*\\s*:\\s*$"));
+    if (propertyRx.match(text).hasMatch()) {
+        return true;
+    }
+
+    static const QRegularExpression assignmentRx(
+        QStringLiteral("^\\s*[A-Za-z_][A-Za-z0-9_+\\-]*\\s*:\\s*$"));
+    return assignmentRx.match(text).hasMatch();
+}
+
+
+struct StructuredValueStatement
+{
+    bool matched = false;
+    int endIndex = -1;
+    QString statement;
+};
+
+inline QChar expectedCloserForStructuredOpener(QChar opener)
+{
+    if (opener == QLatin1Char('[')) {
+        return QLatin1Char(']');
+    }
+    if (opener == QLatin1Char('{')) {
+        return QLatin1Char('}');
+    }
+    if (opener == QLatin1Char('(')) {
+        return QLatin1Char(')');
+    }
+    return QChar();
+}
+
+inline bool isStructuredValueOpener(QChar ch)
+{
+    return ch == QLatin1Char('[') || ch == QLatin1Char('{');
+}
+
+inline int findStructuredValueEnd(const QString &source, int valueStartIndex)
+{
+    if (valueStartIndex < 0 || valueStartIndex >= source.size()) {
+        return -1;
+    }
+
+    const QChar first = source.at(valueStartIndex);
+    if (!isStructuredValueOpener(first)) {
+        return -1;
+    }
+
+    QVector<QChar> expectedClosers;
+    expectedClosers.append(expectedCloserForStructuredOpener(first));
+
+    QChar quote;
+    bool escape = false;
+    bool lineComment = false;
+    bool blockComment = false;
+
+    for (int i = valueStartIndex + 1; i < source.size(); ++i) {
+        const QChar ch = source.at(i);
+        const QChar next = i + 1 < source.size() ? source.at(i + 1) : QChar();
+
+        if (lineComment) {
+            if (ch == QLatin1Char('\n')) {
+                lineComment = false;
+            }
+            continue;
+        }
+
+        if (blockComment) {
+            if (ch == QLatin1Char('*') && next == QLatin1Char('/')) {
+                blockComment = false;
+                ++i;
+            }
+            continue;
+        }
+
+        if (!quote.isNull()) {
+            if (escape) {
+                escape = false;
+            } else if (ch == QLatin1Char('\\')) {
+                escape = true;
+            } else if (ch == quote) {
+                quote = QChar();
+            }
+            continue;
+        }
+
+        if (ch == QLatin1Char('/') && next == QLatin1Char('/')) {
+            lineComment = true;
+            ++i;
+            continue;
+        }
+
+        if (ch == QLatin1Char('/') && next == QLatin1Char('*')) {
+            blockComment = true;
+            ++i;
+            continue;
+        }
+
+        if (ch == QLatin1Char('"') || ch == QLatin1Char('\'') || ch == QLatin1Char('`')) {
+            quote = ch;
+            continue;
+        }
+
+        if (ch == QLatin1Char('[') || ch == QLatin1Char('{') || ch == QLatin1Char('(')) {
+            expectedClosers.append(expectedCloserForStructuredOpener(ch));
+            continue;
+        }
+
+        if (ch == QLatin1Char(']') || ch == QLatin1Char('}') || ch == QLatin1Char(')')) {
+            if (expectedClosers.isEmpty()) {
+                return -1;
+            }
+            const QChar expected = expectedClosers.last();
+            if (ch != expected) {
+                return -1;
+            }
+            expectedClosers.removeLast();
+            if (expectedClosers.isEmpty()) {
+                return i + 1;
+            }
+        }
+    }
+
+    return -1;
+}
+
+inline StructuredValueStatement structuredValueStatementAt(const QString &source, int cursor)
+{
+    StructuredValueStatement result;
+    if (cursor < 0 || cursor >= source.size()) {
+        return result;
+    }
+
+    int index = cursor;
+    while (index < source.size() && source.at(index).isSpace()) {
+        ++index;
+    }
+    if (index >= source.size()) {
+        return result;
+    }
+
+    static const QRegularExpression propertyPrefixRx(
+        QStringLiteral("^q-property\\s+[A-Za-z_][A-Za-z0-9_+\\-]*\\s*:"));
+    static const QRegularExpression assignmentPrefixRx(
+        QStringLiteral("^[A-Za-z_][A-Za-z0-9_+\\-]*\\s*:"));
+
+    QString remaining = source.mid(index);
+    QRegularExpressionMatch match = propertyPrefixRx.match(remaining);
+    if (!match.hasMatch()) {
+        match = assignmentPrefixRx.match(remaining);
+    }
+    if (!match.hasMatch()) {
+        return result;
+    }
+
+    int valueStart = index + match.capturedEnd(0);
+    while (valueStart < source.size() && source.at(valueStart).isSpace()) {
+        ++valueStart;
+    }
+    if (valueStart >= source.size() || !isStructuredValueOpener(source.at(valueStart))) {
+        return result;
+    }
+
+    const int valueEnd = findStructuredValueEnd(source, valueStart);
+    if (valueEnd < 0) {
+        return result;
+    }
+
+    int end = valueEnd;
+    while (end < source.size() && (source.at(end).isSpace() && source.at(end) != QLatin1Char('\n'))) {
+        ++end;
+    }
+    if (end < source.size() && source.at(end) == QLatin1Char(';')) {
+        ++end;
+    }
+
+    result.matched = true;
+    result.endIndex = end;
+    result.statement = source.mid(index, valueEnd - index).trimmed();
+    return result;
+}
+
+inline int findNextQHTMLBlockOpen(const QString &source, int cursor)
+{
+    QChar quote;
+    bool escape = false;
+    bool lineComment = false;
+    bool blockComment = false;
+    int squareParenDepth = 0;
+
+    for (int i = cursor; i < source.size(); ++i) {
+        const QChar ch = source.at(i);
+        const QChar next = i + 1 < source.size() ? source.at(i + 1) : QChar();
+
+        if (lineComment) {
+            if (ch == QLatin1Char('\n')) {
+                lineComment = false;
+            }
+            continue;
+        }
+        if (blockComment) {
+            if (ch == QLatin1Char('*') && next == QLatin1Char('/')) {
+                blockComment = false;
+                ++i;
+            }
+            continue;
+        }
+        if (!quote.isNull()) {
+            if (escape) {
+                escape = false;
+            } else if (ch == QLatin1Char('\\')) {
+                escape = true;
+            } else if (ch == quote) {
+                quote = QChar();
+            }
+            continue;
+        }
+        if (ch == QLatin1Char('/') && next == QLatin1Char('/')) {
+            lineComment = true;
+            ++i;
+            continue;
+        }
+        if (ch == QLatin1Char('/') && next == QLatin1Char('*')) {
+            blockComment = true;
+            ++i;
+            continue;
+        }
+        if (ch == QLatin1Char('"') || ch == QLatin1Char('\'') || ch == QLatin1Char('`')) {
+            quote = ch;
+            continue;
+        }
+        if (ch == QLatin1Char('[') || ch == QLatin1Char('(')) {
+            ++squareParenDepth;
+            continue;
+        }
+        if (ch == QLatin1Char(']') || ch == QLatin1Char(')')) {
+            if (squareParenDepth > 0) {
+                --squareParenDepth;
+            }
+            continue;
+        }
+        if (ch != QLatin1Char('{') || squareParenDepth != 0) {
+            continue;
+        }
+
+        const QString header = source.mid(cursor, i - cursor).trimmed();
+        if (headerLooksLikeInlineValueStatement(header)) {
+            const int closeIndex = findMatchingBrace(source, i);
+            if (closeIndex >= 0) {
+                i = closeIndex;
+                continue;
+            }
+        }
+        return i;
+    }
+    return -1;
+}
+
+inline int findStatementBoundaryBeforeBlock(const QString &source, int cursor, int blockOpenIndex)
+{
+    QChar quote;
+    bool escape = false;
+    bool lineComment = false;
+    bool blockComment = false;
+    int depth = 0;
+
+    for (int i = cursor; i < blockOpenIndex && i < source.size(); ++i) {
+        const QChar ch = source.at(i);
+        const QChar next = i + 1 < source.size() ? source.at(i + 1) : QChar();
+
+        if (lineComment) {
+            if (ch == QLatin1Char('\n')) {
+                lineComment = false;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+            continue;
+        }
+        if (blockComment) {
+            if (ch == QLatin1Char('*') && next == QLatin1Char('/')) {
+                blockComment = false;
+                ++i;
+            }
+            continue;
+        }
+        if (!quote.isNull()) {
+            if (escape) {
+                escape = false;
+            } else if (ch == QLatin1Char('\\')) {
+                escape = true;
+            } else if (ch == quote) {
+                quote = QChar();
+            }
+            continue;
+        }
+        if (ch == QLatin1Char('/') && next == QLatin1Char('/')) {
+            lineComment = true;
+            ++i;
+            continue;
+        }
+        if (ch == QLatin1Char('/') && next == QLatin1Char('*')) {
+            blockComment = true;
+            ++i;
+            continue;
+        }
+        if (ch == QLatin1Char('"') || ch == QLatin1Char('\'') || ch == QLatin1Char('`')) {
+            quote = ch;
+            continue;
+        }
+        if (ch == QLatin1Char('[') || ch == QLatin1Char('{') || ch == QLatin1Char('(')) {
+            ++depth;
+            continue;
+        }
+        if (ch == QLatin1Char(']') || ch == QLatin1Char('}') || ch == QLatin1Char(')')) {
+            if (depth > 0) {
+                --depth;
+            }
+            continue;
+        }
+        if ((ch == QLatin1Char('\n') || ch == QLatin1Char(';')) && depth == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 inline QStringList splitSelectors(const QString &header)
 {
     QStringList selectors;
@@ -916,6 +1265,18 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
                                         content);
     }
 
+    static const QRegularExpression legacyTypedPropertyRx(
+        QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*(q-array|q-map|q-model)\\s*$"));
+    const QRegularExpressionMatch legacyTypedPropertyMatch = legacyTypedPropertyRx.match(trimmedHeader);
+    if (legacyTypedPropertyMatch.hasMatch()) {
+        QHash<QString, QString> attributes;
+        attributes.insert(QStringLiteral("value"), legacyTypedPropertyMatch.captured(2).trimmed());
+        return new QHTMLAstNamedTypeNode(QStringLiteral("q-property"),
+                                        legacyTypedPropertyMatch.captured(1).trimmed(),
+                                        attributes,
+                                        content);
+    }
+
     static const QRegularExpression objectPropertyRx(
         QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*$"));
     const QRegularExpressionMatch objectPropertyMatch = objectPropertyRx.match(trimmedHeader);
@@ -960,9 +1321,13 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
                                         content);
     }
 
-    if (trimmedHeader == QStringLiteral("q-layout") ||
+    if (trimmedHeader == QStringLiteral("q-array") ||
+        trimmedHeader == QStringLiteral("q-map") ||
+        trimmedHeader == QStringLiteral("q-model") ||
+        trimmedHeader == QStringLiteral("q-layout") ||
         trimmedHeader == QStringLiteral("q-row") ||
-        trimmedHeader == QStringLiteral("q-col")) {
+        trimmedHeader == QStringLiteral("q-col") ||
+        trimmedHeader == QStringLiteral("q-canvas")) {
         return new QHTMLAstNamedTypeNode(trimmedHeader,
                                         QString(),
                                         {},
@@ -992,7 +1357,8 @@ inline QHTMLAstNode *nodeFromStatement(const QString &statement)
     }
 
     static const QRegularExpression propertyRx(
-        QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*(.*?)\\s*$"));
+        QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*(.*?)\\s*$"),
+        QRegularExpression::DotMatchesEverythingOption);
     const QRegularExpressionMatch propertyMatch = propertyRx.match(statement);
     if (propertyMatch.hasMatch()) {
         QHash<QString, QString> attributes;
@@ -1048,14 +1414,29 @@ inline void QHTMLAstNode::scan(const QString &source)
     const QString cleanedSource = qhtml7_parser_detail::stripComments(source);
     int cursor = 0;
     while (cursor < cleanedSource.size()) {
-        while (cursor < cleanedSource.size() && cleanedSource.at(cursor).isSpace()) {
+        while (cursor < cleanedSource.size() &&
+               (cleanedSource.at(cursor).isSpace() ||
+                cleanedSource.at(cursor) == QLatin1Char(',') ||
+                cleanedSource.at(cursor) == QLatin1Char(';'))) {
             ++cursor;
         }
         if (cursor >= cleanedSource.size()) {
             break;
         }
 
-        const int openIndex = cleanedSource.indexOf(QLatin1Char('{'), cursor);
+        const qhtml7_parser_detail::StructuredValueStatement structuredStatement =
+            qhtml7_parser_detail::structuredValueStatementAt(cleanedSource, cursor);
+        if (structuredStatement.matched) {
+            if (QHTMLAstNode *node = qhtml7_parser_detail::nodeFromStatement(structuredStatement.statement)) {
+                appendAstChild(node);
+            } else {
+                appendAstChild(new QHTMLAstUnknownFragment(structuredStatement.statement));
+            }
+            cursor = structuredStatement.endIndex;
+            continue;
+        }
+
+        const int openIndex = qhtml7_parser_detail::findNextQHTMLBlockOpen(cleanedSource, cursor);
         if (openIndex < 0) {
             const QString fragment = cleanedSource.mid(cursor).trimmed();
             if (!fragment.isEmpty()) {
@@ -1064,12 +1445,13 @@ inline void QHTMLAstNode::scan(const QString &source)
             break;
         }
 
-        const int lineEndBeforeBlock = cleanedSource.indexOf(QLatin1Char('\n'), cursor);
-        if (lineEndBeforeBlock >= 0 && lineEndBeforeBlock < openIndex) {
-            const QString statement = cleanedSource.mid(cursor, lineEndBeforeBlock - cursor).trimmed();
+        const int statementBoundaryBeforeBlock =
+            qhtml7_parser_detail::findStatementBoundaryBeforeBlock(cleanedSource, cursor, openIndex);
+        if (statementBoundaryBeforeBlock >= 0 && statementBoundaryBeforeBlock < openIndex) {
+            const QString statement = cleanedSource.mid(cursor, statementBoundaryBeforeBlock - cursor).trimmed();
             if (QHTMLAstNode *node = qhtml7_parser_detail::nodeFromStatement(statement)) {
                 appendAstChild(node);
-                cursor = lineEndBeforeBlock + 1;
+                cursor = statementBoundaryBeforeBlock + 1;
                 continue;
             }
         }
@@ -1550,6 +1932,10 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
             dynamic_cast<QHTMLEventHandler *>(child) ||
             dynamic_cast<QHTMLConnect *>(child) ||
             dynamic_cast<QHTMLForNode *>(child) ||
+            dynamic_cast<QHTMLModelView *>(child) ||
+            dynamic_cast<QHTMLModel *>(child) ||
+            dynamic_cast<QHTMLArray *>(child) ||
+            dynamic_cast<QHTMLMap *>(child) ||
             dynamic_cast<QHTMLComponentSlot *>(child) ||
             dynamic_cast<QHTMLSlotDefault *>(child) ||
             dynamic_cast<QHTMLPropertyAssignment *>(child) ||
@@ -1613,11 +1999,11 @@ inline void QHTMLDomTree::cloneDefinitionMembers(QHTMLComponentInstance *instanc
                 }
             }
             if (!hasLocalProperty) {
-                QHash<QString, QString> clonedAttributes = property->attributes();
+                QHTMLProperty *clonedProperty = property->cloneProperty();
                 if (assignment) {
-                    clonedAttributes.insert(QStringLiteral("value"), assignment->value());
+                    clonedProperty->setValue(assignment->value());
                 }
-                instance->appendChild(new QHTMLProperty(property->qhtmlName(), clonedAttributes));
+                instance->appendChild(clonedProperty);
             }
             continue;
         }
@@ -1911,6 +2297,22 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("valueAtPath", &QHTMLJsonDocument::valueAtPathJs)
         .function("valuesLiteral", &QHTMLJsonDocument::valuesLiteralJs)
         .function("toJson", &QHTMLJsonDocument::toJsonJs);
+    class_<QHTMLArray, base<QHTMLTypedNode>>("QHTMLArray")
+        .function("arrayValue", &QHTMLArray::arrayValueJs, allow_raw_pointers())
+        .function("jsonDocument", &QHTMLArray::jsonDocumentJs, allow_raw_pointers())
+        .function("valuesLiteral", &QHTMLArray::valuesLiteralJs);
+    class_<QHTMLMap, base<QHTMLTypedNode>>("QHTMLMap")
+        .function("objectValue", &QHTMLMap::objectValueJs, allow_raw_pointers())
+        .function("jsonDocument", &QHTMLMap::jsonDocumentJs, allow_raw_pointers())
+        .function("value", &QHTMLMap::valueJs)
+        .function("keysLiteral", &QHTMLMap::keysLiteralJs)
+        .function("valuesLiteral", &QHTMLMap::valuesLiteralJs);
+    class_<QHTMLModel, base<QHTMLTypedNode>>("QHTMLModel")
+        .function("jsonDocument", &QHTMLModel::jsonDocumentJs, allow_raw_pointers())
+        .function("valuesLiteral", &QHTMLModel::valuesLiteralJs);
+    class_<QHTMLModelView, base<QHTMLTypedNode>>("QHTMLModelView")
+        .function("aliasName", &QHTMLModelView::aliasNameJs)
+        .function("modelDocument", &QHTMLModelView::modelDocumentJs, allow_raw_pointers());
     class_<QHTMLProperty, base<QHTMLTypedNode>>("QHTMLProperty")
         .function("value", &QHTMLProperty::valueJs)
         .function("setValue", &QHTMLProperty::setValueJs)
@@ -1978,6 +2380,13 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("direction", &QHTMLLayout::directionJs);
     class_<QHTMLRowLayout, base<QHTMLLayout>>("QHTMLRowLayout");
     class_<QHTMLColumnLayout, base<QHTMLLayout>>("QHTMLColumnLayout");
+    class_<QHTMLPainter, base<QHTMLTypedNode>>("QHTMLPainter")
+        .function("body", &QHTMLPainter::bodyJs)
+        .function("setBody", &QHTMLPainter::setBodyJs)
+        .function("paintHandler", &QHTMLPainter::paintHandlerJs, allow_raw_pointers());
+    class_<QHTMLCanvas, base<QHTMLTypedNode>>("QHTMLCanvas")
+        .function("paintBody", &QHTMLCanvas::paintBodyJs)
+        .function("paintHandler", &QHTMLCanvas::paintHandlerJs, allow_raw_pointers());
     class_<QHTMLComponentSlot, base<QHTMLTypedNode>>("QHTMLComponentSlot");
     class_<QHTMLSlotDefault, base<QHTMLTypedNode>>("QHTMLSlotDefault");
     class_<QHTMLStyle, base<QHTMLTypedNode>>("QHTMLStyle")

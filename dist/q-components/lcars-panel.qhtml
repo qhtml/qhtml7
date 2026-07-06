@@ -259,22 +259,22 @@ q-component lcars-linked-panel {
 
   div.lcars-linked-panel {
     a.side-link.one {
-      href: "${this.href1}"
+      href: this.href1
       text { ${this.label1} }
     }
 
     a.side-link.two {
-      href: "${this.href2}"
+      href: this.href2
       text { ${this.label2} }
     }
 
     a.side-link.three {
-      href: "${this.href3}"
+      href: this.href3
       text { ${this.label3} }
     }
 
     a.side-link.four {
-      href: "${this.href4}"
+      href: this.href4
       text { ${this.label4} }
     }
 

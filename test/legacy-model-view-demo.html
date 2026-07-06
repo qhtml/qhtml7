@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QHTML Legacy Model View Compatibility</title>
+  <script src="../dist/qhtml-wasm.js"></script>
+</head>
+<body>
+<q-html>
+q-import { ../dist/q-components.qhtml }
+
+q-component dynamicTabWidget {
+  q-tabs {
+    q-model-view {
+      model {
+        q-array {
+          q-map { name: "Tab 1", content: "hello world" },
+          q-map { name: "Tab 2", content: "test 123" }
+        }
+      }
+      as { tabObject }
+
+      q-tab {
+        name { div { text { ${tabObject.name} } } }
+        content { div { text { ${tabObject.content} } } }
+      }
+    }
+  }
+}
+
+dynamicTabWidget { }
+</q-html>
+</body>
+</html>
