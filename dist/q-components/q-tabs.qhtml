@@ -1,5 +1,14 @@
 q-component q-tab {
   q-property label: ""
+  q-property suppressUnslottedChildren: true
+
+  slot name {
+    text { ${this.label} }
+  }
+
+  slot body {
+    slot content { text { } }
+  }
 }
 
 q-component q-tabs {
@@ -59,81 +68,194 @@ q-component q-tabs {
   }
 
   q-default-theme tabDefaultTheme {
-    .container { tabsContainerStyle }
-    .tabbar { tabsBarStyle }
-    .tab-button { tabButtonStyle }
-    .body { tabsBodyStyle }
-    .tab { tabPanelStyle }
+    .q-tabs-container { tabsContainerStyle }
+    .q-tabs-bar { tabsBarStyle }
+    .q-tab-button { tabButtonStyle }
+    .q-tabs-body { tabsBodyStyle }
+    .q-tab-panel { tabPanelStyle }
   }
 
   function tabsRoot() {
-    return this && this.matches && this.matches("q-tabs") ? this : this.closest("q-tabs");
+    if (this && this.matches && this.matches("q-tabs")) {
+      return this;
+    }
+    if (this && this.closest) {
+      return this.closest("q-tabs");
+    }
+    return null;
+  }
+
+  function emptyList() {
+    return new Array();
+  }
+
+  function ownedElements(selector) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var out = new Array();
+    if (!tabs || !tabs.querySelectorAll) {
+      return out;
+    }
+    var nodes = tabs.querySelectorAll(selector);
+    for (var index = 0; index < nodes.length; index += 1) {
+      var element = nodes[index];
+      if (element && element.closest && element.closest("q-tabs") === tabs) {
+        out.push(element);
+      }
+    }
+    return out;
   }
 
   function tabButtons() {
-    return Array.from(this.querySelectorAll(".tab-button"));
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    if (!tabs || !tabs.ownedElements) {
+      return new Array();
+    }
+    return tabs.ownedElements(".q-tab-button");
   }
 
   function tabPanels() {
-    return Array.from(this.querySelectorAll(".tab"));
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    if (!tabs || !tabs.ownedElements) {
+      return new Array();
+    }
+    return tabs.ownedElements(".q-tab-panel");
   }
 
-  function showTab(name) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    if (!tabs) { return null; }
+  function numericTabIndex(value, count) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return -1;
+    }
+    numeric = Math.floor(numeric);
+    if (numeric < 0 || numeric >= count) {
+      return -1;
+    }
+    return numeric;
+  }
 
-    var requested = String(name == null ? "" : name);
+  function selectedIndexFor(requested, panels) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var items = panels || new Array();
+    var count = items.length || 0;
+    if (count <= 0) {
+      return -1;
+    }
+
+    if (typeof requested === "number") {
+      var requestedNumber = tabs.numericTabIndex(requested, count);
+      return requestedNumber >= 0 ? requestedNumber : 0;
+    }
+
+    var requestedText = String(requested == null ? "" : requested).trim();
+    if (!requestedText) {
+      var currentIndex = tabs.numericTabIndex(tabs.activeIndex, count);
+      return currentIndex >= 0 ? currentIndex : 0;
+    }
+
+    for (var byName = 0; byName < count; byName += 1) {
+      var panel = items[byName];
+      if (!panel) {
+        continue;
+      }
+      if (panel.getAttribute("tabName") === requestedText) {
+        return byName;
+      }
+      if (panel.getAttribute("name") === requestedText) {
+        return byName;
+      }
+      if (panel.id === requestedText) {
+        return byName;
+      }
+    }
+
+    var byIndex = tabs.numericTabIndex(requestedText, count);
+    return byIndex >= 0 ? byIndex : 0;
+  }
+
+  function applyActiveButtonState(button, selected) {
+    if (!button) {
+      return;
+    }
+    button.classList.toggle("active", !!selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+    button.setAttribute("tabindex", selected ? "0" : "-1");
+    button.style.background = selected ? "#ffffff" : "#e2e8f0";
+    button.style.color = selected ? "#0f172a" : "#334155";
+    button.style.borderColor = selected ? "#c7d8ef" : "#cbd5e1";
+  }
+
+  function applyActivePanelState(panel, selected) {
+    if (!panel) {
+      return;
+    }
+    panel.hidden = !selected;
+    panel.style.display = selected ? "block" : "none";
+    panel.setAttribute("aria-hidden", selected ? "false" : "true");
+  }
+
+  function emitChanged(activeIndex, activeName, activePanel) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    if (!tabs) {
+      return;
+    }
+    if (typeof tabs.changed === "function") {
+      tabs.changed(activeIndex, activeName || "");
+    }
+    if (typeof CustomEvent === "function" && tabs.dispatchEvent) {
+      var detail = new Object();
+      detail.activeIndex = activeIndex;
+      detail.name = activeName || "";
+      detail.panel = activePanel || null;
+
+      var options = new Object();
+      options.detail = detail;
+      options.bubbles = true;
+      tabs.dispatchEvent(new CustomEvent("q-tabs:changed", options));
+    }
+  }
+
+  function showTab(requested) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    if (!tabs) {
+      return null;
+    }
+
     var panels = tabs.tabPanels();
     var buttons = tabs.tabButtons();
-    var activePanel = null;
-    var activeIndex = 0;
+    var activeIndex = tabs.selectedIndexFor(requested, panels);
+    var activePanel = activeIndex >= 0 ? panels[activeIndex] : null;
+    var activeName = activePanel ? activePanel.getAttribute("tabName") : "";
 
-    panels.forEach(function(panel, index) {
-      var selected = panel.getAttribute("tabName") === requested || (!requested && index === 0);
-      panel.style.display = selected ? "block" : "none";
-      panel.setAttribute("aria-hidden", selected ? "false" : "true");
-      if (selected) {
-        activePanel = panel;
-        activeIndex = index;
-      }
-    });
-
-    buttons.forEach(function(button, index) {
-      var selected = index === activeIndex;
-      button.classList.toggle("active", selected);
-      button.setAttribute("aria-selected", selected ? "true" : "false");
-      button.setAttribute("tabindex", selected ? "0" : "-1");
-      button.style.background = selected ? "#ffffff" : "#e2e8f0";
-      button.style.color = selected ? "#0f172a" : "#334155";
-      button.style.borderColor = selected ? "#c7d8ef" : "#cbd5e1";
-    });
-
-    tabs.activeIndex = activeIndex;
-    tabs.setAttribute("q-tabs-active-index", String(activeIndex));
-    if (typeof tabs.changed === "function") {
-      tabs.changed(activeIndex, activePanel ? activePanel.getAttribute("tabName") : requested);
+    for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
+      tabs.applyActivePanelState(panels[panelIndex], panelIndex === activeIndex);
     }
-    if (typeof CustomEvent === "function") {
-      tabs.dispatchEvent(new CustomEvent("q-tabs:changed", {
-        detail: {
-          activeIndex: activeIndex,
-          name: activePanel ? activePanel.getAttribute("tabName") : requested,
-          panel: activePanel
-        },
-        bubbles: true
-      }));
+
+    for (var buttonIndex = 0; buttonIndex < buttons.length; buttonIndex += 1) {
+      tabs.applyActiveButtonState(buttons[buttonIndex], buttonIndex === activeIndex);
     }
+
+    if (activeIndex >= 0) {
+      tabs.activeIndex = activeIndex;
+      tabs.setAttribute("q-tabs-active-index", String(activeIndex));
+      tabs.setAttribute("q-tabs-active-name", activeName || "");
+    }
+
+    tabs.emitChanged(activeIndex, activeName, activePanel);
     return activePanel;
   }
 
   function refreshTabs() {
-    var panels = this.tabPanels();
-    var index = Number(this.activeIndex || 0);
-    if (!Number.isFinite(index) || index < 0 || index >= panels.length) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    if (!tabs) {
+      return new Array();
+    }
+    var panels = tabs.tabPanels();
+    var index = tabs.numericTabIndex(tabs.activeIndex, panels.length);
+    if (index < 0) {
       index = 0;
     }
-    var panel = panels[index] || null;
-    return this.showTab(panel ? panel.getAttribute("tabName") : "");
+    tabs.showTab(index);
+    return panels;
   }
 
   onready {
@@ -145,39 +267,35 @@ q-component q-tabs {
   }
 
   tabDefaultTheme {
-    div.container {
-      q-layout {
-        q-column {
-          q-row {
-            div.tabbar {
-              role: "tablist"
-              for (tab in this.tabs) {
-                button.tab-button {
-                  type: "button"
-                  role: "tab"
-                  tabName: "${tab.name}"
-                  aria-selected: "false"
-                  tabindex: "-1"
-                  text { ${tab.name} }
-                  onclick {
-                    var tabs = this.closest("q-tabs");
-                    if (tabs && typeof tabs.showTab === "function") {
-                      tabs.showTab(this.getAttribute("tabName"));
-                    }
-                  }
-                }
+    div.q-tabs-container.container {
+      div.q-tabs-bar.tabbar {
+        role: "tablist"
+        for (tab in this.tabs) {
+          button.q-tab-button.tab-button {
+            type: "button"
+            role: "tab"
+            tabName: "${tab.name}"
+            aria-selected: "false"
+            tabindex: "-1"
+            text { ${tab.name} }
+            onclick {
+              var tabs = this.closest("q-tabs");
+              if (tabs && typeof tabs.showTab === "function") {
+                tabs.showTab(this.getAttribute("tabName"));
               }
             }
           }
+        }
+      }
 
-          div.body {
-            for (tab in this.tabs) {
-              div.tab {
-                role: "tabpanel"
-                tabName: "${tab.name}"
-                qhtml("${tab.body}")
-              }
-            }
+      div.q-tabs-body.body {
+        for (tab in this.tabs) {
+          div.q-tab-panel.tab {
+            role: "tabpanel"
+            tabName: "${tab.name}"
+            aria-hidden: "true"
+            hidden: "true"
+            html { ${tab.body} }
           }
         }
       }
