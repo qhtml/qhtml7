@@ -18,6 +18,13 @@
 
 #include <string>
 
+inline constexpr const char QHTML_VERSION[] = "v7.3.3";
+
+inline std::string qhtmlVersionJs()
+{
+    return std::string(QHTML_VERSION);
+}
+
 class QHTMLAstNode;
 class QHTMLFunction;
 class QHTMLSignal;
@@ -272,6 +279,31 @@ public:
         return out;
     }
 
+    QHTMLNode *findDescendantByUUID(const QString &uuid) const
+    {
+        const QString wantedUUID = uuid.trimmed();
+        if (wantedUUID.isEmpty()) {
+            return nullptr;
+        }
+        for (QHTMLNode *child : children()) {
+            if (!child) {
+                continue;
+            }
+            if (child->qhtmlUUID() == wantedUUID) {
+                return child;
+            }
+            if (QHTMLNode *found = child->findDescendantByUUID(wantedUUID)) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    bool containsDescendantUUID(const QString &uuid) const
+    {
+        return findDescendantByUUID(uuid) != nullptr;
+    }
+
     void appendChild(QHTMLNode *child)
     {
         if (!child) {
@@ -364,6 +396,12 @@ public:
         return out;
     }
 
+    virtual QString renderHtmlInContext(const QHTMLNode *contextNode) const
+    {
+        Q_UNUSED(contextNode);
+        return renderHtml();
+    }
+
     std::string renderHtmlJs() const { return renderHtml().toStdString(); }
 
     static QString escapeText(const QString &value)
@@ -437,6 +475,17 @@ public:
 
     QString renderHtml() const override
     {
+        return renderHtmlForContext(nullptr);
+    }
+
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override
+    {
+        return renderHtmlForContext(contextNode);
+    }
+
+private:
+    QString renderHtmlForContext(const QHTMLNode *contextNode) const
+    {
         if (m_tagName.trimmed().isEmpty()) {
             return QHTMLDomNode::renderHtml();
         }
@@ -451,12 +500,13 @@ public:
         }
         out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
         out += QStringLiteral(">");
-        out += QHTMLDomNode::renderHtml();
+        for (QHTMLNode *child : children()) {
+            out += contextNode ? child->renderHtmlInContext(contextNode) : child->renderHtml();
+        }
         out += QStringLiteral("</") + m_tagName + QStringLiteral(">");
         return out;
     }
 
-private:
     QString m_tagName;
     QHash<QString, QString> m_attributes;
 };
@@ -916,12 +966,23 @@ public:
 
     QString renderHtml() const override
     {
+        return renderHtmlForContext(nullptr);
+    }
+
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override
+    {
+        return renderHtmlForContext(contextNode);
+    }
+
+private:
+    QString renderHtmlForContext(const QHTMLNode *contextNode) const
+    {
         QString out = QStringLiteral("<div qhtml-layout=\"") + escapeAttribute(keyword()) +
                       QStringLiteral("\" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) +
                       QStringLiteral("\" class=\"") + escapeAttribute(layoutClass()) +
                       QStringLiteral("\" style=\"") + escapeAttribute(layoutStyle()) +
                       QStringLiteral("\">");
-        out += renderLayoutChildren();
+        out += renderLayoutChildren(contextNode);
         out += QStringLiteral("</div>");
         return out;
     }
@@ -998,7 +1059,7 @@ protected:
         return QStringLiteral("flex:1 1 0;min-width:0;min-height:0;box-sizing:border-box;");
     }
 
-    QString renderLayoutChildren() const
+    QString renderLayoutChildren(const QHTMLNode *contextNode) const
     {
         QString out;
         for (QHTMLNode *child : children()) {
@@ -1006,11 +1067,11 @@ protected:
                 continue;
             }
             if (isLayoutNode(child)) {
-                out += child->renderHtml();
+                out += child->renderHtmlInContext(contextNode);
             } else {
                 out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
                        escapeAttribute(itemStyle()) + QStringLiteral("\">") +
-                       child->renderHtml() +
+                       child->renderHtmlInContext(contextNode) +
                        QStringLiteral("</div>");
             }
         }
@@ -1190,15 +1251,92 @@ public:
     }
     std::string slotNamesJs() const { return slotNames().toStdString(); }
 
+    QString findChildComponentsOfType(const QString &componentType) const
+    {
+        const QString wantedType = componentType.trimmed();
+        QJsonArray records;
+        if (wantedType.isEmpty()) {
+            return QStringLiteral("[]");
+        }
+
+        for (QHTMLNode *child : children()) {
+            QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(child);
+            if (!component || !component->definition()) {
+                continue;
+            }
+            if (component->definition()->qhtmlName() != wantedType &&
+                component->keyword() != wantedType &&
+                component->qhtmlName() != wantedType) {
+                continue;
+            }
+
+            QJsonObject record;
+            record.insert(QStringLiteral("type"), component->definition()->qhtmlName());
+            record.insert(QStringLiteral("id"), component->qhtmlUUID());
+            record.insert(QStringLiteral("name"), component->slotPlainText(QStringLiteral("name")));
+            record.insert(QStringLiteral("label"), component->slotPlainText(QStringLiteral("name")));
+            record.insert(QStringLiteral("body"), component->slotHtml(QStringLiteral("body"), QStringLiteral("content")));
+            record.insert(QStringLiteral("content"), component->slotHtml(QStringLiteral("content"), QStringLiteral("body")));
+            records.append(record);
+        }
+
+        return QString::fromUtf8(QJsonDocument(records).toJson(QJsonDocument::Compact));
+    }
+
+    std::string findChildComponentsOfTypeJs(const std::string &componentType) const
+    {
+        return findChildComponentsOfType(QString::fromStdString(componentType)).toStdString();
+    }
+
+private:
+    class SlotRenderContext
+    {
+    public:
+        SlotRenderContext withInstance(const QHTMLComponentInstance *instance) const
+        {
+            SlotRenderContext copy(*this);
+            if (instance) {
+                copy.m_stack.append(instance);
+            }
+            return copy;
+        }
+
+        const QHTMLComponentInstance *instanceForDefinitionUUID(const QString &definitionUUID) const
+        {
+            if (definitionUUID.isEmpty()) {
+                return nullptr;
+            }
+            for (int i = m_stack.size() - 1; i >= 0; --i) {
+                const QHTMLComponentInstance *candidate = m_stack.at(i);
+                if (candidate && candidate->componentDefinitionUUID() == definitionUUID) {
+                    return candidate;
+                }
+            }
+            return nullptr;
+        }
+
+    private:
+        QVector<const QHTMLComponentInstance *> m_stack;
+    };
+
+public:
     QString renderHtml() const override
+    {
+        SlotRenderContext context;
+        return renderHtmlWithContext(context);
+    }
+
+private:
+    QString renderHtmlWithContext(const SlotRenderContext &context) const
     {
         if (!m_definition) {
             return QHTMLTypedNode::renderHtml();
         }
 
         const QString tagName = m_definition->qhtmlName().trimmed();
+        const SlotRenderContext localContext = context.withInstance(this);
         if (tagName.isEmpty()) {
-            return m_definition->renderTemplateHtml() + QHTMLTypedNode::renderHtml();
+            return renderTemplateWithSlots(localContext) + renderUnslottedInstanceChildren(localContext);
         }
 
         QString out = QStringLiteral("<") + tagName;
@@ -1217,31 +1355,38 @@ public:
             out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
         }
         out += QStringLiteral(" component-definition=\"") + escapeAttribute(m_definition->qhtmlUUID()) + QStringLiteral("\"");
-        out += QStringLiteral(" component-instance=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\">");
-        out += renderTemplateWithSlots();
-        out += renderUnslottedInstanceChildren();
+        out += QStringLiteral(" component-instance=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
+        out += QStringLiteral(">");
+        out += renderTemplateWithSlots(localContext);
+        out += renderUnslottedInstanceChildren(localContext);
         out += QStringLiteral("</") + tagName + QStringLiteral(">");
         return out;
     }
 
-private:
     QVector<QHTMLComponentSlot *> collectSlots() const
     {
         QVector<QHTMLComponentSlot *> out;
-        collectSlotsFor(m_definition, out);
+        collectSlotsFor(m_definition, m_definition, out);
         return out;
     }
 
-    static void collectSlotsFor(QHTMLNode *node, QVector<QHTMLComponentSlot *> &out)
+    static void collectSlotsFor(QHTMLNode *node,
+                                QHTMLComponentDefinition *ownerDefinition,
+                                QVector<QHTMLComponentSlot *> &out)
     {
-        if (!node) {
+        if (!node || !ownerDefinition) {
+            return;
+        }
+        if (node != ownerDefinition && dynamic_cast<QHTMLComponentDefinition *>(node)) {
             return;
         }
         if (QHTMLComponentSlot *componentSlot = dynamic_cast<QHTMLComponentSlot *>(node)) {
-            out.append(componentSlot);
+            if (componentDefinitionOwnsNode(ownerDefinition, componentSlot)) {
+                out.append(componentSlot);
+            }
         }
         for (QHTMLNode *child : node->children()) {
-            collectSlotsFor(child, out);
+            collectSlotsFor(child, ownerDefinition, out);
         }
     }
 
@@ -1308,33 +1453,36 @@ private:
         return value;
     }
 
-    QString renderTemplateWithSlots() const
+    QString renderTemplateWithSlots(const SlotRenderContext &context) const
     {
-        return renderChildrenWithSlots(m_definition);
+        return renderChildrenWithSlots(m_definition, context);
     }
 
-    QString renderChildrenWithSlots(QHTMLNode *node) const
+    QString renderChildrenWithSlots(QHTMLNode *node, const SlotRenderContext &context) const
     {
         QString out;
         if (!node) {
             return out;
         }
         for (QHTMLNode *child : node->children()) {
-            out += renderNodeWithSlots(child);
+            out += renderNodeWithSlots(child, context);
         }
         return out;
     }
 
-    QString renderNodeWithSlots(QHTMLNode *node) const
+    QString renderNodeWithSlots(QHTMLNode *node, const SlotRenderContext &context) const
     {
         if (!node) {
             return QString();
         }
 
         if (QHTMLComponentSlot *componentSlot = dynamic_cast<QHTMLComponentSlot *>(node)) {
-            return renderSlot(componentSlot);
+            return renderSlot(componentSlot, context);
         }
         if (dynamic_cast<QHTMLSlotDefault *>(node)) {
+            return QString();
+        }
+        if (isRuntimeInstanceChild(node)) {
             return QString();
         }
         if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(node)) {
@@ -1349,7 +1497,7 @@ private:
             }
             out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(element->qhtmlUUID()) + QStringLiteral("\"");
             out += QStringLiteral(">");
-            out += renderChildrenWithSlots(element);
+            out += renderChildrenWithSlots(element, context);
             out += QStringLiteral("</") + element->tagName() + QStringLiteral(">");
             return out;
         }
@@ -1365,37 +1513,78 @@ private:
         }
 
         if (node->qhtmlType() == QStringLiteral("QHTMLForNode")) {
-            return node->renderHtml();
+            return node->renderHtmlInContext(this);
         }
 
-        if (node->qhtmlType() == QStringLiteral("QHTMLComponentInstance")) {
-            return node->renderHtml();
+        if (node->qhtmlType() == QStringLiteral("QHTMLLayout") ||
+            node->qhtmlType() == QStringLiteral("QHTMLRowLayout") ||
+            node->qhtmlType() == QStringLiteral("QHTMLColumnLayout")) {
+            return node->renderHtmlInContext(this);
         }
 
-        return renderChildrenWithSlots(node);
+        if (QHTMLComponentInstance *componentInstance = dynamic_cast<QHTMLComponentInstance *>(node)) {
+            return componentInstance->renderHtmlWithContext(context);
+        }
+
+        if (node->qhtmlType() == QStringLiteral("QHTMLStyleApplication")) {
+            QString out = QStringLiteral("<q-style-application qhtml-style=\"") + escapeAttribute(node->qhtmlName()) +
+                          QStringLiteral("\" qhtml-application=\"") + escapeAttribute(node->qhtmlUUID()) +
+                          QStringLiteral("\">");
+            out += renderChildrenWithSlots(node, context);
+            out += QStringLiteral("</q-style-application>");
+            return out;
+        }
+
+        if (node->qhtmlType() == QStringLiteral("QHTMLThemeApplication")) {
+            QString out = QStringLiteral("<q-theme-application qhtml-theme=\"") + escapeAttribute(node->qhtmlName()) +
+                          QStringLiteral("\" qhtml-application=\"") + escapeAttribute(node->qhtmlUUID()) +
+                          QStringLiteral("\">");
+            out += renderChildrenWithSlots(node, context);
+            out += QStringLiteral("</q-theme-application>");
+            return out;
+        }
+
+        return renderChildrenWithSlots(node, context);
     }
 
-    QString renderSlot(QHTMLComponentSlot *componentSlot) const
+    QString renderSlot(QHTMLComponentSlot *componentSlot, const SlotRenderContext &context) const
     {
         if (!componentSlot) {
             return QString();
         }
-        const QVector<QHTMLComponentSlot *> _slots = collectSlots();
-        if (_slots.size() == 1) {
-            const QString implicitContent = renderSingleSlotInstanceChildren(componentSlot->qhtmlName());
+
+        const QString ownerDefinitionUUID = componentSlotOwnerDefinitionUUID(componentSlot);
+        const QString currentDefinitionUUID = componentDefinitionUUID();
+        if (!ownerDefinitionUUID.isEmpty() && ownerDefinitionUUID != currentDefinitionUUID) {
+            const QHTMLComponentInstance *ownerInstance = context.instanceForDefinitionUUID(ownerDefinitionUUID);
+            if (ownerInstance && ownerInstance != this) {
+                return ownerInstance->renderOwnedSlot(componentSlot, context);
+            }
+        }
+        return renderOwnedSlot(componentSlot, context);
+    }
+
+    QString renderOwnedSlot(QHTMLComponentSlot *componentSlot, const SlotRenderContext &context) const
+    {
+        if (!componentSlot) {
+            return QString();
+        }
+        const QVector<QHTMLComponentSlot *> ownedSlots = collectSlots();
+        if (ownedSlots.size() == 1) {
+            const QString implicitContent = renderSingleSlotInstanceChildren(componentSlot->qhtmlName(), context);
             if (!implicitContent.isEmpty()) {
                 return implicitContent;
             }
         } else {
             if (QHTMLNode *overrideNode = slotOverride(componentSlot->qhtmlName())) {
-                return renderChildrenWithSlots(overrideNode);
+                return renderChildrenWithSlots(overrideNode, context);
             }
         }
         if (componentSlot->childCount() > 0) {
-            return renderChildrenWithSlots(componentSlot);
+            return renderChildrenWithSlots(componentSlot, context);
         }
         if (QHTMLSlotDefault *slotDefault = defaultForSlot(componentSlot->qhtmlName())) {
-            return renderChildrenWithSlots(slotDefault);
+            return renderChildrenWithSlots(slotDefault, context);
         }
         return QString();
     }
@@ -1413,7 +1602,7 @@ private:
         return nullptr;
     }
 
-    QString renderSingleSlotInstanceChildren(const QString &slotName) const
+    QString renderSingleSlotInstanceChildren(const QString &slotName, const SlotRenderContext &context) const
     {
         QString out;
         for (QHTMLNode *child : children()) {
@@ -1421,9 +1610,9 @@ private:
                 continue;
             }
             if (child->qhtmlName() == slotName) {
-                out += renderChildrenWithSlots(child);
+                out += renderChildrenWithSlots(child, context);
             } else {
-                out += renderNodeWithSlots(child);
+                out += renderNodeWithSlots(child, context);
             }
         }
         return out;
@@ -1431,25 +1620,93 @@ private:
 
     QHTMLSlotDefault *defaultForSlot(const QString &name) const
     {
-        return defaultForSlotIn(m_definition, name);
+        return defaultForSlotIn(m_definition, m_definition, name);
     }
 
-    static QHTMLSlotDefault *defaultForSlotIn(QHTMLNode *node, const QString &name)
+    static QHTMLSlotDefault *defaultForSlotIn(QHTMLNode *node,
+                                              QHTMLComponentDefinition *ownerDefinition,
+                                              const QString &name)
     {
-        if (!node) {
+        if (!node || !ownerDefinition) {
+            return nullptr;
+        }
+        if (node != ownerDefinition && dynamic_cast<QHTMLComponentDefinition *>(node)) {
             return nullptr;
         }
         if (QHTMLSlotDefault *slotDefault = dynamic_cast<QHTMLSlotDefault *>(node)) {
-            if (slotDefault->qhtmlName() == name) {
+            if (slotDefault->qhtmlName() == name && componentDefinitionOwnsNode(ownerDefinition, slotDefault)) {
                 return slotDefault;
             }
         }
         for (QHTMLNode *child : node->children()) {
-            if (QHTMLSlotDefault *found = defaultForSlotIn(child, name)) {
+            if (QHTMLSlotDefault *found = defaultForSlotIn(child, ownerDefinition, name)) {
                 return found;
             }
         }
         return nullptr;
+    }
+
+    static QHTMLNode *rootNodeFor(QHTMLNode *node)
+    {
+        if (!node) {
+            return nullptr;
+        }
+        QHTMLNode *root = node;
+        while (root->parent()) {
+            root = root->parent();
+        }
+        return root;
+    }
+
+    static bool findOwningDefinitionIn(QHTMLNode *node,
+                                       const QString &targetUUID,
+                                       QHTMLComponentDefinition **ownerDefinition)
+    {
+        if (!node || targetUUID.isEmpty()) {
+            return false;
+        }
+
+        bool containsTarget = node->qhtmlUUID() == targetUUID;
+        for (QHTMLNode *child : node->children()) {
+            if (findOwningDefinitionIn(child, targetUUID, ownerDefinition)) {
+                containsTarget = true;
+            }
+        }
+
+        if (containsTarget && ownerDefinition && !*ownerDefinition) {
+            if (QHTMLComponentDefinition *definition = dynamic_cast<QHTMLComponentDefinition *>(node)) {
+                *ownerDefinition = definition;
+            }
+        }
+        return containsTarget;
+    }
+
+    static QHTMLComponentDefinition *componentDefinitionOwningNode(QHTMLNode *node)
+    {
+        if (!node) {
+            return nullptr;
+        }
+        QHTMLNode *root = rootNodeFor(node);
+        if (!root) {
+            return nullptr;
+        }
+        QHTMLComponentDefinition *ownerDefinition = nullptr;
+        findOwningDefinitionIn(root, node->qhtmlUUID(), &ownerDefinition);
+        return ownerDefinition;
+    }
+
+    static bool componentDefinitionOwnsNode(QHTMLComponentDefinition *definition, QHTMLNode *node)
+    {
+        if (!definition || !node) {
+            return false;
+        }
+        return componentDefinitionOwningNode(node) == definition;
+    }
+
+    static QString componentSlotOwnerDefinitionUUID(QHTMLComponentSlot *componentSlot)
+    {
+        QHTMLComponentDefinition *ownerDefinition = componentDefinitionOwningNode(componentSlot);
+        return ownerDefinition ? ownerDefinition->qhtmlUUID() : QString();
     }
 
     static bool isRuntimeInstanceChild(QHTMLNode *child)
@@ -1479,9 +1736,12 @@ private:
         return child && !isRuntimeInstanceChild(child);
     }
 
-    QString renderUnslottedInstanceChildren() const
+    QString renderUnslottedInstanceChildren(const SlotRenderContext &context) const
     {
         QString out;
+        if (truthyValue(propertyValueForName(QStringLiteral("suppressUnslottedChildren")))) {
+            return out;
+        }
         if (collectSlots().size() == 1) {
             return out;
         }
@@ -1496,9 +1756,71 @@ private:
             if (!isRenderableInstanceChild(child)) {
                 continue;
             }
-            out += renderNodeWithSlots(child);
+            out += renderNodeWithSlots(child, context);
         }
         return out;
+    }
+
+    QString slotHtml(const QString &primaryName, const QString &fallbackName = QString()) const
+    {
+        SlotRenderContext context;
+        context = context.withInstance(this);
+        if (QHTMLNode *primary = slotOverride(primaryName)) {
+            return renderChildrenWithSlots(primary, context);
+        }
+        if (!fallbackName.isEmpty()) {
+            if (QHTMLNode *fallback = slotOverride(fallbackName)) {
+                return renderChildrenWithSlots(fallback, context);
+            }
+        }
+        return QString();
+    }
+
+    QString slotPlainText(const QString &primaryName, const QString &fallbackName = QString()) const
+    {
+        if (QHTMLNode *primary = slotOverride(primaryName)) {
+            return plainTextForNode(primary).trimmed();
+        }
+        if (!fallbackName.isEmpty()) {
+            if (QHTMLNode *fallback = slotOverride(fallbackName)) {
+                return plainTextForNode(fallback).trimmed();
+            }
+        }
+        const QString label = propertyValueForName(QStringLiteral("label")).trimmed();
+        if (!label.isEmpty()) {
+            return label;
+        }
+        return qhtmlName();
+    }
+
+    static QString plainTextForNode(QHTMLNode *node)
+    {
+        if (!node) {
+            return QString();
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return text->value();
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return html->value().remove(QRegularExpression(QStringLiteral("<[^>]*>")));
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return unknown->value();
+        }
+        QString out;
+        for (QHTMLNode *child : node->children()) {
+            out += plainTextForNode(child);
+        }
+        return out;
+    }
+
+    static bool truthyValue(QString value)
+    {
+        value = htmlAttributeValue(value).trimmed().toLower();
+        return value == QStringLiteral("1") ||
+               value == QStringLiteral("true") ||
+               value == QStringLiteral("yes") ||
+               value == QStringLiteral("on");
     }
 
     QString interpolateInstanceText(QString value) const
@@ -1533,6 +1855,21 @@ private:
         if (name.isEmpty()) {
             return QString();
         }
+        const QVector<QHTMLNode *> localChildren = children();
+        for (int i = localChildren.size() - 1; i >= 0; --i) {
+            QHTMLNode *child = localChildren.at(i);
+            if (!child || child->qhtmlName() != name) {
+                continue;
+            }
+            if (child->qhtmlType() == QStringLiteral("QHTMLProperty")) {
+                if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(child)) {
+                    return htmlAttributeValue(typed->attributes().value(QStringLiteral("value")));
+                }
+            }
+            if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                return htmlAttributeValue(assignment->value());
+            }
+        }
         for (QHTMLNode *child : children()) {
             if (!child || child->qhtmlName() != name || child->qhtmlType() != QStringLiteral("QHTMLProperty")) {
                 continue;
@@ -1546,7 +1883,6 @@ private:
 
     QHTMLComponentDefinition *m_definition = nullptr;
 };
-
 class QHTMLArrayNode final : public QHTMLNode
 {
 public:
@@ -2751,6 +3087,7 @@ public:
     void setValue(const QString &value)
     {
         m_value = value;
+        setAttribute(QStringLiteral("value"), value);
         delete m_valueNode;
         delete m_legacyValueNode;
         m_legacyValueNode = nullptr;
@@ -2971,8 +3308,19 @@ public:
 
     QString renderHtml() const override
     {
+        return renderHtmlForContext(nullptr);
+    }
+
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override
+    {
+        return renderHtmlForContext(contextNode);
+    }
+
+private:
+    QString renderHtmlForContext(const QHTMLNode *contextNode) const
+    {
         QString out = QStringLiteral("<!--qhtml-for-start:") + qhtmlUUID() + QStringLiteral("-->");
-        const QStringList values = collectionValues();
+        const QStringList values = collectionValues(contextNode);
         for (const QString &value : values) {
             for (QHTMLNode *child : children()) {
                 out += renderNodeForValue(child, value);
@@ -2982,10 +3330,9 @@ public:
         return out;
     }
 
-private:
-    QStringList collectionValues() const
+    QStringList collectionValues(const QHTMLNode *contextNode) const
     {
-        if (QHTMLProperty *property = findCollectionProperty()) {
+        if (QHTMLProperty *property = findCollectionProperty(contextNode)) {
             if (QHTMLJsonDocument *document = dynamic_cast<QHTMLJsonDocument *>(property->structuredValue())) {
                 if (document->isArray()) {
                     return document->arrayValues();
@@ -2998,16 +3345,29 @@ private:
                 }
                 return out;
             }
+            const QString evaluated = evaluateCollectionExpression(property->value(), contextNode);
+            if (!evaluated.isEmpty()) {
+                return valuesFromLiteral(evaluated);
+            }
             return valuesFromLiteral(property->value());
+        }
+        const QString evaluated = evaluateCollectionExpression(m_collectionExpression, contextNode);
+        if (!evaluated.isEmpty()) {
+            return valuesFromLiteral(evaluated);
         }
         return valuesFromLiteral(m_collectionExpression);
     }
 
-    QHTMLProperty *findCollectionProperty() const
+    QHTMLProperty *findCollectionProperty(const QHTMLNode *contextNode) const
     {
         const QString name = collectionPropertyName();
         if (name.isEmpty()) {
             return nullptr;
+        }
+        if (contextNode) {
+            if (QHTMLProperty *property = findPropertyInChildren(const_cast<QHTMLNode *>(contextNode), name)) {
+                return property;
+            }
         }
         for (QHTMLNode *scope = parent(); scope; scope = scope->parent()) {
             if (QHTMLProperty *property = findPropertyInChildren(scope, name)) {
@@ -3043,6 +3403,24 @@ private:
             expression = expression.left(dot).trimmed();
         }
         return expression;
+    }
+
+    static QString evaluateCollectionExpression(QString expression, const QHTMLNode *contextNode)
+    {
+        expression = expression.trimmed();
+        if (expression.startsWith(QStringLiteral("this."))) {
+            expression = expression.mid(5).trimmed();
+        }
+
+        static const QRegularExpression findChildrenRx(
+            QStringLiteral("^findChildComponentsOfType\\s*\\(\\s*[\"']([^\"']+)[\"']\\s*\\)\\s*$"));
+        const QRegularExpressionMatch match = findChildrenRx.match(expression);
+        if (!match.hasMatch()) {
+            return QString();
+        }
+
+        const QHTMLComponentInstance *component = dynamic_cast<const QHTMLComponentInstance *>(contextNode);
+        return component ? component->findChildComponentsOfType(match.captured(1).trimmed()) : QStringLiteral("[]");
     }
 
     static QStringList valuesFromLiteral(QString literal)
@@ -3163,10 +3541,22 @@ private:
                     out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(interpolate(value, loopValue)) + QStringLiteral("\"");
                 }
             }
+            for (QHTMLNode *child : element->children()) {
+                QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+                if (!assignment || assignment->qhtmlName().isEmpty()) {
+                    continue;
+                }
+                out += QStringLiteral(" ") + assignment->qhtmlName() + QStringLiteral("=\"") +
+                       escapeAttribute(interpolate(normalizeLoopValue(assignment->value()), loopValue)) +
+                       QStringLiteral("\"");
+            }
             out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(element->qhtmlUUID()) + QStringLiteral("\"");
             out += QStringLiteral(" qhtml-for-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
             out += QStringLiteral(">");
             for (QHTMLNode *child : element->children()) {
+                if (dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                    continue;
+                }
                 out += renderNodeForValue(child, loopValue);
             }
             out += QStringLiteral("</") + element->tagName() + QStringLiteral(">");

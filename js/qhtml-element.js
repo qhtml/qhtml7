@@ -3,6 +3,7 @@
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const ELEMENT_NAME = "q-html";
+  const QHTML_VERSION = "v7.3.3";
   const QHTML_IMPORT_MAX_PER_RESOURCE_DEFAULT = 100;
   let activePropertyTransactionId = "";
   let propertyTransactionCounter = 0;
@@ -840,17 +841,26 @@
   }
 
   function eventHandlerExecution(parameters, args) {
-    const names = Array.isArray(parameters) ? parameters.slice() : [];
-    const values = Array.isArray(args) ? args.slice() : [];
-    const used = new Set(names);
-    const eventArg = values.length > 0 ? values[0] : null;
+    const sourceNames = Array.isArray(parameters) ? parameters.slice() : [];
+    const sourceValues = Array.isArray(args) ? args.slice() : [];
+    const names = [];
+    const values = [];
+    const used = new Set();
+
     const add = function (name, value) {
-      if (!used.has(name)) {
-        used.add(name);
-        names.push(name);
-        values.push(value);
+      if (!isValidContextIdentifier(name) || used.has(name)) {
+        return;
       }
+      used.add(name);
+      names.push(name);
+      values.push(value);
     };
+
+    sourceNames.forEach((name, index) => {
+      add(name, index < sourceValues.length ? sourceValues[index] : undefined);
+    });
+
+    const eventArg = sourceValues.length > 0 ? sourceValues[0] : null;
     add("event", eventArg);
     add("e", eventArg);
     add("detail", eventArg && typeof eventArg === "object" ? eventArg.detail : undefined);
@@ -865,6 +875,8 @@
       }
       const root =
         rootOverride ||
+        (registry && registry.rootElement && typeof registry.rootElement.querySelectorAll === "function" ? registry.rootElement : null) ||
+        (domElement && domElement.closest && domElement.closest(ELEMENT_NAME)) ||
         (domElement && domElement.ownerDocument) ||
         (registry && registry.rootElement && registry.rootElement.ownerDocument) ||
         document;
@@ -887,10 +899,52 @@
     };
   }
 
+
+  function addDomElementContextBindings(add, domElement, registry) {
+    if (typeof add !== "function") {
+      return;
+    }
+
+    const addElement = function (name, element) {
+      if (!name || !element || !isDomElementLike(element)) {
+        return;
+      }
+      add(String(name || "").trim(), element);
+    };
+
+    if (registry && registry.elementsByUuid) {
+      registry.elementsByUuid.forEach((element) => {
+        const node = element && element.qhtmlNode ? element.qhtmlNode : null;
+        const nodeName = qhtmlNodeName(node);
+        addElement(nodeName, element);
+      });
+    }
+
+    const rootElement =
+      (registry && registry.rootElement) ||
+      (domElement && domElement.closest && domElement.closest(ELEMENT_NAME)) ||
+      domElement ||
+      null;
+    const doc =
+      (rootElement && rootElement.ownerDocument) ||
+      (domElement && domElement.ownerDocument) ||
+      (typeof document !== "undefined" ? document : null);
+    const queryRoot = rootElement && typeof rootElement.querySelectorAll === "function" ? rootElement : doc;
+    if (!queryRoot || typeof queryRoot.querySelectorAll !== "function") {
+      return;
+    }
+
+    queryRoot.querySelectorAll("[id], [name]").forEach((element) => {
+      addElement(element.getAttribute("id"), element);
+      addElement(element.getAttribute("name"), element);
+    });
+  }
+
   function executionContextFor(domElement, registry, parameterNames) {
     const names = [];
     const values = [];
     const used = new Set(parameterNames || []);
+    const sourceRegistry = registry || (domElement && domElement.__qhtmlRegistry);
     const add = function (name, value) {
       if (!isValidContextIdentifier(name) || used.has(name)) {
         return;
@@ -899,11 +953,33 @@
       names.push(name);
       values.push(value);
     };
-    const sourceRegistry = registry || (domElement && domElement.__qhtmlRegistry);
+    const reserve = function (name, value) {
+      if (!isValidContextIdentifier(name)) {
+        return;
+      }
+      const existingIndex = names.indexOf(name);
+      if (existingIndex >= 0) {
+        values[existingIndex] = value;
+        used.add(name);
+        return;
+      }
+      if (used.has(name)) {
+        return;
+      }
+      used.add(name);
+      names.push(name);
+      values.push(value);
+    };
+
+    // Runtime helpers must be injected before user/DOM symbols so they cannot be
+    // shadowed by an element id/name or a registry entry with the same identifier.
+    reserve("$", createQHTMLSelectorHelper(domElement, sourceRegistry));
+
     if (sourceRegistry) {
       if (sourceRegistry.elementsByName) {
         sourceRegistry.elementsByName.forEach((element, name) => add(name, element));
       }
+      addDomElementContextBindings(add, domElement, sourceRegistry);
       if (sourceRegistry.componentDefinitionsByName) {
         sourceRegistry.componentDefinitionsByName.forEach((definition, name) => add(name, definition));
       }
@@ -923,14 +999,36 @@
         sourceRegistry.paintersByName.forEach((painter, name) => add(name, painter));
       }
     }
-    add("$", createQHTMLSelectorHelper(domElement, sourceRegistry));
+    return { names, values };
+  }
+
+  function normalizeScriptInvocation(domElement, registry, parameters, args) {
+    const names = Array.isArray(parameters) ? parameters.slice() : splitList(parameters);
+    const values = Array.isArray(args) ? args.slice() : [];
+    const sourceRegistry = registry || (domElement && domElement.__qhtmlRegistry) || null;
+    const helpers = {
+      "$": createQHTMLSelectorHelper(domElement, sourceRegistry)
+    };
+
+    Object.keys(helpers).forEach((name) => {
+      const parameterIndex = names.indexOf(name);
+      if (parameterIndex < 0) {
+        return;
+      }
+      while (values.length <= parameterIndex) {
+        values.push(undefined);
+      }
+      values[parameterIndex] = helpers[name];
+    });
+
     return { names, values };
   }
 
   function executeScriptBody(domElement, parameters, args, body, registry) {
-    const context = executionContextFor(domElement, registry, parameters);
-    const callable = new Function(...parameters, ...context.names, String(body || ""));
-    return callable.apply(domElement, [...(args || []), ...context.values]);
+    const invocation = normalizeScriptInvocation(domElement, registry, parameters, args);
+    const context = executionContextFor(domElement, registry, invocation.names);
+    const callable = new Function(...invocation.names, ...context.names, String(body || ""));
+    return callable.apply(domElement, [...invocation.values, ...context.values]);
   }
 
   function executeFunctionBody(domElement, functionNode, args, body, signalContext, registry) {
@@ -1399,6 +1497,10 @@
     if (typeof domElement[signalName] !== "function") {
       domElement[signalName] = createDomSignal(domElement, signalName, propertyNode);
       domElement[signalName].__qhtmlPropertyNode = propertyNode;
+    }
+    const normalizedSignalName = signalName.toLowerCase();
+    if (normalizedSignalName && normalizedSignalName !== signalName && typeof domElement[normalizedSignalName] !== "function") {
+      domElement[normalizedSignalName] = domElement[signalName];
     }
     const definitionUuid = domElement.getAttribute && domElement.getAttribute("component-definition");
     if (definitionUuid && registry && registry.futurePropertySignalConnections) {
@@ -2504,6 +2606,20 @@
     reapplyPaintTargetsForElement(domElement, registry);
   }
 
+  function isInlineParentStyleNode(styleNode) {
+    if (!styleNode || qhtmlNodeType(styleNode) !== "QHTMLStyle") {
+      return false;
+    }
+    const styleName = qhtmlNodeName(styleNode);
+    if (String(styleName || "").trim()) {
+      return false;
+    }
+    if (typeof styleNode.keyword === "function") {
+      return String(styleNode.keyword() || "").trim() === "style";
+    }
+    return true;
+  }
+
   function applyInlineChildStyles(domElement, qhtmlNode, registry) {
     if (!domElement || !qhtmlNode) {
       return;
@@ -2511,8 +2627,8 @@
     const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
     for (let index = 0; index < count; index += 1) {
       const child = qhtmlNode.childAt(index);
-      if (qhtmlNodeType(child) === "QHTMLStyle") {
-        applyQHTMLStyle(domElement, child, { registry });
+      if (isInlineParentStyleNode(child)) {
+        applyQHTMLStyle(domElement, child, { registry, track: false });
       }
     }
   }
@@ -3903,7 +4019,10 @@
   }
 
   globalScope.QHTML7 = Object.assign(globalScope.QHTML7 || {}, {
+    QHTML_VERSION,
     QHTMLElement,
+    qhtmlVersion: QHTML_VERSION,
+    version: QHTML_VERSION,
     parse(source) {
       return instantiateParserTree(source).tree;
     },

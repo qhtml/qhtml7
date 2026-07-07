@@ -1,157 +1,186 @@
-q-default-theme q-tabs-theme {
-  q-tabs {
-    q-style {
-      display: block;
-      boxSizing: border-box;
-      color: #0f172a;
-      fontFamily: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-  }
-
-  .q-tabs-container {
-    q-style {
-      display: grid;
-      gridTemplateRows: auto minmax(0, 1fr);
-      gridAutoColumns: max-content;
-      alignItems: stretch;
-      boxSizing: border-box;
-      width: 100%;
-      minHeight: 8rem;
-      overflow: hidden;
-      backgroundColor: #eef3fb;
-      color: #0f172a;
-      border: 1px solid #c7d8ef;
-      borderRadius: 10px;
-    }
-  }
-
-  q-tab {
-    q-style {
-      display: contents;
-    }
-  }
-
-  .q-tab-button {
-    q-style {
-      gridRow: 1;
-      appearance: none;
-      padding: 7px 12px;
-      margin: 4px 0 4px 4px;
-      backgroundColor: #e2e8f0;
-      color: #0f172a;
-      border: 1px solid #c7d8ef;
-      borderRadius: 7px;
-      fontSize: 14px;
-      lineHeight: 1.1;
-      cursor: pointer;
-    }
-  }
-
-  .q-tab-panel {
-    q-style {
-      gridRow: 2;
-      gridColumn: 1 / -1;
-      boxSizing: border-box;
-      minHeight: 5rem;
-      padding: 10px;
-      margin: 0 10px 10px 10px;
-      backgroundColor: rgba(255, 255, 255, 0.55);
-      color: inherit;
-      border: 1px solid #d7e2f1;
-      borderRadius: 8px;
-    }
-  }
-}
-
 q-component q-tab {
   q-property label: ""
-  q-property name: ""
-
-  q-slot-default name {
-    text { ${this.label} }
-  }
-
-  q-slot-default content {
-    html { &nbsp; }
-  }
-
-  function tabs() {
-    return this.closest("q-tabs");
-  }
-
-  function button() {
-    return this.querySelector(".q-tab-button");
-  }
-
-  function panel() {
-    return this.querySelector(".q-tab-panel");
-  }
-
-  function title() {
-    return String(this.button().textContent || this.label || this.name || "Tab").trim();
-  }
-
-  function activate() {
-    return this.tabs().showTab(this);
-  }
-
-  function setActive(active) {
-    this.setAttribute("q-tab-active", active ? "1" : "0");
-    this.panel().style.display = active ? "block" : "none";
-    this.button().setAttribute("aria-selected", active ? "true" : "false");
-    this.button().style.backgroundColor = active ? "#1d4ed8" : "#e2e8f0";
-    this.button().style.color = active ? "#ffffff" : "#0f172a";
-    this.button().style.borderColor = active ? "#1e40af" : "#c7d8ef";
-    return this;
-  }
-
-  button.q-tab-button {
-    type: "button"
-    role: "tab"
-    onclick {
-      this.closest("q-tab").activate();
-    }
-    slot { name }
-  }
-
-  div.q-tab-panel {
-    role: "tabpanel"
-    slot { content }
-  }
 }
 
 q-component q-tabs {
   q-property activeIndex: 0
+  q-property suppressUnslottedChildren: true
+  q-property tabs: this.findChildComponentsOfType("q-tab")
 
-  q-signal changed(index, tab)
+  q-signal changed(index, name)
 
-  function tabs() {
-    return Array.from(this.querySelectorAll(".q-tabs-container > q-tab"));
+  q-style tabsContainerStyle {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 8rem;
+    overflow: hidden;
+    background: #eef3fb;
+    color: #0f172a;
+    border: 1px solid #c7d8ef;
+    border-radius: 8px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
-  function showTab(tabOrIndex) {
-    const tabs = this.tabs();
-    const requested = typeof tabOrIndex === "number" ? tabOrIndex : tabs.indexOf(tabOrIndex);
-    const activeIndex = Math.max(0, Math.min(tabs.length - 1, requested));
-    tabs.forEach((tab, index) => tab.setActive(index === activeIndex));
-    this.activeIndex = activeIndex;
-    this.setAttribute("q-tabs-active-index", String(activeIndex));
-    this.changed(activeIndex, tabs[activeIndex]);
-    return tabs[activeIndex];
+  q-style tabsBarStyle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    box-sizing: border-box;
+    padding: 4px 4px 0 4px;
+    border-bottom: 1px solid #c7d8ef;
+    background: #e2e8f0;
+  }
+
+  q-style tabButtonStyle {
+    appearance: none;
+    padding: 8px 14px;
+    background: #e2e8f0;
+    color: #0f172a;
+    border: 1px solid #c7d8ef;
+    border-bottom-color: transparent;
+    border-radius: 6px 6px 0 0;
+    font-size: 14px;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  q-style tabsBodyStyle {
+    box-sizing: border-box;
+    min-height: 5rem;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.64);
+  }
+
+  q-style tabPanelStyle {
+    display: none;
+    box-sizing: border-box;
+    min-height: 4rem;
+  }
+
+  q-default-theme tabDefaultTheme {
+    .container { tabsContainerStyle }
+    .tabbar { tabsBarStyle }
+    .tab-button { tabButtonStyle }
+    .body { tabsBodyStyle }
+    .tab { tabPanelStyle }
+  }
+
+  function tabsRoot() {
+    return this && this.matches && this.matches("q-tabs") ? this : this.closest("q-tabs");
+  }
+
+  function tabButtons() {
+    return Array.from(this.querySelectorAll(".tab-button"));
+  }
+
+  function tabPanels() {
+    return Array.from(this.querySelectorAll(".tab"));
+  }
+
+  function showTab(name) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    if (!tabs) { return null; }
+
+    var requested = String(name == null ? "" : name);
+    var panels = tabs.tabPanels();
+    var buttons = tabs.tabButtons();
+    var activePanel = null;
+    var activeIndex = 0;
+
+    panels.forEach(function(panel, index) {
+      var selected = panel.getAttribute("tabName") === requested || (!requested && index === 0);
+      panel.style.display = selected ? "block" : "none";
+      panel.setAttribute("aria-hidden", selected ? "false" : "true");
+      if (selected) {
+        activePanel = panel;
+        activeIndex = index;
+      }
+    });
+
+    buttons.forEach(function(button, index) {
+      var selected = index === activeIndex;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.setAttribute("tabindex", selected ? "0" : "-1");
+      button.style.background = selected ? "#ffffff" : "#e2e8f0";
+      button.style.color = selected ? "#0f172a" : "#334155";
+      button.style.borderColor = selected ? "#c7d8ef" : "#cbd5e1";
+    });
+
+    tabs.activeIndex = activeIndex;
+    tabs.setAttribute("q-tabs-active-index", String(activeIndex));
+    if (typeof tabs.changed === "function") {
+      tabs.changed(activeIndex, activePanel ? activePanel.getAttribute("tabName") : requested);
+    }
+    if (typeof CustomEvent === "function") {
+      tabs.dispatchEvent(new CustomEvent("q-tabs:changed", {
+        detail: {
+          activeIndex: activeIndex,
+          name: activePanel ? activePanel.getAttribute("tabName") : requested,
+          panel: activePanel
+        },
+        bubbles: true
+      }));
+    }
+    return activePanel;
   }
 
   function refreshTabs() {
-    return this.showTab(Number(this.activeIndex));
+    var panels = this.tabPanels();
+    var index = Number(this.activeIndex || 0);
+    if (!Number.isFinite(index) || index < 0 || index >= panels.length) {
+      index = 0;
+    }
+    var panel = panels[index] || null;
+    return this.showTab(panel ? panel.getAttribute("tabName") : "");
   }
 
-  onReady {
+  onready {
     this.refreshTabs();
   }
 
-  q-tabs-theme {
-    div.q-tabs-container {
-      role: "tablist"
-      slot { content }
+  onactiveindexchanged {
+    this.refreshTabs();
+  }
+
+  tabDefaultTheme {
+    div.container {
+      q-layout {
+        q-column {
+          q-row {
+            div.tabbar {
+              role: "tablist"
+              for (tab in this.tabs) {
+                button.tab-button {
+                  type: "button"
+                  role: "tab"
+                  tabName: "${tab.name}"
+                  aria-selected: "false"
+                  tabindex: "-1"
+                  text { ${tab.name} }
+                  onclick {
+                    var tabs = this.closest("q-tabs");
+                    if (tabs && typeof tabs.showTab === "function") {
+                      tabs.showTab(this.getAttribute("tabName"));
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          div.body {
+            for (tab in this.tabs) {
+              div.tab {
+                role: "tabpanel"
+                tabName: "${tab.name}"
+                qhtml("${tab.body}")
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -158,6 +158,7 @@ protected:
             QStringLiteral("q-layout"),
             QStringLiteral("q-row"),
             QStringLiteral("q-col"),
+            QStringLiteral("q-column"),
             QStringLiteral("q-connect"),
             QStringLiteral("for"),
             QStringLiteral("q-import"),
@@ -171,6 +172,7 @@ protected:
             QStringLiteral("function"),
             QStringLiteral("q-event-handler"),
             QStringLiteral("slot"),
+            QStringLiteral("q-slot"),
             QStringLiteral("q-slot-default"),
             QStringLiteral("html"),
             QStringLiteral("text")
@@ -339,7 +341,7 @@ private:
         if (qhtmlKeyword == QStringLiteral("q-signal")) {
             return new QHTMLSignal(qhtmlName, m_attributes);
         }
-        if (qhtmlKeyword == QStringLiteral("slot")) {
+        if (qhtmlKeyword == QStringLiteral("slot") || qhtmlKeyword == QStringLiteral("q-slot")) {
             return new QHTMLComponentSlot(qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("q-slot-default")) {
@@ -393,7 +395,7 @@ private:
         if (qhtmlKeyword == QStringLiteral("q-row")) {
             return new QHTMLRowLayout(qhtmlName, m_attributes);
         }
-        if (qhtmlKeyword == QStringLiteral("q-col")) {
+        if (qhtmlKeyword == QStringLiteral("q-col") || qhtmlKeyword == QStringLiteral("q-column")) {
             return new QHTMLColumnLayout(qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("for")) {
@@ -1246,7 +1248,7 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
         return new QHTMLAstUnknownFragment(content);
     }
 
-    if (trimmedHeader == QStringLiteral("slot")) {
+    if (trimmedHeader == QStringLiteral("slot") || trimmedHeader == QStringLiteral("q-slot")) {
         const QString slotName = content.trimmed();
         if (!slotName.isEmpty() && isKeywordToken(slotName)) {
             return new QHTMLAstNamedTypeNode(QStringLiteral("slot"), slotName, {}, QString());
@@ -1314,6 +1316,13 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
                                         content);
     }
 
+    if (trimmedHeader == QStringLiteral("style")) {
+        return new QHTMLAstNamedTypeNode(QStringLiteral("style"),
+                                        QString(),
+                                        {},
+                                        content);
+    }
+
     if (trimmedHeader == QStringLiteral("q-import") || trimmedHeader == QStringLiteral("q-require")) {
         return new QHTMLAstNamedTypeNode(trimmedHeader,
                                         QString(),
@@ -1327,6 +1336,7 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
         trimmedHeader == QStringLiteral("q-layout") ||
         trimmedHeader == QStringLiteral("q-row") ||
         trimmedHeader == QStringLiteral("q-col") ||
+        trimmedHeader == QStringLiteral("q-column") ||
         trimmedHeader == QStringLiteral("q-canvas")) {
         return new QHTMLAstNamedTypeNode(trimmedHeader,
                                         QString(),
@@ -1350,10 +1360,62 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
     return new QHTMLAstUnknownFragment(trimmedHeader + QStringLiteral(" { ") + content + QStringLiteral(" }"));
 }
 
+inline bool appendLegacyPropertyList(QHTMLAstNode *parent, const QString &header, const QString &content)
+{
+    if (!parent || header.trimmed() != QStringLiteral("q-property")) {
+        return false;
+    }
+
+    const QStringList names = splitWords(content.trimmed());
+    if (names.isEmpty()) {
+        return false;
+    }
+
+    for (const QString &name : names) {
+        if (!isKeywordToken(name)) {
+            return false;
+        }
+    }
+
+    for (const QString &name : names) {
+        parent->appendAstChild(new QHTMLAstNamedTypeNode(QStringLiteral("q-property"),
+                                                        name,
+                                                        {},
+                                                        QString()));
+    }
+    return true;
+}
+
+inline QString unquoteQHTMLCallArgument(QString value)
+{
+    value = value.trimmed();
+    if (value.size() >= 2) {
+        const QChar first = value.at(0);
+        const QChar last = value.at(value.size() - 1);
+        if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+            (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+            (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+            return value.mid(1, value.size() - 2);
+        }
+    }
+    return value;
+}
+
 inline QHTMLAstNode *nodeFromStatement(const QString &statement)
 {
     if (statement.trimmed() == QStringLiteral(";")) {
         return nullptr;
+    }
+
+    static const QRegularExpression qhtmlCallRx(
+        QStringLiteral("^\\s*qhtml\\s*\\((.*)\\)\\s*$"),
+        QRegularExpression::DotMatchesEverythingOption);
+    const QRegularExpressionMatch qhtmlCallMatch = qhtmlCallRx.match(statement);
+    if (qhtmlCallMatch.hasMatch()) {
+        return new QHTMLAstAnonNode(QStringLiteral("html"),
+                                    {},
+                                    unquoteQHTMLCallArgument(qhtmlCallMatch.captured(1).trimmed()),
+                                    false);
     }
 
     static const QRegularExpression propertyRx(
@@ -1464,7 +1526,9 @@ inline void QHTMLAstNode::scan(const QString &source)
         }
 
         const QString content = cleanedSource.mid(openIndex + 1, closeIndex - openIndex - 1);
-        appendAstChild(qhtml7_parser_detail::nodeFromHeader(header, content));
+        if (!qhtml7_parser_detail::appendLegacyPropertyList(this, header, content)) {
+            appendAstChild(qhtml7_parser_detail::nodeFromHeader(header, content));
+        }
         cursor = closeIndex + 1;
     }
 }
@@ -2174,6 +2238,11 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     using emscripten::allow_raw_pointers;
     using emscripten::base;
     using emscripten::class_;
+    using emscripten::constant;
+    using emscripten::function;
+
+    constant("QHTML_VERSION", std::string(QHTML_VERSION));
+    function("qhtmlVersion", &qhtmlVersionJs);
 
     class_<QHTMLReference>("QHTMLReference")
         .function("qhtmlType", &QHTMLReference::qhtmlTypeJs)
@@ -2418,7 +2487,8 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("slotCount", &QHTMLComponentInstance::slotCount)
         .function("slotAt", &QHTMLComponentInstance::slotAt, allow_raw_pointers())
         .function("slot", &QHTMLComponentInstance::slotJs, allow_raw_pointers())
-        .function("slotNames", &QHTMLComponentInstance::slotNamesJs);
+        .function("slotNames", &QHTMLComponentInstance::slotNamesJs)
+        .function("findChildComponentsOfType", &QHTMLComponentInstance::findChildComponentsOfTypeJs);
 
     class_<QHTMLDomTree, base<QHTMLDomNode>>("QHTMLDomTree")
         .constructor<>()

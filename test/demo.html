@@ -350,10 +350,12 @@ dark-theme {
     id: "mymodal"
     visible: false
 
-    titlebar { text { System Configuration } }
-    header { text { My Dialog Main Title } }
+    title {
+      div,span,text { System Configuration }
+    }
 
-    main {
+    body {
+      h3 { text { My Dialog Main Title } }
       div { text { Here is the main dialog content. } }
       span { text { This area scrolls while the titlebar, header, and footer remain visible. } }
     }
@@ -371,7 +373,6 @@ dark-theme {
     text { Open Modal }
     onclick {
       mymodal.visible = true;
-      mymodal.style.display = "block";
     }
   }
 }
@@ -604,9 +605,9 @@ tabs-demo-theme {
   }
   q-tabs tabsUsage {
     id: "tabs-usage"
-    q-tab { name { text { Overview } } content { p { text { Overview content } } } }
-    q-tab { name { text { Details } } content { p { text { Details content } } } }
-    q-tab { name { text { Logs } } content { p { text { Logs content } } } }
+    q-tab { name { text { Overview } } body { p { text { Overview content } } } }
+    q-tab { name { text { Details } } body { p { text { Details content } } } }
+    q-tab { name { text { Logs } } body { p { text { Logs content } } } }
   }
 }
           </q-editor>
@@ -632,7 +633,7 @@ q-component dynamicTabWidget {
     for (tabObject in this.tabs) {
       q-tab {
         name { div { text { ${tabObject.name} } } }
-        content { div { text { ${tabObject.content} } } }
+        body { div { text { ${tabObject.content} } } }
       }
     }
   }
@@ -1255,6 +1256,7 @@ q-component hub-activity-list extends q-list-view {
 }
 
 q-modal hubInfoModal {
+  id: "hubInfoModal"
   visible: false
   titlebar { text { Hub Command Summary } }
   header { text { Command Surface } }
@@ -1265,7 +1267,7 @@ q-modal hubInfoModal {
   footer {
     button.w3-button.w3-border.w3-round {
       text { Close }
-      onclick { hubInfoModal.visible = false; }
+      onclick { $("#hubInfoModal").hide(); }
     }
   }
 }
@@ -1278,7 +1280,7 @@ q-popup-menu hubContextMenu {
       li { text { Open Store } onclick { hubTabs.showTab(1); } }
       li { text { Start Sprite } onclick { hubSprite.start(); } }
       hr { }
-      li { text { Open Summary Modal } onclick { hubInfoModal.visible = true; hubInfoModal.style.display = "block"; } }
+      li { text { Open Summary Modal } onclick { $("#hubInfoModal").show(); } }
     }
   }
 }
@@ -1312,7 +1314,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
         }
         button.w3-button.w3-small.w3-border.w3-round {
           text { Hub Summary }
-          onclick { hubInfoModal.visible = true; hubInfoModal.style.display = "block"; }
+          onclick { $("#hubInfoModal").show(); }
         }
       }
     }
@@ -1327,7 +1329,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
         q-tabs hubTabs {
           q-tab {
             name { text { Overview } }
-            content {
+            body {
               q-spritesheet hubSprite {
                 source: "assets/test-ss.png"
                 frameCount: 18
@@ -1365,7 +1367,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
 
           q-tab {
             name { text { Storefront } }
-            content {
+            body {
               button.w3-button.w3-small.w3-border.w3-round.w3-margin-bottom {
                 text { Load Alternate Products }
                 onclick {
@@ -1383,7 +1385,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
 
           q-tab {
             name { text { Runtime } }
-            content {
+            body {
               q-tree-view {
                 treeModel: {
                   storefront: ["catalog", "checkout", "orders"],
@@ -1454,7 +1456,7 @@ div.w3-container.w3-border.w3-round-large.w3-padding {
     q-toolbutton {
       src: "../dist/q-components/expand-collapse.svg"
       label: "Summary"
-      onclick { hubInfoModal.visible = true; hubInfoModal.style.display = "block"; }
+      onclick { $("#hubInfoModal").show(); }
     }
   }
 }

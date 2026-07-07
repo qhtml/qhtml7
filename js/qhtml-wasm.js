@@ -5,6 +5,7 @@ var Module;
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const currentScript = document.currentScript;
+  const QHTML_VERSION = "v7.3.3";
 
   if (!currentScript || !currentScript.src) {
     throw new Error("qhtml-wasm.js must be loaded from a script URL");
@@ -60,8 +61,12 @@ var Module;
     Module = qtModule;
     globalScope.Module = qtModule;
     globalScope.QtWasm = qtModule;
+    globalScope.QHTML_VERSION = QHTML_VERSION;
     globalScope.QHTML7 = Object.assign(globalScope.QHTML7 || {}, {
-      Module: qtModule
+      Module: qtModule,
+      QHTML_VERSION,
+      qhtmlVersion: QHTML_VERSION,
+      version: QHTML_VERSION
     });
 
     await loadScript(base + "qhtml-element.js");
