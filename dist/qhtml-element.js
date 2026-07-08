@@ -1074,6 +1074,288 @@
     return undefined;
   }
 
+  const QHTML_CSS_SHORTCUTS = new Map([
+    ["aligncontent", "align-content"],
+    ["align-content", "align-content"],
+    ["alignitems", "align-items"],
+    ["align-items", "align-items"],
+    ["alignself", "align-self"],
+    ["align-self", "align-self"],
+    ["aspectratio", "aspect-ratio"],
+    ["aspect-ratio", "aspect-ratio"],
+    ["background", "background"],
+    ["backgroundcolor", "background-color"],
+    ["background-color", "background-color"],
+    ["backgroundimage", "background-image"],
+    ["background-image", "background-image"],
+    ["backgroundposition", "background-position"],
+    ["background-position", "background-position"],
+    ["backgroundrepeat", "background-repeat"],
+    ["background-repeat", "background-repeat"],
+    ["backgroundsize", "background-size"],
+    ["background-size", "background-size"],
+    ["bordercolor", "border-color"],
+    ["border-color", "border-color"],
+    ["borderradius", "border-radius"],
+    ["border-radius", "border-radius"],
+    ["borderstyle", "border-style"],
+    ["border-style", "border-style"],
+    ["borderwidth", "border-width"],
+    ["border-width", "border-width"],
+    ["bottom", "bottom"],
+    ["boxshadow", "box-shadow"],
+    ["box-shadow", "box-shadow"],
+    ["boxsizing", "box-sizing"],
+    ["box-sizing", "box-sizing"],
+    ["color", "color"],
+    ["columngap", "column-gap"],
+    ["column-gap", "column-gap"],
+    ["cursor", "cursor"],
+    ["display", "display"],
+    ["filter", "filter"],
+    ["flex", "flex"],
+    ["flexbasis", "flex-basis"],
+    ["flex-basis", "flex-basis"],
+    ["flexdirection", "flex-direction"],
+    ["flex-direction", "flex-direction"],
+    ["flexgrow", "flex-grow"],
+    ["flex-grow", "flex-grow"],
+    ["flexshrink", "flex-shrink"],
+    ["flex-shrink", "flex-shrink"],
+    ["flexwrap", "flex-wrap"],
+    ["flex-wrap", "flex-wrap"],
+    ["fontfamily", "font-family"],
+    ["font-family", "font-family"],
+    ["fontsize", "font-size"],
+    ["font-size", "font-size"],
+    ["fontstyle", "font-style"],
+    ["font-style", "font-style"],
+    ["fontweight", "font-weight"],
+    ["font-weight", "font-weight"],
+    ["gap", "gap"],
+    ["gridarea", "grid-area"],
+    ["grid-area", "grid-area"],
+    ["gridcolumn", "grid-column"],
+    ["grid-column", "grid-column"],
+    ["gridrow", "grid-row"],
+    ["grid-row", "grid-row"],
+    ["height", "height"],
+    ["justifycontent", "justify-content"],
+    ["justify-content", "justify-content"],
+    ["justifyitems", "justify-items"],
+    ["justify-items", "justify-items"],
+    ["justifyself", "justify-self"],
+    ["justify-self", "justify-self"],
+    ["left", "left"],
+    ["letterspacing", "letter-spacing"],
+    ["letter-spacing", "letter-spacing"],
+    ["lineheight", "line-height"],
+    ["line-height", "line-height"],
+    ["margin", "margin"],
+    ["marginbottom", "margin-bottom"],
+    ["margin-bottom", "margin-bottom"],
+    ["marginleft", "margin-left"],
+    ["margin-left", "margin-left"],
+    ["marginright", "margin-right"],
+    ["margin-right", "margin-right"],
+    ["margintop", "margin-top"],
+    ["margin-top", "margin-top"],
+    ["maxheight", "max-height"],
+    ["max-height", "max-height"],
+    ["maxwidth", "max-width"],
+    ["max-width", "max-width"],
+    ["minheight", "min-height"],
+    ["min-height", "min-height"],
+    ["minwidth", "min-width"],
+    ["min-width", "min-width"],
+    ["objectfit", "object-fit"],
+    ["object-fit", "object-fit"],
+    ["objectposition", "object-position"],
+    ["object-position", "object-position"],
+    ["opacity", "opacity"],
+    ["order", "order"],
+    ["overflow", "overflow"],
+    ["overflowx", "overflow-x"],
+    ["overflow-x", "overflow-x"],
+    ["overflowy", "overflow-y"],
+    ["overflow-y", "overflow-y"],
+    ["padding", "padding"],
+    ["paddingbottom", "padding-bottom"],
+    ["padding-bottom", "padding-bottom"],
+    ["paddingleft", "padding-left"],
+    ["padding-left", "padding-left"],
+    ["paddingright", "padding-right"],
+    ["padding-right", "padding-right"],
+    ["paddingtop", "padding-top"],
+    ["padding-top", "padding-top"],
+    ["pointerevents", "pointer-events"],
+    ["pointer-events", "pointer-events"],
+    ["position", "position"],
+    ["right", "right"],
+    ["rowgap", "row-gap"],
+    ["row-gap", "row-gap"],
+    ["textalign", "text-align"],
+    ["text-align", "text-align"],
+    ["textdecoration", "text-decoration"],
+    ["text-decoration", "text-decoration"],
+    ["textoverflow", "text-overflow"],
+    ["text-overflow", "text-overflow"],
+    ["texttransform", "text-transform"],
+    ["text-transform", "text-transform"],
+    ["top", "top"],
+    ["transform", "transform"],
+    ["transformorigin", "transform-origin"],
+    ["transform-origin", "transform-origin"],
+    ["transition", "transition"],
+    ["visibility", "visibility"],
+    ["whitespace", "white-space"],
+    ["white-space", "white-space"],
+    ["width", "width"],
+    ["wordbreak", "word-break"],
+    ["word-break", "word-break"],
+    ["x", "left"],
+    ["y", "top"],
+    ["zindex", "z-index"],
+    ["z-index", "z-index"]
+  ]);
+
+  function qhtmlCssShortcutPropertyName(name) {
+    return QHTML_CSS_SHORTCUTS.get(String(name || "").trim().toLowerCase()) || "";
+  }
+
+  function isQHTMLCssShortcutProperty(name) {
+    return qhtmlCssShortcutPropertyName(name) !== "";
+  }
+
+  function cssShortcutJsPropertyName(cssName) {
+    return String(cssName || "").replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+  }
+
+  function resolveCssShortcutValue(rawValue, domElement, propertyNode, registry) {
+    const resolved = resolvePropertyValue(rawValue, domElement, propertyNode, registry);
+    return String(resolved == null ? "" : resolved).replace(/\$\{([^}]+)\}/g, (fullMatch, expression) => {
+      const value = resolvePath(String(expression || "").trim(), registry, domElement);
+      return value == null ? "" : String(value);
+    });
+  }
+
+  function ensureQHTMLCssShortcutStore(domElement) {
+    if (!domElement.__qhtmlCssShortcutStyle) {
+      domElement.__qhtmlCssShortcutStyle = {
+        declarations: new Map(),
+        aliases: new Map()
+      };
+    }
+    return domElement.__qhtmlCssShortcutStyle;
+  }
+
+  function reapplyQHTMLCssShortcutStyle(domElement) {
+    const store = domElement && domElement.__qhtmlCssShortcutStyle;
+    if (!domElement || !domElement.style || !store || !store.declarations) {
+      return;
+    }
+    if ((store.declarations.has("left") || store.declarations.has("top")) &&
+        !store.declarations.has("position") &&
+        !domElement.style.getPropertyValue("position")) {
+      domElement.style.setProperty("position", "relative");
+    }
+    store.declarations.forEach((value, cssName) => {
+      domElement.style.setProperty(cssName, String(value));
+    });
+  }
+
+  function setQHTMLCssShortcutValue(domElement, propertyName, value) {
+    const cssName = qhtmlCssShortcutPropertyName(propertyName);
+    if (!domElement || !cssName) {
+      return false;
+    }
+    const store = ensureQHTMLCssShortcutStore(domElement);
+    store.declarations.set(cssName, String(value == null ? "" : value));
+    store.aliases.set(String(propertyName), cssName);
+    reapplyQHTMLCssShortcutStyle(domElement);
+    return true;
+  }
+
+  function defineQHTMLCssShortcutAccessor(domElement, propertyName, cssName) {
+    if (!domElement || !propertyName || !cssName || Object.prototype.hasOwnProperty.call(domElement, propertyName)) {
+      return;
+    }
+    try {
+      Object.defineProperty(domElement, propertyName, {
+        configurable: true,
+        enumerable: true,
+        get() {
+          const store = ensureQHTMLCssShortcutStore(domElement);
+          if (store.declarations.has(cssName)) {
+            return store.declarations.get(cssName);
+          }
+          return domElement.style ? domElement.style.getPropertyValue(cssName) : "";
+        },
+        set(nextValue) {
+          setQHTMLCssShortcutValue(domElement, propertyName, nextValue);
+        }
+      });
+    } catch {
+      // Native DOM properties that cannot be redefined are left untouched.
+    }
+  }
+
+  function bindCssShortcutAccessors(domElement) {
+    if (!domElement || domElement.__qhtmlCssShortcutAccessorsBound) {
+      return;
+    }
+    domElement.__qhtmlCssShortcutAccessorsBound = true;
+    const seen = new Set();
+    QHTML_CSS_SHORTCUTS.forEach((cssName, key) => {
+      if (key.includes("-")) {
+        return;
+      }
+      const propertyName = key === "x" || key === "y" ? key : cssShortcutJsPropertyName(cssName);
+      if (seen.has(propertyName)) {
+        return;
+      }
+      seen.add(propertyName);
+      defineQHTMLCssShortcutAccessor(domElement, propertyName, cssName);
+    });
+  }
+
+  function bindCssShortcutAssignments(domElement, qhtmlNode, registry) {
+    if (!domElement || !qhtmlNode) {
+      return;
+    }
+    bindCssShortcutAccessors(domElement);
+    const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      if (qhtmlNodeType(child) !== "QHTMLPropertyAssignment") {
+        continue;
+      }
+      const propertyName = qhtmlNodeName(child);
+      if (!isQHTMLCssShortcutProperty(propertyName)) {
+        continue;
+      }
+      const rawValue = typeof child.value === "function" ? child.value() : "";
+      setQHTMLCssShortcutValue(
+        domElement,
+        propertyName,
+        resolveCssShortcutValue(rawValue, domElement, child, registry)
+      );
+    }
+  }
+
+  function reapplyQHTMLCssShortcutsInScope(scopeElement) {
+    if (!scopeElement) {
+      return;
+    }
+    reapplyQHTMLCssShortcutStyle(scopeElement);
+    if (!scopeElement.querySelectorAll) {
+      return;
+    }
+    Array.from(scopeElement.querySelectorAll("*")).forEach((element) => {
+      reapplyQHTMLCssShortcutStyle(element);
+    });
+  }
+
   function parseStructuredProperty(value, domElement, registry) {
     const text = String(value || "").trim();
     const structured = (text.startsWith("[") && text.endsWith("]")) ||
@@ -1470,6 +1752,9 @@
           }
           entry.lastTransactionId = transactionId;
           entry.value = nextValue;
+          if (isQHTMLCssShortcutProperty(propertyName)) {
+            setQHTMLCssShortcutValue(domElement, propertyName, nextValue);
+          }
           withPropertyTransaction(transactionId, () => {
             const signalName = `${propertyName}changed`;
             if (typeof domElement[signalName] === "function") {
@@ -2707,6 +2992,7 @@
       }
       domElement.style.setProperty(decl.name, decl.value);
     });
+    reapplyQHTMLCssShortcutStyle(domElement);
     reapplyPaintTargetsForElement(domElement, registry);
   }
 
@@ -2860,6 +3146,7 @@
       }
       element.style.setProperty(decl.name, decl.value);
     });
+    reapplyQHTMLCssShortcutStyle(element);
     if (registry) {
       reapplyPaintTargetsForElement(element, registry);
     }
@@ -2945,6 +3232,8 @@
       }
       unwrapApplication(applicationElement);
     });
+
+    reapplyQHTMLCssShortcutsInScope(rootElement);
   }
 
   function qhtmlPaintCssValue(value) {
@@ -4048,6 +4337,7 @@
     }
 
     applyInlineChildStyles(domElement, qhtmlNode, registry);
+    bindCssShortcutAssignments(domElement, qhtmlNode, registry);
 
     if (qhtmlNodeType(qhtmlNode) === "QHTMLCanvas") {
       bindCanvasRuntime(domElement, qhtmlNode, registry);

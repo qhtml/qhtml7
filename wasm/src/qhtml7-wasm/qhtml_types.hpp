@@ -29,6 +29,113 @@ inline std::string qhtmlVersionJs()
     return std::string(QHTML_VERSION);
 }
 
+inline QString qhtmlCssShortcutPropertyName(const QString &name)
+{
+    static const QHash<QString, QString> cssShortcuts = {
+        {QStringLiteral("alignContent"), QStringLiteral("align-content")},
+        {QStringLiteral("alignItems"), QStringLiteral("align-items")},
+        {QStringLiteral("alignSelf"), QStringLiteral("align-self")},
+        {QStringLiteral("aspectRatio"), QStringLiteral("aspect-ratio")},
+        {QStringLiteral("background"), QStringLiteral("background")},
+        {QStringLiteral("backgroundColor"), QStringLiteral("background-color")},
+        {QStringLiteral("backgroundImage"), QStringLiteral("background-image")},
+        {QStringLiteral("backgroundPosition"), QStringLiteral("background-position")},
+        {QStringLiteral("backgroundRepeat"), QStringLiteral("background-repeat")},
+        {QStringLiteral("backgroundSize"), QStringLiteral("background-size")},
+        {QStringLiteral("borderColor"), QStringLiteral("border-color")},
+        {QStringLiteral("borderRadius"), QStringLiteral("border-radius")},
+        {QStringLiteral("borderStyle"), QStringLiteral("border-style")},
+        {QStringLiteral("borderWidth"), QStringLiteral("border-width")},
+        {QStringLiteral("bottom"), QStringLiteral("bottom")},
+        {QStringLiteral("boxShadow"), QStringLiteral("box-shadow")},
+        {QStringLiteral("boxSizing"), QStringLiteral("box-sizing")},
+        {QStringLiteral("color"), QStringLiteral("color")},
+        {QStringLiteral("columnGap"), QStringLiteral("column-gap")},
+        {QStringLiteral("cursor"), QStringLiteral("cursor")},
+        {QStringLiteral("display"), QStringLiteral("display")},
+        {QStringLiteral("filter"), QStringLiteral("filter")},
+        {QStringLiteral("flex"), QStringLiteral("flex")},
+        {QStringLiteral("flexBasis"), QStringLiteral("flex-basis")},
+        {QStringLiteral("flexDirection"), QStringLiteral("flex-direction")},
+        {QStringLiteral("flexGrow"), QStringLiteral("flex-grow")},
+        {QStringLiteral("flexShrink"), QStringLiteral("flex-shrink")},
+        {QStringLiteral("flexWrap"), QStringLiteral("flex-wrap")},
+        {QStringLiteral("fontFamily"), QStringLiteral("font-family")},
+        {QStringLiteral("fontSize"), QStringLiteral("font-size")},
+        {QStringLiteral("fontStyle"), QStringLiteral("font-style")},
+        {QStringLiteral("fontWeight"), QStringLiteral("font-weight")},
+        {QStringLiteral("gap"), QStringLiteral("gap")},
+        {QStringLiteral("gridArea"), QStringLiteral("grid-area")},
+        {QStringLiteral("gridColumn"), QStringLiteral("grid-column")},
+        {QStringLiteral("gridRow"), QStringLiteral("grid-row")},
+        {QStringLiteral("height"), QStringLiteral("height")},
+        {QStringLiteral("justifyContent"), QStringLiteral("justify-content")},
+        {QStringLiteral("justifyItems"), QStringLiteral("justify-items")},
+        {QStringLiteral("justifySelf"), QStringLiteral("justify-self")},
+        {QStringLiteral("left"), QStringLiteral("left")},
+        {QStringLiteral("letterSpacing"), QStringLiteral("letter-spacing")},
+        {QStringLiteral("lineHeight"), QStringLiteral("line-height")},
+        {QStringLiteral("margin"), QStringLiteral("margin")},
+        {QStringLiteral("marginBottom"), QStringLiteral("margin-bottom")},
+        {QStringLiteral("marginLeft"), QStringLiteral("margin-left")},
+        {QStringLiteral("marginRight"), QStringLiteral("margin-right")},
+        {QStringLiteral("marginTop"), QStringLiteral("margin-top")},
+        {QStringLiteral("maxHeight"), QStringLiteral("max-height")},
+        {QStringLiteral("maxWidth"), QStringLiteral("max-width")},
+        {QStringLiteral("minHeight"), QStringLiteral("min-height")},
+        {QStringLiteral("minWidth"), QStringLiteral("min-width")},
+        {QStringLiteral("objectFit"), QStringLiteral("object-fit")},
+        {QStringLiteral("objectPosition"), QStringLiteral("object-position")},
+        {QStringLiteral("opacity"), QStringLiteral("opacity")},
+        {QStringLiteral("order"), QStringLiteral("order")},
+        {QStringLiteral("overflow"), QStringLiteral("overflow")},
+        {QStringLiteral("overflowX"), QStringLiteral("overflow-x")},
+        {QStringLiteral("overflowY"), QStringLiteral("overflow-y")},
+        {QStringLiteral("padding"), QStringLiteral("padding")},
+        {QStringLiteral("paddingBottom"), QStringLiteral("padding-bottom")},
+        {QStringLiteral("paddingLeft"), QStringLiteral("padding-left")},
+        {QStringLiteral("paddingRight"), QStringLiteral("padding-right")},
+        {QStringLiteral("paddingTop"), QStringLiteral("padding-top")},
+        {QStringLiteral("pointerEvents"), QStringLiteral("pointer-events")},
+        {QStringLiteral("position"), QStringLiteral("position")},
+        {QStringLiteral("right"), QStringLiteral("right")},
+        {QStringLiteral("rowGap"), QStringLiteral("row-gap")},
+        {QStringLiteral("textAlign"), QStringLiteral("text-align")},
+        {QStringLiteral("textDecoration"), QStringLiteral("text-decoration")},
+        {QStringLiteral("textOverflow"), QStringLiteral("text-overflow")},
+        {QStringLiteral("textTransform"), QStringLiteral("text-transform")},
+        {QStringLiteral("top"), QStringLiteral("top")},
+        {QStringLiteral("transform"), QStringLiteral("transform")},
+        {QStringLiteral("transformOrigin"), QStringLiteral("transform-origin")},
+        {QStringLiteral("transition"), QStringLiteral("transition")},
+        {QStringLiteral("visibility"), QStringLiteral("visibility")},
+        {QStringLiteral("whiteSpace"), QStringLiteral("white-space")},
+        {QStringLiteral("width"), QStringLiteral("width")},
+        {QStringLiteral("wordBreak"), QStringLiteral("word-break")},
+        {QStringLiteral("x"), QStringLiteral("left")},
+        {QStringLiteral("y"), QStringLiteral("top")},
+        {QStringLiteral("zIndex"), QStringLiteral("z-index")}
+    };
+
+    const QString trimmed = name.trimmed();
+    if (cssShortcuts.contains(trimmed)) {
+        return cssShortcuts.value(trimmed);
+    }
+
+    const QString lower = trimmed.toLower();
+    for (auto it = cssShortcuts.constBegin(); it != cssShortcuts.constEnd(); ++it) {
+        if (it.key().toLower() == lower || it.value().toLower() == lower) {
+            return it.value();
+        }
+    }
+    return QString();
+}
+
+inline bool qhtmlIsCssShortcutProperty(const QString &name)
+{
+    return !qhtmlCssShortcutPropertyName(name).isEmpty();
+}
+
 class QHTMLAstNode;
 class QHTMLFunction;
 class QHTMLSignal;
@@ -1453,6 +1560,9 @@ private:
                 continue;
             }
             if (definitionHasProperty(assignment->qhtmlName())) {
+                continue;
+            }
+            if (qhtmlIsCssShortcutProperty(assignment->qhtmlName())) {
                 continue;
             }
             out.insert(assignment->qhtmlName(), htmlAttributeValue(assignment->value()));
@@ -4583,6 +4693,9 @@ public:
             }
             const QString key = assignment->qhtmlName();
             if (written.contains(key.toLower())) {
+                continue;
+            }
+            if (qhtmlIsCssShortcutProperty(key)) {
                 continue;
             }
             out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(stripQuotes(assignment->value())) + QStringLiteral("\"");
