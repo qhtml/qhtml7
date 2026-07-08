@@ -12,6 +12,13 @@
     gap: "12px"
   };
 
+  var QLive = {
+    layout: "q-layout,[qhtml-layout='q-layout']",
+    row: "q-row,[qhtml-layout='q-row']",
+    col: "q-col,[qhtml-layout='q-col']",
+    all: "q-layout,q-row,q-col,[qhtml-layout='q-layout'],[qhtml-layout='q-row'],[qhtml-layout='q-col']"
+  };
+
   function arr(x) {
     return Array.prototype.slice.call(x || []);
   }
@@ -20,9 +27,27 @@
     return el && el.tagName ? el.tagName.toLowerCase() : "";
   }
 
+  function layoutKind(el) {
+    var t = tag(el);
+    var attr = el && el.getAttribute ? String(el.getAttribute("qhtml-layout") || "").toLowerCase() : "";
+    if (t === Q.layout || attr === Q.layout) { return Q.layout; }
+    if (t === Q.row || attr === Q.row) { return Q.row; }
+    if (t === Q.col || attr === Q.col) { return Q.col; }
+    return t;
+  }
+
+  function isLayoutKind(el, kind) {
+    return layoutKind(el) === kind;
+  }
+
+  function closestLayoutKind(el, kind) {
+    var selector = kind === Q.layout ? QLive.layout : kind === Q.row ? QLive.row : QLive.col;
+    return el && el.closest ? el.closest(selector) : null;
+  }
+
   function direct(parent, tagName) {
     return arr(parent ? parent.children : []).filter(function (x) {
-      return tag(x) === tagName;
+      return isLayoutKind(x, tagName);
     });
   }
 
@@ -77,7 +102,7 @@
   }
 
   function rootOf(el) {
-    return tag(el) === Q.layout ? el : el && el.closest ? el.closest(Q.layout) : null;
+    return isLayoutKind(el, Q.layout) ? el : closestLayoutKind(el, Q.layout);
   }
 
   function axisOf(el) {
@@ -97,13 +122,13 @@
     if (cols.length && !rows.length) {
       return "cols";
     }
-    if (tag(el) === Q.layout) {
+    if (isLayoutKind(el, Q.layout)) {
       return "rows";
     }
-    if (tag(el) === Q.row) {
+    if (isLayoutKind(el, Q.row)) {
       return "cols";
     }
-    if (tag(el) === Q.col) {
+    if (isLayoutKind(el, Q.col)) {
       return rows.length ? "rows" : null;
     }
     return null;
@@ -188,7 +213,7 @@
 
     installApi(el);
 
-    if (tag(el) === Q.layout) {
+    if (isLayoutKind(el, Q.layout)) {
       width = sizeValue(el.getAttribute("width"), "");
       height = sizeValue(el.getAttribute("height"), "");
       if (width) { el.style.width = width; }
@@ -234,7 +259,7 @@
   function walk(root, fn) {
     if (!root) { return; }
     fn(root);
-    arr(root.querySelectorAll(Q.row + "," + Q.col)).forEach(fn);
+    arr(root.querySelectorAll(QLive.row + "," + QLive.col)).forEach(fn);
   }
 
   function relayout(root) {
@@ -279,8 +304,9 @@
 
   function directAndNested(root, tagName) {
     var out = [];
-    if (tag(root) === tagName) { out.push(root); }
-    return out.concat(arr(root.querySelectorAll(tagName)));
+    var selector = tagName === Q.layout ? QLive.layout : tagName === Q.row ? QLive.row : tagName === Q.col ? QLive.col : tagName;
+    if (isLayoutKind(root, tagName)) { out.push(root); }
+    return out.concat(arr(root.querySelectorAll(selector)));
   }
 
   function injectStyles() {
@@ -299,12 +325,12 @@
       ".pb-brand h1{font-size:22px;line-height:1;margin:0;letter-spacing:-.04em}.pb-brand p{margin:.35rem 0 0;color:var(--pb-muted);font-size:13px}",
       ".pb-actions{display:flex;gap:10px;flex-wrap:wrap}.pb-action{border:0;border-radius:999px;padding:10px 15px;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(15,23,42,.08)}.pb-action.primary{background:#0f172a;color:white}.pb-action.secondary{background:white;color:#1d4ed8;border:1px solid #c7d2fe}.pb-action.danger{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}",
       ".pb-workspace{min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;padding:18px}.pb-main{min-width:0;display:grid;grid-template-rows:minmax(0,1fr) 260px;gap:18px}.pb-sidebar{min-height:0;background:rgba(15,23,42,.92);border:1px solid rgba(148,163,184,.24);border-radius:26px;box-shadow:0 28px 80px rgba(15,23,42,.22);overflow:hidden;color:white}.pb-sidebar-head{padding:22px 22px 10px}.pb-sidebar h2,.pb-canvas-meta h2,.pb-export-head h2{margin:0;font-size:18px;letter-spacing:-.03em}.pb-sidebar p,.pb-canvas-meta p,.pb-export-head p{margin:.45rem 0 0;color:#93a4bc;font-size:13px;line-height:1.4}",
-      "q-layout,q-row,q-col,q-palette-toolbox,q-palette-toolbox-button,q-builder-item{box-sizing:border-box;min-width:0;min-height:0}",
-      "q-layout{display:grid;gap:12px;background:transparent;border:0;border-radius:0;padding:0;overflow:visible;color:#0f172a;position:relative}",
-      "q-row{display:grid;gap:12px;overflow:visible;border:0;border-radius:0;padding:0;background:transparent}",
-      "q-col{display:block;overflow:visible;background:rgba(255,255,255,.92);border:1px solid #d8e0ec;border-radius:18px;padding:14px;color:#0f172a;box-shadow:0 12px 28px rgba(15,23,42,.08);position:relative;transition:border-color .14s ease,box-shadow .14s ease,background .14s ease}",
-      "q-col.q-col-empty{min-height:96px;border-style:dashed;background:rgba(248,250,252,.62);box-shadow:none}",
-      ".pb-canvas-shell,.pb-export-panel{background:rgba(255,255,255,.78);border:1px solid rgba(148,163,184,.42);border-radius:26px;box-shadow:0 22px 70px rgba(15,23,42,.12);overflow:hidden}.pb-canvas-meta,.pb-export-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(148,163,184,.28);background:rgba(248,250,252,.82)}.pb-status{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#1d4ed8;background:#dbeafe;border:1px solid #bfdbfe;border-radius:999px;padding:8px 11px}.pb-stage{padding:18px;overflow:auto}.pb-stage>#pb-builder-layout{min-height:280px;padding:12px;border:1px dashed rgba(37,99,235,.25);border-radius:20px;background:rgba(248,250,252,.42)}",
+      "q-layout,q-row,q-col,[qhtml-layout],q-palette-toolbox,q-palette-toolbox-button,q-builder-item{box-sizing:border-box;min-width:0;min-height:0}",
+      "q-layout,[qhtml-layout='q-layout']{gap:12px;background:transparent;border:0;border-radius:0;padding:0;overflow:visible;color:#0f172a;position:relative}",
+      "q-row,[qhtml-layout='q-row']{gap:12px;overflow:visible;border:0;border-radius:0;padding:0;background:transparent}",
+      "q-col,[qhtml-layout='q-col']{overflow:visible;background:rgba(255,255,255,.92);border:1px solid #d8e0ec;border-radius:18px;padding:14px;color:#0f172a;box-shadow:0 12px 28px rgba(15,23,42,.08);position:relative;transition:border-color .14s ease,box-shadow .14s ease,background .14s ease}",
+      "q-col.q-col-empty,[qhtml-layout='q-col'].q-col-empty{min-height:96px;border-style:dashed;background:rgba(248,250,252,.62);box-shadow:none}",
+      ".pb-canvas-shell,.pb-export-panel{background:rgba(255,255,255,.78);border:1px solid rgba(148,163,184,.42);border-radius:26px;box-shadow:0 22px 70px rgba(15,23,42,.12);overflow:hidden}.pb-canvas-meta,.pb-export-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(148,163,184,.28);background:rgba(248,250,252,.82)}.pb-status{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#1d4ed8;background:#dbeafe;border:1px solid #bfdbfe;border-radius:999px;padding:8px 11px}.pb-stage{padding:18px;overflow:auto}.pb-stage>#pb-builder-layout,.pb-stage>[qhtml-layout='q-layout']{min-height:280px;padding:12px;border:1px dashed rgba(37,99,235,.25);border-radius:20px;background:rgba(248,250,252,.42)}",
       "q-palette-toolbox{display:block;color:#0f172a}q-palette-toolbox:not([docked='true']){position:fixed;left:24px;top:24px;z-index:5000;width:250px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.35);overflow:hidden;user-select:none}.q-palette-titlebar{cursor:move;padding:13px 15px;background:#0f172a;color:white;font-weight:950;letter-spacing:-.035em}.q-palette-body{display:grid;gap:10px;border:0;border-radius:0;background:transparent;box-shadow:none;padding:10px 16px 18px}",
       "q-palette-toolbox-button{display:block;position:relative;min-height:76px;padding:0;border-radius:18px;background:white;border:1px solid rgba(148,163,184,.3);box-shadow:0 12px 26px rgba(0,0,0,.18);cursor:grab;overflow:hidden}q-palette-toolbox-button:active{cursor:grabbing}.pb-palette-preview{min-height:76px;padding:14px;background:linear-gradient(135deg,#ffffff,#eef6ff);border-left:5px solid #2563eb}.pb-palette-preview h3{margin:0;font-size:14px}.pb-palette-preview p{margin:4px 0 0;font-size:12px;color:#64748b}.pb-palette-preview.hero{border-color:#06b6d4}.pb-palette-preview.card{border-color:#6366f1}.pb-palette-preview.columns{border-color:#14b8a6}.pb-palette-preview.callout{border-color:#f59e0b}.pb-palette-preview.buttons{border-color:#ec4899}.pb-palette-preview.layout{border-color:#10b981}.pb-palette-preview.heading{border-color:#8b5cf6}.pb-palette-preview.price{border-color:#0ea5e9}.pb-palette-preview.edited{border-color:#2563eb}.pb-palette-edit-button{position:absolute;top:8px;right:8px;z-index:4;width:30px;height:30px;display:grid;place-items:center;border:1px solid rgba(37,99,235,.22);border-radius:999px;background:rgba(255,255,255,.92);color:#1d4ed8;box-shadow:0 8px 20px rgba(15,23,42,.16);cursor:pointer}.pb-palette-edit-button:hover{background:#eff6ff;color:#0f172a}.pb-palette-edit-button svg{width:15px;height:15px;display:block}",
       "q-builder-item{display:block;position:relative;margin:0;border-radius:18px;border:1px solid rgba(37,99,235,.28);background:white;box-shadow:0 14px 34px rgba(15,23,42,.1);overflow:hidden;cursor:grab}q-builder-item:active{cursor:grabbing}q-builder-item.pb-selected{outline:3px solid rgba(37,99,235,.32)}.q-builder-item-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;background:#eff6ff;border-bottom:1px solid #bfdbfe;color:#1d4ed8;font-size:11px;font-weight:950;letter-spacing:.04em;text-transform:uppercase}.q-builder-item-preview{padding:14px}",
@@ -444,14 +470,31 @@
   }
 
   function qdomOf(el) {
-    if (!el || typeof el.qdom !== "function") {
+    if (!el) {
       return null;
     }
-    try {
-      return el.qdom();
-    } catch (error) {
-      return null;
+    if (el.qhtmlNode) {
+      return el.qhtmlNode;
     }
+    if (typeof el.qdom === "function") {
+      try {
+        return el.qdom();
+      } catch (error) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function builderLayout() {
+    var layout = document.getElementById("pb-builder-layout");
+    if (!layout) {
+      layout = document.querySelector(".pb-stage q-layout,.pb-stage [qhtml-layout='q-layout']");
+    }
+    if (layout && !layout.id) {
+      layout.id = "pb-builder-layout";
+    }
+    return layout || null;
   }
 
   function rootQDom() {
@@ -473,8 +516,9 @@
   function renderLayoutSoon(reason) {
     clearTimeout(renderLayoutSoon.timer);
     renderLayoutSoon.timer = setTimeout(function () {
-      arr(document.querySelectorAll(Q.layout + "," + Q.row + "," + Q.col)).forEach(installApi);
-      arr(document.querySelectorAll(Q.layout)).forEach(relayout);
+      builderLayout();
+      arr(document.querySelectorAll(QLive.all)).forEach(installApi);
+      arr(document.querySelectorAll(QLive.layout)).forEach(relayout);
       updateExportPanel(false);
       if (reason) {
         setStatus(reason);
@@ -1247,12 +1291,12 @@
 
   function qhtmlColumnSource(source) {
     var body = formatQHtmlSource(source);
-    return "q-col {\n  width: \"1fr\"\n" + (body ? indentBlock(body, 1) + "\n" : "") + "}";
+    return "q-col {\n  width: \"1fr\";\n" + (body ? indentBlock(body, 1) + "\n" : "") + "}";
   }
 
   function qhtmlRowSource(source) {
     var body = formatQHtmlSource(source);
-    return "q-row {\n  height: \"auto\"\n  q-col {\n    width: \"1fr\"\n" + (body ? indentBlock(body, 2) + "\n" : "") + "  }\n}";
+    return "q-row {\n  height: \"auto\";\n  q-col {\n    width: \"1fr\";\n" + (body ? indentBlock(body, 2) + "\n" : "") + "  }\n}";
   }
 
   function insertDirectionalIntoLayoutSlotSource(slotSource, layoutBlock, dropSource, direction) {
@@ -1301,8 +1345,8 @@
     if (dir === "top" || dir === "bottom") {
       return formatQHtmlSource([
         "q-layout {",
-        "  width: \"100%\"",
-        "  gap: \"8px\"",
+        "  width: \"100%\";",
+        "  gap: \"8px\";",
         dir === "top" ? indentBlock(qhtmlRowSource(dropped), 1) : indentBlock(qhtmlRowSource(existing), 1),
         dir === "top" ? indentBlock(qhtmlRowSource(existing), 1) : indentBlock(qhtmlRowSource(dropped), 1),
         "}"
@@ -1310,10 +1354,10 @@
     }
     return formatQHtmlSource([
       "q-layout {",
-      "  width: \"100%\"",
-      "  gap: \"8px\"",
+      "  width: \"100%\";",
+      "  gap: \"8px\";",
       "  q-row {",
-      "    height: \"auto\"",
+      "    height: \"auto\";",
       dir === "left" ? indentBlock(qhtmlColumnSource(dropped), 2) : indentBlock(qhtmlColumnSource(existing), 2),
       dir === "left" ? indentBlock(qhtmlColumnSource(existing), 2) : indentBlock(qhtmlColumnSource(dropped), 2),
       "  }",
@@ -2601,11 +2645,11 @@
     var rows = (pieces || []).map(function (piece) {
       return indentBlock(qhtmlRowSource(piece), 1);
     }).join("\n");
-    return "q-layout {\n  width: \"100%\"\n  gap: \"14px\"\n" + rows + "\n}";
+    return "q-layout {\n  width: \"100%\";\n  gap: \"14px\";\n" + rows + "\n}";
   }
 
   function renderImportedLayoutToCanvas(source) {
-    var layout = document.getElementById("pb-builder-layout");
+    var layout = builderLayout();
     var temp = document.createElement("div");
     var imported;
     if (!layout || !String(source || "").trim()) {
@@ -2614,11 +2658,11 @@
     if (!renderQHtmlSourceInto(temp, source, "Imported layout")) {
       return false;
     }
-    imported = temp.querySelector(Q.layout);
+    imported = temp.querySelector(QLive.layout);
     arr(imported ? imported.childNodes : temp.childNodes).forEach(function (node) {
       layout.appendChild(node.cloneNode(true));
     });
-    arr(layout.querySelectorAll(Q.row + "," + Q.col)).forEach(installApi);
+    arr(layout.querySelectorAll(QLive.row + "," + QLive.col)).forEach(installApi);
     arr(layout.querySelectorAll(Q.item)).forEach(function (item) {
       if (typeof item.refreshSourcePreview === "function") {
         item.refreshSourcePreview();
@@ -2791,7 +2835,7 @@
       var self = this;
       if (this.__observer) { return; }
       this.__observer = new MutationObserver(function () {
-        arr(self.querySelectorAll(Q.row + "," + Q.col)).forEach(installApi);
+        arr(self.querySelectorAll(QLive.row + "," + QLive.col)).forEach(installApi);
         schedule(self);
       });
       this.__observer.observe(this, {
@@ -2950,8 +2994,8 @@
 
     removeItem() {
       var root = rootOf(this);
-      var cell = this.closest(Q.col);
-      var row = cell && cell.closest ? cell.closest(Q.row) : null;
+      var cell = closestLayoutKind(this, Q.col);
+      var row = cell ? closestLayoutKind(cell, Q.row) : null;
       if (cell && root && !cell.closest(Q.toolbox)) {
         cell.remove();
         if (row && direct(row, Q.col).length === 0) {
@@ -3212,7 +3256,7 @@
       };
     },
     bestLayout: function (point) {
-      var layouts = arr(document.querySelectorAll(Q.layout)).filter(function (layout) {
+      var layouts = arr(document.querySelectorAll(QLive.layout)).filter(function (layout) {
         var r;
         if (layout.closest(Q.toolbox)) { return false; }
         r = layout.getBoundingClientRect();
@@ -3238,7 +3282,7 @@
       if (axis === "cols") {
         return cols.length ? this.track(container, cols, "col", point, movingItem) : this.empty(container, "insert-col");
       }
-      if (tag(container) === Q.col) {
+      if (isLayoutKind(container, Q.col)) {
         return { type: "replace", target: container };
       }
       return this.empty(container, "insert-row");
@@ -3312,7 +3356,7 @@
     if (!cell || !cell.isConnected || cell.querySelector(Q.item) || direct(cell, Q.layout).length || direct(cell, Q.row).length) {
       return;
     }
-    row = cell.closest ? cell.closest(Q.row) : null;
+    row = closestLayoutKind(cell, Q.row);
     cell.remove();
     if (row && row.isConnected && direct(row, Q.col).length === 0) {
       row.remove();
@@ -3372,7 +3416,7 @@
     if (!parent) {
       return false;
     }
-    oldCell = moving && source.closest ? source.closest(Q.col) : null;
+    oldCell = moving ? closestLayoutKind(source, Q.col) : null;
     root = rootOf(target) || rootOf(source);
     marker = document.createTextNode("");
     parent.insertBefore(marker, target);
@@ -3412,11 +3456,11 @@
       payloadSource = typeof source.sourceQHtml === "function" ? source.sourceQHtml() : payloadQHtmlFromSource(source);
       payload = moving ? source.createPayload() : source.createPayload();
       if (!payload && !payloadSource) { return; }
-      oldCell = moving && source.closest ? source.closest(Q.col) : null;
+      oldCell = moving ? closestLayoutKind(source, Q.col) : null;
 
       if (intent.type === "replace") {
         if (moving && (intent.target === payload || payload.contains(intent.target))) { return; }
-        if (!moving && payloadSource && replaceQDomWithQHtml(intent.target, "q-col { width: \"auto\"\n" + indentBlock(payloadSource, 1) + "\n}")) {
+        if (!moving && payloadSource && replaceQDomWithQHtml(intent.target, "q-col {\n  width: \"auto\";\n" + indentBlock(payloadSource, 1) + "\n}")) {
           if (moving && source && typeof source.remove === "function") {
             source.remove();
           }
@@ -3587,12 +3631,12 @@
   }
 
   function emitLayoutNode(el, level) {
-    var t = tag(el);
+    var t = layoutKind(el);
     var lines = [];
     var attrNames = t === Q.layout ? ["width", "height", "gap", "type", "axis", "flow"] : t === Q.row ? ["height", "gap", "axis", "flow"] : ["width", "gap", "axis", "flow"];
     var attrs = attrsToQHtml(el, attrNames);
     var children = arr(el.children).filter(function (child) {
-      return tag(child) === Q.row || tag(child) === Q.col || tag(child) === Q.layout || tag(child) === Q.item;
+      return isLayoutKind(child, Q.row) || isLayoutKind(child, Q.col) || isLayoutKind(child, Q.layout) || tag(child) === Q.item;
     });
 
     lines.push(indent(level) + t + " {");
@@ -3609,7 +3653,7 @@
   }
 
   function exportQHtml(layout) {
-    var root = layout || document.getElementById("pb-builder-layout") || document.querySelector(".pb-stage " + Q.layout);
+    var root = layout || builderLayout();
     if (!root) { return ""; }
     reconcileRenderedSlotState(root);
     return formatQHtmlSource(emitComponentDefinitions(root) + emitLayoutNode(root, 0)) + "\n";
@@ -3737,7 +3781,7 @@
         name = String(name || "value").replace(/[^\w-]+/g, "") || "value";
         return { text: "q-var " + name + " { \"\" }\n", offset: ("q-var " + name + " { \"").length };
       case "q-layout":
-        return { text: "q-layout {\n  width: \"100%\"\n  gap: \"12px\"\n  q-row {\n    q-col {\n      \n    }\n  }\n}\n", offset: 66 };
+        return { text: "q-layout {\n  width: \"100%\";\n  gap: \"12px\";\n  q-row {\n    q-col {\n      \n    }\n  }\n}\n", offset: 68 };
       case "q-row":
         return { text: "q-row {\n  q-col {\n    \n  }\n}\n", offset: 20 };
       case "q-col":
@@ -5049,7 +5093,7 @@
     },
     startNewFile: function () {
       var state = this.read();
-      var layout = document.getElementById("pb-builder-layout");
+      var layout = builderLayout();
       var name = prompt("File name", "index.qhtml");
       var file;
       if (name === null) {
@@ -5080,7 +5124,7 @@
     saveCurrent: function (options) {
       var opts = options || {};
       var state = this.read();
-      var layout = document.getElementById("pb-builder-layout");
+      var layout = builderLayout();
       var file = state.currentFileId ? this.find(state.currentFileId) : null;
       if (!layout) { return; }
       if (!file || !file.node || file.node.type !== "file") {
@@ -5107,7 +5151,7 @@
     },
     loadFile: function (id) {
       var found = this.find(id);
-      var layout = document.getElementById("pb-builder-layout");
+      var layout = builderLayout();
       if (!found || found.node.type !== "file" || !layout) {
         return;
       }
@@ -5115,7 +5159,7 @@
       applyImportedPaletteRecords(Array.isArray(found.node.palette) ? found.node.palette : []);
       layout.innerHTML = found.node.html || "";
       arr(layout.querySelectorAll(".pb-empty-drop")).forEach(function (node) { node.remove(); });
-      arr(layout.querySelectorAll(Q.row + "," + Q.col)).forEach(installApi);
+      arr(layout.querySelectorAll(QLive.row + "," + QLive.col)).forEach(installApi);
       relayout(layout);
       this.read().currentFileId = found.node.id;
       this.selectedId = found.node.id;
@@ -5524,7 +5568,7 @@
   };
 
   function clearCanvas() {
-    var layout = document.getElementById("pb-builder-layout");
+    var layout = builderLayout();
     if (!layout) { return; }
     layout.innerHTML = "";
     relayout(layout);
@@ -5533,7 +5577,7 @@
   }
 
   function addRow() {
-    var layout = document.getElementById("pb-builder-layout");
+    var layout = builderLayout();
     var row;
     var col;
     var qrow;
@@ -5554,8 +5598,8 @@
 
   function addColumn() {
     var selected = document.querySelector(Q.item + ".pb-selected");
-    var row = selected ? selected.closest(Q.row) : null;
-    var layout = document.getElementById("pb-builder-layout");
+    var row = selected ? closestLayoutKind(selected, Q.row) : null;
+    var layout = builderLayout();
     var col;
     var qcol;
     if (!row && layout) { row = layout.row(0); }
@@ -5617,8 +5661,9 @@
 	  define(Q.item, QBuilderItem);
 	  define(Q.toolbox, QPaletteToolbox);
 	  define(Q.button, QPaletteButton);
-	  arr(document.querySelectorAll(Q.layout + "," + Q.row + "," + Q.col)).forEach(installApi);
-	  arr(document.querySelectorAll(Q.layout)).forEach(relayout);
+	  builderLayout();
+	  arr(document.querySelectorAll(QLive.all)).forEach(installApi);
+	  arr(document.querySelectorAll(QLive.layout)).forEach(relayout);
 	  BuilderStore.restoreSoon();
 	  updateExportPanel(false);
 

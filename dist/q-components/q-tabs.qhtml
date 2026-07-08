@@ -76,29 +76,20 @@ q-component q-tabs {
   }
 
   function tabsRoot() {
-    if (this && this.matches && this.matches("q-tabs")) {
-      return this;
+    var root = this;
+    if (root.matches("q-tabs")) {
+      return root;
     }
-    if (this && this.closest) {
-      return this.closest("q-tabs");
-    }
-    return null;
-  }
-
-  function emptyList() {
-    return new Array();
+    return root.closest("q-tabs");
   }
 
   function ownedElements(selector) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var tabs = this.tabsRoot();
     var out = new Array();
-    if (!tabs || !tabs.querySelectorAll) {
-      return out;
-    }
     var nodes = tabs.querySelectorAll(selector);
     for (var index = 0; index < nodes.length; index += 1) {
       var element = nodes[index];
-      if (element && element.closest && element.closest("q-tabs") === tabs) {
+      if (element.closest("q-tabs") === tabs) {
         out.push(element);
       }
     }
@@ -106,57 +97,57 @@ q-component q-tabs {
   }
 
   function tabButtons() {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    if (!tabs || !tabs.ownedElements) {
-      return new Array();
-    }
+    var tabs = this.tabsRoot();
     return tabs.ownedElements(".q-tab-button");
   }
 
   function tabPanels() {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    if (!tabs || !tabs.ownedElements) {
-      return new Array();
-    }
+    var tabs = this.tabsRoot();
     return tabs.ownedElements(".q-tab-panel");
   }
 
   function numericTabIndex(value, count) {
     var numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
+    if (isNaN(numeric)) {
       return -1;
     }
     numeric = Math.floor(numeric);
-    if (numeric < 0 || numeric >= count) {
+    if (numeric < 0) {
+      return -1;
+    }
+    if (numeric >= count) {
       return -1;
     }
     return numeric;
   }
 
   function selectedIndexFor(requested, panels) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    var items = panels || new Array();
-    var count = items.length || 0;
+    var tabs = this.tabsRoot();
+    var items = panels;
+    var count = items.length;
     if (count <= 0) {
       return -1;
     }
 
     if (typeof requested === "number") {
       var requestedNumber = tabs.numericTabIndex(requested, count);
-      return requestedNumber >= 0 ? requestedNumber : 0;
+      if (requestedNumber >= 0) {
+        return requestedNumber;
+      }
+      return 0;
     }
 
-    var requestedText = String(requested == null ? "" : requested).trim();
-    if (!requestedText) {
+    var requestedText = String(requested).trim();
+    if (requestedText === "") {
       var currentIndex = tabs.numericTabIndex(tabs.activeIndex, count);
-      return currentIndex >= 0 ? currentIndex : 0;
+      if (currentIndex >= 0) {
+        return currentIndex;
+      }
+      return 0;
     }
 
     for (var byName = 0; byName < count; byName += 1) {
       var panel = items[byName];
-      if (!panel) {
-        continue;
-      }
       if (panel.getAttribute("tabName") === requestedText) {
         return byName;
       }
@@ -169,62 +160,68 @@ q-component q-tabs {
     }
 
     var byIndex = tabs.numericTabIndex(requestedText, count);
-    return byIndex >= 0 ? byIndex : 0;
+    if (byIndex >= 0) {
+      return byIndex;
+    }
+    return 0;
   }
 
   function applyActiveButtonState(button, selected) {
-    if (!button) {
-      return;
+    button.classList.toggle("active", selected);
+    if (selected) {
+      button.setAttribute("aria-selected", "true");
+      button.setAttribute("tabindex", "0");
+      button.style.background = "#ffffff";
+      button.style.color = "#0f172a";
+      button.style.borderColor = "#c7d8ef";
+    } else {
+      button.setAttribute("aria-selected", "false");
+      button.setAttribute("tabindex", "-1");
+      button.style.background = "#e2e8f0";
+      button.style.color = "#334155";
+      button.style.borderColor = "#cbd5e1";
     }
-    button.classList.toggle("active", !!selected);
-    button.setAttribute("aria-selected", selected ? "true" : "false");
-    button.setAttribute("tabindex", selected ? "0" : "-1");
-    button.style.background = selected ? "#ffffff" : "#e2e8f0";
-    button.style.color = selected ? "#0f172a" : "#334155";
-    button.style.borderColor = selected ? "#c7d8ef" : "#cbd5e1";
   }
 
   function applyActivePanelState(panel, selected) {
-    if (!panel) {
-      return;
+    if (selected) {
+      panel.hidden = false;
+      panel.style.display = "block";
+      panel.setAttribute("aria-hidden", "false");
+    } else {
+      panel.hidden = true;
+      panel.style.display = "none";
+      panel.setAttribute("aria-hidden", "true");
     }
-    panel.hidden = !selected;
-    panel.style.display = selected ? "block" : "none";
-    panel.setAttribute("aria-hidden", selected ? "false" : "true");
   }
 
   function emitChanged(activeIndex, activeName, activePanel) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    if (!tabs) {
-      return;
-    }
-    if (typeof tabs.changed === "function") {
-      tabs.changed(activeIndex, activeName || "");
-    }
-    if (typeof CustomEvent === "function" && tabs.dispatchEvent) {
-      var detail = new Object();
-      detail.activeIndex = activeIndex;
-      detail.name = activeName || "";
-      detail.panel = activePanel || null;
+    var tabs = this.tabsRoot();
+    tabs.changed(activeIndex, activeName);
 
-      var options = new Object();
-      options.detail = detail;
-      options.bubbles = true;
-      tabs.dispatchEvent(new CustomEvent("q-tabs:changed", options));
-    }
+    var detail = new Object();
+    detail.activeIndex = activeIndex;
+    detail.name = activeName;
+    detail.panel = activePanel;
+
+    var options = new Object();
+    options.detail = detail;
+    options.bubbles = true;
+    tabs.dispatchEvent(new CustomEvent("q-tabs:changed", options));
   }
 
   function showTab(requested) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    if (!tabs) {
-      return null;
-    }
-
+    var tabs = this.tabsRoot();
     var panels = tabs.tabPanels();
     var buttons = tabs.tabButtons();
     var activeIndex = tabs.selectedIndexFor(requested, panels);
-    var activePanel = activeIndex >= 0 ? panels[activeIndex] : null;
-    var activeName = activePanel ? activePanel.getAttribute("tabName") : "";
+    var activePanel = null;
+    var activeName = "";
+
+    if (activeIndex >= 0) {
+      activePanel = panels[activeIndex];
+      activeName = activePanel.getAttribute("tabName");
+    }
 
     for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
       tabs.applyActivePanelState(panels[panelIndex], panelIndex === activeIndex);
@@ -237,7 +234,7 @@ q-component q-tabs {
     if (activeIndex >= 0) {
       tabs.activeIndex = activeIndex;
       tabs.setAttribute("q-tabs-active-index", String(activeIndex));
-      tabs.setAttribute("q-tabs-active-name", activeName || "");
+      tabs.setAttribute("q-tabs-active-name", activeName);
     }
 
     tabs.emitChanged(activeIndex, activeName, activePanel);
@@ -245,10 +242,7 @@ q-component q-tabs {
   }
 
   function refreshTabs() {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    if (!tabs) {
-      return new Array();
-    }
+    var tabs = this.tabsRoot();
     var panels = tabs.tabPanels();
     var index = tabs.numericTabIndex(tabs.activeIndex, panels.length);
     if (index < 0) {
@@ -259,24 +253,49 @@ q-component q-tabs {
   }
 
   function remountHost() {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    var host = tabs && tabs.closest ? tabs.closest("q-html") : null;
-    if (host && host.qhtmlDomTree && QHTML7 && typeof QHTML7.mountTree === "function") {
-      QHTML7.mountTree(host, host.qhtmlDomTree);
-      return true;
+    var tabs = this.tabsRoot();
+    var host = tabs.closest("q-html");
+    QHTML7.mountTree(host, host.qhtmlDomTree);
+    return true;
+  }
+
+  function tabNameFrom(tab) {
+    var name = tab.name;
+    if (typeof name === "undefined") {
+      name = tab.label;
     }
-    if (tabs && typeof tabs.refreshTabs === "function") {
-      tabs.refreshTabs();
+    if (typeof name === "undefined") {
+      name = tab.title;
     }
-    return false;
+    if (typeof name === "undefined") {
+      name = "Tab";
+    }
+    return String(name);
+  }
+
+  function tabBodyFrom(tab) {
+    var body = tab.body;
+    if (typeof body === "undefined") {
+      body = tab.content;
+    }
+    if (typeof body === "undefined") {
+      body = tab.text;
+    }
+    if (typeof body === "undefined") {
+      body = "";
+    }
+    return String(body);
   }
 
   function tabSource(tabObject) {
-    var tab = tabObject || {};
-    var name = String(tab.name || tab.label || tab.title || "Tab");
-    var body = String(tab.body || tab.content || tab.text || "");
-    if (tab.source || tab.qhtmlSource) {
-      return String(tab.source || tab.qhtmlSource);
+    var tab = tabObject;
+    var name = this.tabNameFrom(tab);
+    var body = this.tabBodyFrom(tab);
+    if (tab.source) {
+      return String(tab.source);
+    }
+    if (tab.qhtmlSource) {
+      return String(tab.qhtmlSource);
     }
     return "q-tab { " +
       "name { text { " + name + " } } " +
@@ -285,56 +304,59 @@ q-component q-tabs {
   }
 
   function tabChildIndex(tabRef) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    var node = tabs ? tabs.qhtmlNode : null;
-    var wantedName = String(tabRef == null ? "" : tabRef);
+    var tabs = this.tabsRoot();
+    var node = tabs.qhtmlNode;
+    var wantedName = "";
     var fallback = -1;
-    if (!node || typeof node.childCount !== "function" || typeof node.childAt !== "function") {
-      return -1;
-    }
+
     if (typeof tabRef === "number") {
       return Math.floor(tabRef);
     }
-    for (var index = 0; index < node.childCount(); index += 1) {
-      var child = node.childAt(index);
-      if (!child || typeof child.qhtmlType !== "function") {
-        continue;
-      }
-      if (child.qhtmlType() !== "QHTMLComponentInstance" && child.qhtmlType() !== "QHTMLTypedNode") {
-        continue;
-      }
-      if (typeof child.keyword === "function" && child.keyword() !== "q-tab") {
-        continue;
-      }
-      fallback = index;
-      if (typeof child.qhtmlName === "function" && child.qhtmlName() === wantedName) {
-        return index;
+    if (typeof tabRef !== "undefined") {
+      if (tabRef !== null) {
+        wantedName = String(tabRef);
       }
     }
-    return wantedName ? -1 : fallback;
+
+    for (var index = 0; index < node.childCount(); index += 1) {
+      var child = node.childAt(index);
+      var type = child.qhtmlType();
+      var isTabNode = false;
+      if (type === "QHTMLComponentInstance") {
+        isTabNode = true;
+      }
+      if (type === "QHTMLTypedNode") {
+        isTabNode = true;
+      }
+      if (isTabNode) {
+        if (child.keyword() === "q-tab") {
+          fallback = index;
+          if (child.qhtmlName() === wantedName) {
+            return index;
+          }
+        }
+      }
+    }
+
+    if (wantedName === "") {
+      return fallback;
+    }
+    return -1;
   }
 
   function addTab(tabObject) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    var node = tabs ? tabs.qhtmlNode : null;
-    var tab = tabObject || {};
-    var name = String(tab.name || tab.label || tab.title || "Tab");
-    var body = String(tab.body || tab.content || tab.text || "");
-    var buttons = tabs ? tabs.tabButtons() : new Array();
-    var bar = tabs ? tabs.querySelector(".q-tabs-bar") : null;
-    var bodyRoot = tabs ? tabs.querySelector(".q-tabs-body") : null;
-    var button;
-    var panel;
-    if (!node || typeof node.appendQHTMLSource !== "function") {
-      node = null;
-    }
-    if (!tabs || !bar || !bodyRoot) {
-      return false;
-    }
-    if (node) {
-      node.appendQHTMLSource(tabs.tabSource(tab));
-    }
-    button = document.createElement("button");
+    var tabs = this.tabsRoot();
+    var node = tabs.qhtmlNode;
+    var tab = tabObject;
+    var name = tabs.tabNameFrom(tab);
+    var body = tabs.tabBodyFrom(tab);
+    var buttons = tabs.tabButtons();
+    var bar = tabs.querySelector(".q-tabs-bar");
+    var bodyRoot = tabs.querySelector(".q-tabs-body");
+
+    node.appendQHTMLSource(tabs.tabSource(tab));
+
+    var button = document.createElement("button");
     button.type = "button";
     button.className = "q-tab-button tab-button";
     button.setAttribute("role", "tab");
@@ -345,18 +367,25 @@ q-component q-tabs {
     button.addEventListener("click", function() {
       tabs.showTab(name);
     });
-    panel = document.createElement("div");
+
+    var panel = document.createElement("div");
     panel.className = "q-tab-panel tab";
     panel.setAttribute("role", "tabpanel");
     panel.setAttribute("tabName", name);
     panel.setAttribute("aria-hidden", "true");
     panel.hidden = true;
     panel.style.display = "none";
-    if (tab.html || tab.bodyHtml) {
-      panel.innerHTML = String(tab.html || tab.bodyHtml);
+
+    if (tab.html) {
+      panel.innerHTML = String(tab.html);
     } else {
-      panel.textContent = body;
+      if (tab.bodyHtml) {
+        panel.innerHTML = String(tab.bodyHtml);
+      } else {
+        panel.textContent = body;
+      }
     }
+
     bar.appendChild(button);
     bodyRoot.appendChild(panel);
     tabs.showTab(buttons.length);
@@ -364,42 +393,53 @@ q-component q-tabs {
   }
 
   function removeTab(tabRef) {
-    var tabs = this.tabsRoot ? this.tabsRoot() : this;
-    var node = tabs ? tabs.qhtmlNode : null;
-    var panels = tabs ? tabs.tabPanels() : new Array();
-    var buttons = tabs ? tabs.tabButtons() : new Array();
+    var tabs = this.tabsRoot();
+    var node = tabs.qhtmlNode;
+    var panels = tabs.tabPanels();
+    var buttons = tabs.tabButtons();
     var index = -1;
-    if (!tabs || panels.length <= 0) {
-      return false;
-    }
+
     if (typeof tabRef === "number") {
       index = tabs.numericTabIndex(tabRef, panels.length);
-    } else if (typeof tabRef === "undefined" || tabRef === null || tabRef === "") {
-      index = panels.length - 1;
     } else {
-      var wanted = String(tabRef);
-      for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
-        if (panels[panelIndex] && panels[panelIndex].getAttribute("tabName") === wanted) {
-          index = panelIndex;
-          break;
+      if (typeof tabRef === "undefined") {
+        index = panels.length - 1;
+      } else {
+        if (tabRef === null) {
+          index = panels.length - 1;
+        } else {
+          if (tabRef === "") {
+            index = panels.length - 1;
+          } else {
+            var wanted = String(tabRef);
+            for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
+              if (panels[panelIndex].getAttribute("tabName") === wanted) {
+                index = panelIndex;
+                break;
+              }
+            }
+          }
         }
       }
     }
-    if (index < 0 || index >= panels.length) {
+
+    if (index < 0) {
       return false;
     }
-    if (buttons[index]) {
-      buttons[index].remove();
+    if (index >= panels.length) {
+      return false;
     }
-    if (panels[index]) {
-      panels[index].remove();
-    }
-    if (node && typeof node.removeChildAt === "function" && typeof node.childCount === "function") {
-      var nodeIndex = tabs.tabChildIndex(tabRef);
-      if (nodeIndex >= 0 && nodeIndex < node.childCount()) {
+
+    buttons[index].remove();
+    panels[index].remove();
+
+    var nodeIndex = tabs.tabChildIndex(tabRef);
+    if (nodeIndex >= 0) {
+      if (nodeIndex < node.childCount()) {
         node.removeChildAt(nodeIndex);
       }
     }
+
     tabs.showTab(Math.min(index, panels.length - 2));
     return true;
   }
@@ -426,9 +466,7 @@ q-component q-tabs {
             text { ${tab.name} }
             onclick {
               var tabs = this.closest("q-tabs");
-              if (tabs && typeof tabs.showTab === "function") {
-                tabs.showTab(this.getAttribute("tabName"));
-              }
+              tabs.showTab(this.getAttribute("tabName"));
             }
           }
         }

@@ -1,50 +1,34 @@
 q-component page-builder-toolbar {
   function exportLayout() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.exportToPanel === "function") {
-      window.QPageBuilder.exportToPanel();
-    }
+    window.QPageBuilder.exportToPanel();
   }
 
   function clearLayout() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.clearCanvas === "function") {
-      window.QPageBuilder.clearCanvas();
-    }
+    window.QPageBuilder.clearCanvas();
   }
 
   function newFile() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.newLayoutFile === "function") {
-      window.QPageBuilder.newLayoutFile();
-    }
+    window.QPageBuilder.newLayoutFile();
   }
 
   function saveLayout() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.saveLayout === "function") {
-      window.QPageBuilder.saveLayout();
-    }
+    window.QPageBuilder.saveLayout();
   }
 
   function loadLayout() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.loadLayout === "function") {
-      window.QPageBuilder.loadLayout();
-    }
+    window.QPageBuilder.loadLayout();
   }
 
   function fileManager() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.openFileManager === "function") {
-      window.QPageBuilder.openFileManager();
-    }
+    window.QPageBuilder.openFileManager();
   }
 
   function importQHtml() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.importQHtmlFile === "function") {
-      window.QPageBuilder.importQHtmlFile();
-    }
+    window.QPageBuilder.importQHtmlFile();
   }
 
   function exportFolder() {
-    if (window.QPageBuilder && typeof window.QPageBuilder.exportFolder === "function") {
-      window.QPageBuilder.exportFolder();
-    }
+    window.QPageBuilder.exportFolder();
   }
 
   header.pb-toolbar {
@@ -56,14 +40,46 @@ q-component page-builder-toolbar {
       }
     }
     div.pb-actions {
-      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").newFile(); } text { New } }
-      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").saveLayout(); } text { Save } }
-      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").loadLayout(); } text { Load } }
-      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").fileManager(); } text { File Manager } }
-      button.pb-action.secondary { type: "button" onclick { this.closest("page-builder-toolbar").importQHtml(); } text { Import QHTML } }
-      button.pb-action.danger { type: "button" onclick { this.closest("page-builder-toolbar").clearLayout(); } text { Clear } }
-      button.pb-action.primary { type: "button" onclick { this.closest("page-builder-toolbar").exportLayout(); } text { Export QHTML } }
-      button.pb-action.primary { type: "button" onclick { this.closest("page-builder-toolbar").exportFolder(); } text { Export Folder } }
+      button.pb-action.secondary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").newFile(); }
+        text { New }
+      }
+      button.pb-action.secondary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").saveLayout(); }
+        text { Save }
+      }
+      button.pb-action.secondary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").loadLayout(); }
+        text { Load }
+      }
+      button.pb-action.secondary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").fileManager(); }
+        text { File Manager }
+      }
+      button.pb-action.secondary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").importQHtml(); }
+        text { Import QHTML }
+      }
+      button.pb-action.danger {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").clearLayout(); }
+        text { Clear }
+      }
+      button.pb-action.primary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").exportLayout(); }
+        text { Export QHTML }
+      }
+      button.pb-action.primary {
+        type: "button"
+        onclick { this.closest("page-builder-toolbar").exportFolder(); }
+        text { Export Folder }
+      }
     }
   }
 }
@@ -92,7 +108,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Heading"
         component: "pb-heading-block"
-        qhtml: "q-style pbHeadingBlockHeaderStyle { padding: 20px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbHeadingBlockTitleStyle { margin: 0; fontSize: 30px; letterSpacing: -.04em; color: #0f172a } q-style pbHeadingBlockSubtitleStyle { marginTop: 8px; color: #64748b; lineHeight: 1.5 } q-theme pbHeadingBlockTheme { header { pbHeadingBlockHeaderStyle } h2 { pbHeadingBlockTitleStyle } p { pbHeadingBlockSubtitleStyle } } pbHeadingBlockTheme { header { h2 { q-layout { data-pb-slot: \"headingTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { headingTitle } } } } } p { q-layout { data-pb-slot: \"headingSubtitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { headingSubtitle } } } } } q-layout { data-pb-slot: \"headingContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { headingContent } } } } } } q-slot-default headingTitle { text { Your heading here } } q-slot-default headingSubtitle { text { Add a short supporting subtitle for this section. } } q-slot-default headingContent { text { Add supporting content or nested blocks here. } }"
+        qhtml: "q-style pbHeadingBlockHeaderStyle { padding: 20px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbHeadingBlockTitleStyle { margin: 0; fontSize: 30px; letterSpacing: -.04em; color: #0f172a } q-style pbHeadingBlockSubtitleStyle { marginTop: 8px; color: #64748b; lineHeight: 1.5 } q-theme pbHeadingBlockTheme { header { pbHeadingBlockHeaderStyle } h2 { pbHeadingBlockTitleStyle } p { pbHeadingBlockSubtitleStyle } } pbHeadingBlockTheme { header { h2 { q-layout { data-pb-slot: \"headingTitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { headingTitle } } } } } p { q-layout { data-pb-slot: \"headingSubtitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { headingSubtitle } } } } } q-layout { data-pb-slot: \"headingContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { headingContent } } } } } } q-slot-default headingTitle { text { Your heading here } } q-slot-default headingSubtitle { text { Add a short supporting subtitle for this section. } } q-slot-default headingContent { text { Add supporting content or nested blocks here. } }"
         instance: "pb-heading-block { }"
         div.pb-palette-preview.heading {
           h3 { text { Heading } }
@@ -103,7 +119,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Hero"
         component: "pb-hero-block"
-        qhtml: "q-style pbHeroBlockSectionStyle { padding: 32px; borderRadius: 20px; background: linear-gradient(135deg,#0f172a,#1d4ed8); color: white } q-style pbHeroBlockTitleStyle { margin: 0; fontSize: 38px; letterSpacing: -.06em } q-style pbHeroBlockCopyStyle { maxWidth: 560px; color: #dbeafe; lineHeight: 1.5 } q-style pbHeroBlockButtonStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-theme pbHeroBlockTheme { section.pb-hero-block { pbHeroBlockSectionStyle } h1 { pbHeroBlockTitleStyle } p { pbHeroBlockCopyStyle } button { pbHeroBlockButtonStyle } } pbHeroBlockTheme { section.pb-hero-block { h1 { q-layout { data-pb-slot: \"heroTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroTitle } } } } } p { q-layout { data-pb-slot: \"heroSubtitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroSubtitle } } } } } button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"heroButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroButtonText } } } } } q-layout { data-pb-slot: \"heroContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { heroContent } } } } } } q-slot-default heroTitle { text { Launch Faster } } q-slot-default heroSubtitle { text { Compose a clean landing page visually, then export declarative QHTML. } } q-slot-default heroButtonText { text { Start Building } } q-slot-default heroContent { text { Add hero details or nested blocks here. } }"
+        qhtml: "q-style pbHeroBlockSectionStyle { padding: 32px; borderRadius: 20px; background: linear-gradient(135deg,#0f172a,#1d4ed8); color: white } q-style pbHeroBlockTitleStyle { margin: 0; fontSize: 38px; letterSpacing: -.06em } q-style pbHeroBlockCopyStyle { maxWidth: 560px; color: #dbeafe; lineHeight: 1.5 } q-style pbHeroBlockButtonStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-theme pbHeroBlockTheme { section.pb-hero-block { pbHeroBlockSectionStyle } h1 { pbHeroBlockTitleStyle } p { pbHeroBlockCopyStyle } button { pbHeroBlockButtonStyle } } pbHeroBlockTheme { section.pb-hero-block { h1 { q-layout { data-pb-slot: \"heroTitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { heroTitle } } } } } p { q-layout { data-pb-slot: \"heroSubtitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { heroSubtitle } } } } } button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"heroButtonText\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { heroButtonText } } } } } q-layout { data-pb-slot: \"heroContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { heroContent } } } } } } q-slot-default heroTitle { text { Launch Faster } } q-slot-default heroSubtitle { text { Compose a clean landing page visually, then export declarative QHTML. } } q-slot-default heroButtonText { text { Start Building } } q-slot-default heroContent { text { Add hero details or nested blocks here. } }"
         instance: "pb-hero-block { }"
         div.pb-palette-preview.hero {
           h3 { text { Hero } }
@@ -114,7 +130,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Card"
         component: "pb-card-block"
-        qhtml: "q-style pbCardBlockArticleStyle { padding: 22px; borderRadius: 18px; background: #f8fafc; border: 1px solid #dbe4f0; color: #0f172a; boxShadow: 0 12px 28px rgba(15,23,42,.08) } q-style pbCardBlockTitleStyle { marginTop: 0; marginBottom: 8px; color: #0f172a } q-style pbCardBlockBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbCardBlockTheme { article.pb-feature-card { pbCardBlockArticleStyle } h3 { pbCardBlockTitleStyle } p { pbCardBlockBodyStyle } } pbCardBlockTheme { article.pb-feature-card { h3 { q-layout { data-pb-slot: \"cardTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { cardTitle } } } } } p { q-layout { data-pb-slot: \"cardBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { cardBody } } } } } q-layout { data-pb-slot: \"cardContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { cardContent } } } } } } q-slot-default cardTitle { text { Card title } } q-slot-default cardBody { text { Use this card for compact page content or feature summaries. } } q-slot-default cardContent { text { Add card details or nested blocks here. } }"
+        qhtml: "q-style pbCardBlockArticleStyle { padding: 22px; borderRadius: 18px; background: #f8fafc; border: 1px solid #dbe4f0; color: #0f172a; boxShadow: 0 12px 28px rgba(15,23,42,.08) } q-style pbCardBlockTitleStyle { marginTop: 0; marginBottom: 8px; color: #0f172a } q-style pbCardBlockBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbCardBlockTheme { article.pb-feature-card { pbCardBlockArticleStyle } h3 { pbCardBlockTitleStyle } p { pbCardBlockBodyStyle } } pbCardBlockTheme { article.pb-feature-card { h3 { q-layout { data-pb-slot: \"cardTitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { cardTitle } } } } } p { q-layout { data-pb-slot: \"cardBody\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { cardBody } } } } } q-layout { data-pb-slot: \"cardContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { cardContent } } } } } } q-slot-default cardTitle { text { Card title } } q-slot-default cardBody { text { Use this card for compact page content or feature summaries. } } q-slot-default cardContent { text { Add card details or nested blocks here. } }"
         instance: "pb-card-block { }"
         div.pb-palette-preview.card {
           h3 { text { Card } }
@@ -125,7 +141,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Callout"
         component: "pb-callout"
-        qhtml: "q-style pbCalloutAsideStyle { padding: 18px; borderRadius: 18px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f } q-style pbCalloutStrongStyle { display: block; marginBottom: 6px; fontWeight: 900 } q-style pbCalloutBodyStyle { margin: 0; color: #78350f; lineHeight: 1.5 } q-theme pbCalloutTheme { aside.pb-callout { pbCalloutAsideStyle } strong { pbCalloutStrongStyle } p { pbCalloutBodyStyle } } pbCalloutTheme { aside.pb-callout { strong { q-layout { data-pb-slot: \"calloutLabel\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { calloutLabel } } } } } p { q-layout { data-pb-slot: \"calloutBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { calloutBody } } } } } q-layout { data-pb-slot: \"calloutContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { calloutContent } } } } } } q-slot-default calloutLabel { text { Note } } q-slot-default calloutBody { text { Use callouts for announcements, warnings, or highlighted copy. } } q-slot-default calloutContent { text { Add supporting details here. } }"
+        qhtml: "q-style pbCalloutAsideStyle { padding: 18px; borderRadius: 18px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f } q-style pbCalloutStrongStyle { display: block; marginBottom: 6px; fontWeight: 900 } q-style pbCalloutBodyStyle { margin: 0; color: #78350f; lineHeight: 1.5 } q-theme pbCalloutTheme { aside.pb-callout { pbCalloutAsideStyle } strong { pbCalloutStrongStyle } p { pbCalloutBodyStyle } } pbCalloutTheme { aside.pb-callout { strong { q-layout { data-pb-slot: \"calloutLabel\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { calloutLabel } } } } } p { q-layout { data-pb-slot: \"calloutBody\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { calloutBody } } } } } q-layout { data-pb-slot: \"calloutContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { calloutContent } } } } } } q-slot-default calloutLabel { text { Note } } q-slot-default calloutBody { text { Use callouts for announcements, warnings, or highlighted copy. } } q-slot-default calloutContent { text { Add supporting details here. } }"
         instance: "pb-callout { }"
         div.pb-palette-preview.callout {
           h3 { text { Callout } }
@@ -136,7 +152,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Price Box"
         component: "pb-price-box"
-        qhtml: "q-style pbPriceBoxSectionStyle { padding: 24px; borderRadius: 20px; background: #f0f9ff; border: 1px solid #bae6fd; color: #0f172a; boxShadow: 0 12px 28px rgba(14,165,233,.14) } q-style pbPriceBoxTitleStyle { marginTop: 0; marginBottom: 8px; color: #075985 } q-style pbPriceBoxAmountStyle { fontSize: 28px; fontWeight: 950; color: #0f172a; margin: 6px 0 14px } q-style pbPriceBoxListStyle { paddingLeft: 20px; color: #334155; lineHeight: 1.6 } q-style pbPriceBoxButtonStyle { border: 0; borderRadius: 999px; background: #0ea5e9; color: white; fontWeight: 900; padding: 10px 16px } q-theme pbPriceBoxTheme { section { pbPriceBoxSectionStyle } h3 { pbPriceBoxTitleStyle } p { pbPriceBoxAmountStyle } ul { pbPriceBoxListStyle } button { pbPriceBoxButtonStyle } } pbPriceBoxTheme { section { h3 { q-layout { data-pb-slot: \"priceTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceTitle } } } } } p { q-layout { data-pb-slot: \"priceAmount\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceAmount } } } } } ul { q-layout { data-pb-slot: \"priceFeatures\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceFeatures } } } } } button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"priceButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceButtonText } } } } } q-layout { data-pb-slot: \"priceContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { priceContent } } } } } } q-slot-default priceTitle { text { Starter } } q-slot-default priceAmount { text { $29 / month } } q-slot-default priceFeatures { li { text { Core features } } li { text { Email support } } li { text { Simple onboarding } } } q-slot-default priceButtonText { text { Choose plan } } q-slot-default priceContent { text { Add plan details here. } }"
+        qhtml: "q-style pbPriceBoxSectionStyle { padding: 24px; borderRadius: 20px; background: #f0f9ff; border: 1px solid #bae6fd; color: #0f172a; boxShadow: 0 12px 28px rgba(14,165,233,.14) } q-style pbPriceBoxTitleStyle { marginTop: 0; marginBottom: 8px; color: #075985 } q-style pbPriceBoxAmountStyle { fontSize: 28px; fontWeight: 950; color: #0f172a; margin: 6px 0 14px } q-style pbPriceBoxListStyle { paddingLeft: 20px; color: #334155; lineHeight: 1.6 } q-style pbPriceBoxButtonStyle { border: 0; borderRadius: 999px; background: #0ea5e9; color: white; fontWeight: 900; padding: 10px 16px } q-theme pbPriceBoxTheme { section { pbPriceBoxSectionStyle } h3 { pbPriceBoxTitleStyle } p { pbPriceBoxAmountStyle } ul { pbPriceBoxListStyle } button { pbPriceBoxButtonStyle } } pbPriceBoxTheme { section { h3 { q-layout { data-pb-slot: \"priceTitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { priceTitle } } } } } p { q-layout { data-pb-slot: \"priceAmount\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { priceAmount } } } } } ul { q-layout { data-pb-slot: \"priceFeatures\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { priceFeatures } } } } } button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"priceButtonText\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { priceButtonText } } } } } q-layout { data-pb-slot: \"priceContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { priceContent } } } } } } q-slot-default priceTitle { text { Starter } } q-slot-default priceAmount { text { $29 / month } } q-slot-default priceFeatures { li { text { Core features } } li { text { Email support } } li { text { Simple onboarding } } } q-slot-default priceButtonText { text { Choose plan } } q-slot-default priceContent { text { Add plan details here. } }"
         instance: "pb-price-box { }"
         div.pb-palette-preview.price {
           h3 { text { Price Box } }
@@ -147,7 +163,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Aside Box"
         component: "pb-aside-box"
-        qhtml: "q-style pbAsideBoxStyle { padding: 18px; borderRadius: 18px; background: #f8fafc; border: 1px solid #cbd5e1; color: #334155 } q-style pbAsideTitleStyle { marginTop: 0; color: #0f172a } q-style pbAsideBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbAsideBoxTheme { aside { pbAsideBoxStyle } h4 { pbAsideTitleStyle } p { pbAsideBodyStyle } } pbAsideBoxTheme { aside { h4 { q-layout { data-pb-slot: \"asideTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { asideTitle } } } } } p { q-layout { data-pb-slot: \"asideBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { asideBody } } } } } q-layout { data-pb-slot: \"asideContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { asideContent } } } } } } q-slot-default asideTitle { text { Related } } q-slot-default asideBody { text { Add secondary context, links, or supporting notes here. } } q-slot-default asideContent { text { Add links or nested content here. } }"
+        qhtml: "q-style pbAsideBoxStyle { padding: 18px; borderRadius: 18px; background: #f8fafc; border: 1px solid #cbd5e1; color: #334155 } q-style pbAsideTitleStyle { marginTop: 0; color: #0f172a } q-style pbAsideBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbAsideBoxTheme { aside { pbAsideBoxStyle } h4 { pbAsideTitleStyle } p { pbAsideBodyStyle } } pbAsideBoxTheme { aside { h4 { q-layout { data-pb-slot: \"asideTitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { asideTitle } } } } } p { q-layout { data-pb-slot: \"asideBody\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { asideBody } } } } } q-layout { data-pb-slot: \"asideContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { asideContent } } } } } } q-slot-default asideTitle { text { Related } } q-slot-default asideBody { text { Add secondary context, links, or supporting notes here. } } q-slot-default asideContent { text { Add links or nested content here. } }"
         instance: "pb-aside-box { }"
         div.pb-palette-preview.callout {
           h3 { text { Aside } }
@@ -158,7 +174,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Container"
         component: "pb-container-block"
-        qhtml: "q-style pbContainerSectionStyle { padding: 24px; borderRadius: 22px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbContainerHeaderStyle { marginBottom: 14px } q-style pbContainerTitleStyle { marginTop: 0; marginBottom: 8px } q-style pbContainerBodyStyle { color: #64748b; lineHeight: 1.5 } q-theme pbContainerBlockTheme { section { pbContainerSectionStyle } div { pbContainerHeaderStyle } h3 { pbContainerTitleStyle } p { pbContainerBodyStyle } } pbContainerBlockTheme { section { div { h3 { q-layout { data-pb-slot: \"containerTitle\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { containerTitle } } } } } p { q-layout { data-pb-slot: \"containerBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { containerBody } } } } } } q-layout { data-pb-slot: \"containerContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { containerContent } } } } } } q-slot-default containerTitle { text { Container } } q-slot-default containerBody { text { Place grouped content inside this general purpose section. } } q-slot-default containerContent { text { Add grouped content or nested blocks here. } }"
+        qhtml: "q-style pbContainerSectionStyle { padding: 24px; borderRadius: 22px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbContainerHeaderStyle { marginBottom: 14px } q-style pbContainerTitleStyle { marginTop: 0; marginBottom: 8px } q-style pbContainerBodyStyle { color: #64748b; lineHeight: 1.5 } q-theme pbContainerBlockTheme { section { pbContainerSectionStyle } div { pbContainerHeaderStyle } h3 { pbContainerTitleStyle } p { pbContainerBodyStyle } } pbContainerBlockTheme { section { div { h3 { q-layout { data-pb-slot: \"containerTitle\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { containerTitle } } } } } p { q-layout { data-pb-slot: \"containerBody\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { containerBody } } } } } } q-layout { data-pb-slot: \"containerContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { containerContent } } } } } } q-slot-default containerTitle { text { Container } } q-slot-default containerBody { text { Place grouped content inside this general purpose section. } } q-slot-default containerContent { text { Add grouped content or nested blocks here. } }"
         instance: "pb-container-block { }"
         div.pb-palette-preview.card {
           h3 { text { Container } }
@@ -169,7 +185,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Text Block"
         component: "pb-text-block"
-        qhtml: "q-style pbTextBlockStyle { padding: 18px; borderRadius: 16px; background: #ffffff; color: #334155; lineHeight: 1.65 } q-style pbTextBlockParagraphStyle { marginTop: 0; marginBottom: 8px } q-theme pbTextBlockTheme { div { pbTextBlockStyle } p { pbTextBlockParagraphStyle } } pbTextBlockTheme { div { p { q-layout { data-pb-slot: \"textBody\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { textBody } } } } } q-layout { data-pb-slot: \"textContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { textContent } } } } } } q-slot-default textBody { text { Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante. } } q-slot-default textContent { text { Add additional copy or nested blocks here. } }"
+        qhtml: "q-style pbTextBlockStyle { padding: 18px; borderRadius: 16px; background: #ffffff; color: #334155; lineHeight: 1.65 } q-style pbTextBlockParagraphStyle { marginTop: 0; marginBottom: 8px } q-theme pbTextBlockTheme { div { pbTextBlockStyle } p { pbTextBlockParagraphStyle } } pbTextBlockTheme { div { p { q-layout { data-pb-slot: \"textBody\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { textBody } } } } } q-layout { data-pb-slot: \"textContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { textContent } } } } } } q-slot-default textBody { text { Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante. } } q-slot-default textContent { text { Add additional copy or nested blocks here. } }"
         instance: "pb-text-block { }"
         div.pb-palette-preview.card {
           h3 { text { Text } }
@@ -180,7 +196,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Image Placeholder"
         component: "pb-image-placeholder"
-        qhtml: "q-style pbImageFigureStyle { margin: 0; padding: 18px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #475569 } q-style pbImageBoxStyle { minHeight: 140px; display: grid; placeItems: center; background: #e2e8f0; borderRadius: 16px; color: #475569 } q-style pbImageCaptionStyle { marginTop: 8px; color: #64748b; fontSize: 14px } q-theme pbImagePlaceholderTheme { figure { pbImageFigureStyle } div { pbImageBoxStyle } figcaption { pbImageCaptionStyle } } pbImagePlaceholderTheme { figure { div { q-layout { data-pb-slot: \"imageLabel\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { imageLabel } } } } } figcaption { q-layout { data-pb-slot: \"imageCaption\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { imageCaption } } } } } q-layout { data-pb-slot: \"imageContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { imageContent } } } } } } q-slot-default imageLabel { text { Image } } q-slot-default imageCaption { text { Optional caption } } q-slot-default imageContent { text { Add image-adjacent content here. } }"
+        qhtml: "q-style pbImageFigureStyle { margin: 0; padding: 18px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #475569 } q-style pbImageBoxStyle { minHeight: 140px; display: grid; placeItems: center; background: #e2e8f0; borderRadius: 16px; color: #475569 } q-style pbImageCaptionStyle { marginTop: 8px; color: #64748b; fontSize: 14px } q-theme pbImagePlaceholderTheme { figure { pbImageFigureStyle } div { pbImageBoxStyle } figcaption { pbImageCaptionStyle } } pbImagePlaceholderTheme { figure { div { q-layout { data-pb-slot: \"imageLabel\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { imageLabel } } } } } figcaption { q-layout { data-pb-slot: \"imageCaption\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { imageCaption } } } } } q-layout { data-pb-slot: \"imageContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { imageContent } } } } } } q-slot-default imageLabel { text { Image } } q-slot-default imageCaption { text { Optional caption } } q-slot-default imageContent { text { Add image-adjacent content here. } }"
         instance: "pb-image-placeholder { }"
         div.pb-palette-preview.card {
           h3 { text { Image } }
@@ -191,7 +207,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Quote"
         component: "pb-quote-block"
-        qhtml: "q-style pbQuoteBlockStyle { margin: 0; padding: 22px; borderRadius: 20px; background: #f8fafc; borderLeft: 5px solid #f59e0b; color: #1f2937 } q-style pbQuoteTextStyle { marginTop: 0; fontSize: 20px; lineHeight: 1.45 } q-style pbQuoteCiteStyle { display: block; marginTop: 10px; color: #64748b; fontStyle: normal; fontWeight: 800 } q-theme pbQuoteBlockTheme { blockquote { pbQuoteBlockStyle } p { pbQuoteTextStyle } cite { pbQuoteCiteStyle } } pbQuoteBlockTheme { blockquote { p { q-layout { data-pb-slot: \"quoteText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { quoteText } } } } } cite { q-layout { data-pb-slot: \"quoteCite\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { quoteCite } } } } } q-layout { data-pb-slot: \"quoteContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { quoteContent } } } } } } q-slot-default quoteText { text { A concise testimonial or pull quote can go here. } } q-slot-default quoteCite { text { Customer Name } } q-slot-default quoteContent { text { Add quote context here. } }"
+        qhtml: "q-style pbQuoteBlockStyle { margin: 0; padding: 22px; borderRadius: 20px; background: #f8fafc; borderLeft: 5px solid #f59e0b; color: #1f2937 } q-style pbQuoteTextStyle { marginTop: 0; fontSize: 20px; lineHeight: 1.45 } q-style pbQuoteCiteStyle { display: block; marginTop: 10px; color: #64748b; fontStyle: normal; fontWeight: 800 } q-theme pbQuoteBlockTheme { blockquote { pbQuoteBlockStyle } p { pbQuoteTextStyle } cite { pbQuoteCiteStyle } } pbQuoteBlockTheme { blockquote { p { q-layout { data-pb-slot: \"quoteText\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { quoteText } } } } } cite { q-layout { data-pb-slot: \"quoteCite\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { quoteCite } } } } } q-layout { data-pb-slot: \"quoteContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { quoteContent } } } } } } q-slot-default quoteText { text { A concise testimonial or pull quote can go here. } } q-slot-default quoteCite { text { Customer Name } } q-slot-default quoteContent { text { Add quote context here. } }"
         instance: "pb-quote-block { }"
         div.pb-palette-preview.callout {
           h3 { text { Quote } }
@@ -202,7 +218,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Button Row"
         component: "pb-button-row"
-        qhtml: "q-style pbButtonRowStyle { display: flex; gap: 12px; flexWrap: wrap; alignItems: center } q-style pbButtonPrimaryStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-style pbButtonGhostStyle { border: 1px solid #bfdbfe; borderRadius: 999px; background: white; color: #1d4ed8; fontWeight: 900; padding: 10px 16px } q-theme pbButtonRowTheme { div.pb-button-row { pbButtonRowStyle } button { pbButtonPrimaryStyle } .ghost { pbButtonGhostStyle } } pbButtonRowTheme { div.pb-button-row { button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"primaryButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { primaryButtonText } } } } } button { class: \"pb-demo-button ghost\" q-layout { data-pb-slot: \"secondaryButtonText\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { secondaryButtonText } } } } } q-layout { data-pb-slot: \"buttonRowContent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { buttonRowContent } } } } } } q-slot-default primaryButtonText { text { Primary } } q-slot-default secondaryButtonText { text { Secondary } } q-slot-default buttonRowContent { text { Optional helper text } }"
+        qhtml: "q-style pbButtonRowStyle { display: flex; gap: 12px; flexWrap: wrap; alignItems: center } q-style pbButtonPrimaryStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-style pbButtonGhostStyle { border: 1px solid #bfdbfe; borderRadius: 999px; background: white; color: #1d4ed8; fontWeight: 900; padding: 10px 16px } q-theme pbButtonRowTheme { div.pb-button-row { pbButtonRowStyle } button { pbButtonPrimaryStyle } .ghost { pbButtonGhostStyle } } pbButtonRowTheme { div.pb-button-row { button { class: \"pb-demo-button\" q-layout { data-pb-slot: \"primaryButtonText\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { primaryButtonText } } } } } button { class: \"pb-demo-button ghost\" q-layout { data-pb-slot: \"secondaryButtonText\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { secondaryButtonText } } } } } q-layout { data-pb-slot: \"buttonRowContent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { buttonRowContent } } } } } } q-slot-default primaryButtonText { text { Primary } } q-slot-default secondaryButtonText { text { Secondary } } q-slot-default buttonRowContent { text { Optional helper text } }"
         instance: "pb-button-row { }"
         div.pb-palette-preview.buttons {
           h3 { text { Buttons } }
@@ -213,7 +229,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Layout: 1 Column"
         component: "pb-layout-one-col"
-        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"onecolumncontent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { onecolumncontent } } } } } } } q-slot-default onecolumncontent { text { Add one-column layout content here. } }"
+        qhtml: "q-layout { width: \"100%\"; gap: \"14px\"; q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"onecolumncontent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { onecolumncontent } } } } } } } q-slot-default onecolumncontent { text { Add one-column layout content here. } }"
         instance: "pb-layout-one-col { }"
         div.pb-palette-preview.layout {
           h3 { text { 1 Column } }
@@ -224,7 +240,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Layout: 2 Columns"
         component: "pb-layout-two-col"
-        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }"
+        qhtml: "q-layout { width: \"100%\"; gap: \"14px\"; q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\"; q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }"
         instance: "pb-layout-two-col { }"
         div.pb-palette-preview.layout {
           h3 { text { 2 Columns } }
@@ -235,7 +251,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Layout: 3 Columns"
         component: "pb-layout-three-col"
-        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"middlecolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { middlecolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default middlecolumn { text { Add middle column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }"
+        qhtml: "q-layout { width: \"100%\"; gap: \"14px\"; q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\"; q-layout { data-pb-slot: \"middlecolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { middlecolumn } } } } } q-col { width: \"1fr\"; q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default middlecolumn { text { Add middle column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }"
         instance: "pb-layout-three-col { }"
         div.pb-palette-preview.layout {
           h3 { text { 3 Columns } }
@@ -246,7 +262,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Layout: 2 Rows"
         component: "pb-layout-two-row"
-        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"toprow\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { toprow } } } } } } q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"bottomrow\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { bottomrow } } } } } } } q-slot-default toprow { text { Add top row content here. } } q-slot-default bottomrow { text { Add bottom row content here. } }"
+        qhtml: "q-layout { width: \"100%\"; gap: \"14px\"; q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"toprow\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { toprow } } } } } } q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"bottomrow\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { bottomrow } } } } } } } q-slot-default toprow { text { Add top row content here. } } q-slot-default bottomrow { text { Add bottom row content here. } }"
         instance: "pb-layout-two-row { }"
         div.pb-palette-preview.layout {
           h3 { text { 2 Rows } }
@@ -257,7 +273,7 @@ q-component page-builder-palette {
       q-palette-toolbox-button {
         name: "Layout: Nested 1+2"
         component: "pb-layout-nested-one-two"
-        qhtml: "q-layout { width: \"100%\" gap: \"14px\" q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"topcontent\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { topcontent } } } } } } q-row { height: \"auto\" q-col { width: \"1fr\" q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\" q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\" gap: \"8px\" q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default topcontent { text { Add full-width top content here. } } q-slot-default leftcolumn { text { Add lower left content here. } } q-slot-default rightcolumn { text { Add lower right content here. } }"
+        qhtml: "q-layout { width: \"100%\"; gap: \"14px\"; q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"topcontent\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { topcontent } } } } } } q-row { height: \"auto\"; q-col { width: \"1fr\"; q-layout { data-pb-slot: \"leftcolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { leftcolumn } } } } } q-col { width: \"1fr\"; q-layout { data-pb-slot: \"rightcolumn\" width: \"100%\"; gap: \"8px\"; q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default topcontent { text { Add full-width top content here. } } q-slot-default leftcolumn { text { Add lower left content here. } } q-slot-default rightcolumn { text { Add lower right content here. } }"
         instance: "pb-layout-nested-one-two { }"
         div.pb-palette-preview.layout {
           h3 { text { 1 + 2 } }
@@ -275,14 +291,14 @@ q-component page-builder-canvas {
         h2 { text { Layout Canvas } }
         p { text { Drop blocks where they belong. Red indicators show insert position. } }
       }
-      div.pb-status { id: "pb-builder-status" text { Ready } }
+      div.pb-status { id: "pb-builder-status"; text { Ready } }
     }
 
     div.pb-stage {
       q-layout {
-        id: "pb-builder-layout"
-        width: "100%"
-        gap: "14px"
+        id: "pb-builder-layout";
+        width: "100%";
+        gap: "14px";
       }
     }
   }
@@ -307,12 +323,12 @@ q-component page-builder-component-builder {
       header.pb-component-builder-head {
         div {
           h2 { text { New q-component } }
-          p { id: "pb-component-builder-subtitle" text { Create a palette component for this page. } }
+          p { id: "pb-component-builder-subtitle"; text { Create a palette component for this page. } }
         }
         button.pb-icon-button {
           type: "button"
           aria-label: "Close component builder"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeComponentBuilder(); } }
+          onclick { window.QPageBuilder.closeComponentBuilder(); }
           html { &times; }
         }
       }
@@ -321,31 +337,31 @@ q-component page-builder-component-builder {
         button.active {
           type: "button"
           data-pb-builder-tab: "general"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("general"); } }
+          onclick { window.QPageBuilder.switchComponentBuilderTab("general"); }
           text { General }
         }
         button {
           type: "button"
           data-pb-builder-tab: "structure"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("structure"); } }
+          onclick { window.QPageBuilder.switchComponentBuilderTab("structure"); }
           text { Structure }
         }
         button {
           type: "button"
           data-pb-builder-tab: "handlers"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("handlers"); } }
+          onclick { window.QPageBuilder.switchComponentBuilderTab("handlers"); }
           text { Handlers }
         }
         button {
           type: "button"
           data-pb-builder-tab: "animation"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("animation"); } }
+          onclick { window.QPageBuilder.switchComponentBuilderTab("animation"); }
           text { Animation }
         }
         button {
           type: "button"
           data-pb-builder-tab: "preview"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.switchComponentBuilderTab("preview"); } }
+          onclick { window.QPageBuilder.switchComponentBuilderTab("preview"); }
           text { Preview }
         }
       }
@@ -360,8 +376,8 @@ q-component page-builder-component-builder {
               type: "text"
               value: "my-component"
               inputmode: "text"
-              onchange { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
-              oninput { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
+              onchange { window.QPageBuilder.updateComponentBuilderGeneral(); }
+              oninput { window.QPageBuilder.updateComponentBuilderGeneral(); }
             }
           }
           label {
@@ -371,8 +387,8 @@ q-component page-builder-component-builder {
               type: "text"
               placeholder: "base-card base-panel"
               inputmode: "text"
-              onchange { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
-              oninput { if (window.QPageBuilder) { window.QPageBuilder.updateComponentBuilderGeneral(); } }
+              onchange { window.QPageBuilder.updateComponentBuilderGeneral(); }
+              oninput { window.QPageBuilder.updateComponentBuilderGeneral(); }
             }
           }
         }
@@ -383,20 +399,20 @@ q-component page-builder-component-builder {
         hidden: "hidden"
         div.pb-component-builder-workbench {
           div.pb-component-builder-tools {
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("tag"); } } text { tag } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-signal"); } } text { q-signal } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("slot"); } } html { slot } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("function"); } } text { function } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-property"); } } text { q-property } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-var"); } } text { q-var } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-layout"); } } text { q-layout } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-row"); } } text { q-row } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-col"); } } text { q-col } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("q-connect"); } } text { q-connect } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("html"); } } text { HTML } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("text"); } } text { text } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.indentComponentBuilderEditor(); } } text { Indent } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.outdentComponentBuilderEditor(); } } text { Outdent } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("tag"); } text { tag } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-signal"); } text { q-signal } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("slot"); } html { slot } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("function"); } text { function } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-property"); } text { q-property } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-var"); } text { q-var } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-layout"); } text { q-layout } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-row"); } text { q-row } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-col"); } text { q-col } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("q-connect"); } text { q-connect } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("html"); } text { HTML } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("text"); } text { text } }
+            button { type: "button"; onclick { window.QPageBuilder.indentComponentBuilderEditor(); } text { Indent } }
+            button { type: "button"; onclick { window.QPageBuilder.outdentComponentBuilderEditor(); } text { Outdent } }
           }
           q-editor {
             id: "pb-component-builder-structure"
@@ -409,13 +425,13 @@ q-component page-builder-component-builder {
         hidden: "hidden"
         div.pb-component-builder-workbench {
           div.pb-component-builder-tools {
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("onclick"); } } text { onclick } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("onready"); } } text { onready } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("onpaint"); } } text { onpaint } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("on-signal"); } } text { on<signal> } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.insertComponentBuilderSnippet("on-property-changed"); } } text { on<property>changed } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.indentComponentBuilderEditor(); } } text { Indent } }
-            button { type: "button" onclick { if (window.QPageBuilder) { window.QPageBuilder.outdentComponentBuilderEditor(); } } text { Outdent } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("onclick"); } text { onclick } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("onready"); } text { onready } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("onpaint"); } text { onpaint } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("on-signal"); } text { on<signal> } }
+            button { type: "button"; onclick { window.QPageBuilder.insertComponentBuilderSnippet("on-property-changed"); } text { on<property>changed } }
+            button { type: "button"; onclick { window.QPageBuilder.indentComponentBuilderEditor(); } text { Indent } }
+            button { type: "button"; onclick { window.QPageBuilder.outdentComponentBuilderEditor(); } text { Outdent } }
           }
           q-editor {
             id: "pb-component-builder-handlers"
@@ -440,7 +456,7 @@ q-component page-builder-component-builder {
           p { text { Generate animation boilerplate for this component. The dialog targets this.component and scans current q-property declarations. } }
           button.pb-action.primary {
             type: "button"
-            onclick { if (window.QPageBuilder) { window.QPageBuilder.openComponentBuilderAnimationTool(); } }
+            onclick { window.QPageBuilder.openComponentBuilderAnimationTool(); }
             text { Open Animation Tool }
           }
           q-animation-tool {
@@ -456,12 +472,12 @@ q-component page-builder-component-builder {
       footer.pb-component-builder-actions {
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeComponentBuilder(); } }
+          onclick { window.QPageBuilder.closeComponentBuilder(); }
           text { Cancel }
         }
         button.pb-action.primary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.createComponentBuilderItem(); } }
+          onclick { window.QPageBuilder.createComponentBuilderItem(); }
           text { Create }
         }
       }
@@ -476,12 +492,12 @@ q-component page-builder-palette-editor {
       header.pb-palette-editor-head {
         div {
           h2 { text { Edit Palette Component } }
-          p { id: "pb-palette-editor-subtitle" text { Update the QHTML source used by this palette item. } }
+          p { id: "pb-palette-editor-subtitle"; text { Update the QHTML source used by this palette item. } }
         }
         button.pb-icon-button {
           type: "button"
           aria-label: "Close editor"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closePaletteEditor(); } }
+          onclick { window.QPageBuilder.closePaletteEditor(); }
           html { &times; }
         }
       }
@@ -501,12 +517,12 @@ q-component page-builder-palette-editor {
       footer.pb-palette-editor-actions {
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closePaletteEditor(); } }
+          onclick { window.QPageBuilder.closePaletteEditor(); }
           text { Cancel }
         }
         button.pb-action.primary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.savePaletteEdit(); } }
+          onclick { window.QPageBuilder.savePaletteEdit(); }
           text { Save Component }
         }
       }
@@ -521,12 +537,12 @@ q-component page-builder-instance-editor {
       header.pb-instance-editor-head {
         div {
           h2 { text { Edit QHTML Instance } }
-          p { id: "pb-instance-editor-subtitle" text { Select an instance and edit one of its slots. } }
+          p { id: "pb-instance-editor-subtitle"; text { Select an instance and edit one of its slots. } }
         }
         button.pb-icon-button {
           type: "button"
           aria-label: "Close instance editor"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeInstanceEditor(); } }
+          onclick { window.QPageBuilder.closeInstanceEditor(); }
           html { &times; }
         }
       }
@@ -537,7 +553,7 @@ q-component page-builder-instance-editor {
           text { Instance }
           select {
             id: "pb-instance-editor-instance"
-            onchange { if (window.QPageBuilder) { window.QPageBuilder.selectInstanceEditTarget(this.value); } }
+            onchange { window.QPageBuilder.selectInstanceEditTarget(this.value); }
           }
         }
         label {
@@ -545,7 +561,7 @@ q-component page-builder-instance-editor {
           text { Slot }
           select {
             id: "pb-instance-editor-slot"
-            onchange { if (window.QPageBuilder) { window.QPageBuilder.selectInstanceEditSlot(this.value); } }
+            onchange { window.QPageBuilder.selectInstanceEditSlot(this.value); }
           }
         }
       }
@@ -563,12 +579,12 @@ q-component page-builder-instance-editor {
       footer.pb-instance-editor-actions {
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeInstanceEditor(); } }
+          onclick { window.QPageBuilder.closeInstanceEditor(); }
           text { Close }
         }
         button.pb-action.primary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.saveInstanceEdit(); } }
+          onclick { window.QPageBuilder.saveInstanceEdit(); }
           text { Save Instance }
         }
       }
@@ -583,12 +599,12 @@ q-component page-builder-file-dialog {
       header.pb-file-head {
         div {
           h2 { text { Site Files } }
-          p { id: "pb-file-dialog-subtitle" text { Select a file to load, or organize pages into folders. } }
+          p { id: "pb-file-dialog-subtitle"; text { Select a file to load, or organize pages into folders. } }
         }
         button.pb-icon-button {
           type: "button"
           aria-label: "Close files"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileDialog(); } }
+          onclick { window.QPageBuilder.closeFileDialog(); }
           html { &times; }
         }
       }
@@ -596,12 +612,12 @@ q-component page-builder-file-dialog {
       div.pb-file-toolbar {
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.newFileFolder(); } }
+          onclick { window.QPageBuilder.newFileFolder(); }
           text { New folder }
         }
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.newFile(); } }
+          onclick { window.QPageBuilder.newFile(); }
           text { New file }
         }
       }
@@ -619,7 +635,7 @@ q-component page-builder-file-dialog {
         }
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileDialog(); } }
+          onclick { window.QPageBuilder.closeFileDialog(); }
           text { Close }
         }
       }
@@ -634,12 +650,12 @@ q-component page-builder-file-manager {
       header.pb-file-head {
         div {
           h2 { text { File Manager } }
-          p { id: "pb-file-manager-subtitle" text { Select a file to rename, delete, or move. } }
+          p { id: "pb-file-manager-subtitle"; text { Select a file to rename, delete, or move. } }
         }
         button.pb-icon-button {
           type: "button"
           aria-label: "Close file manager"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileManager(); } }
+          onclick { window.QPageBuilder.closeFileManager(); }
           html { &times; }
         }
       }
@@ -657,22 +673,22 @@ q-component page-builder-file-manager {
         }
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.renameManagedFile(); } }
+          onclick { window.QPageBuilder.renameManagedFile(); }
           text { Rename }
         }
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.moveManagedFile(); } }
+          onclick { window.QPageBuilder.moveManagedFile(); }
           text { Move }
         }
         button.pb-action.danger {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.deleteManagedFile(); } }
+          onclick { window.QPageBuilder.deleteManagedFile(); }
           text { Delete }
         }
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFileManager(); } }
+          onclick { window.QPageBuilder.closeFileManager(); }
           text { Close }
         }
       }
@@ -698,7 +714,7 @@ q-component page-builder-folder-picker {
         button.pb-icon-button {
           type: "button"
           aria-label: "Close folder picker"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFolderPicker(); } }
+          onclick { window.QPageBuilder.closeFolderPicker(); }
           html { &times; }
         }
       }
@@ -717,12 +733,12 @@ q-component page-builder-folder-picker {
         }
         button.pb-action.secondary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.closeFolderPicker(); } }
+          onclick { window.QPageBuilder.closeFolderPicker(); }
           text { Cancel }
         }
         button.pb-action.primary {
           type: "button"
-          onclick { if (window.QPageBuilder) { window.QPageBuilder.confirmFolderPicker(); } }
+          onclick { window.QPageBuilder.confirmFolderPicker(); }
           text { Choose Folder }
         }
       }
@@ -731,6 +747,296 @@ q-component page-builder-folder-picker {
 }
 
 q-component page-builder-app {
+  q-style pageBuilderAppStyle {
+    minHeight: 100vh;
+    display: grid;
+    gridTemplateRows: auto minmax(0,1fr);
+    background: rgba(15,23,42,.92);
+    color: #172033;
+    fontFamily: "Aptos, Segoe UI, sans-serif";
+  }
+
+  q-style pageBuilderToolbarStyle {
+    height: 78px;
+    display: flex;
+    alignItems: center;
+    justifyContent: space-between;
+    padding: 0 24px;
+    background: rgba(255,255,255,.86);
+    backdropFilter: blur(18px);
+    borderBottom: 1px solid rgba(148,163,184,.38);
+    boxShadow: 0 14px 48px rgba(15,23,42,.08);
+    position: sticky;
+    top: 0;
+    zIndex: 50;
+  }
+
+  q-style pageBuilderBrandStyle {
+    display: flex;
+    alignItems: center;
+    gap: 14px;
+  }
+
+  q-style pageBuilderLogoStyle {
+    width: 44px;
+    height: 44px;
+    borderRadius: 16px;
+    display: grid;
+    placeItems: center;
+    background: linear-gradient(135deg,#0f172a,#2563eb);
+    color: white;
+    fontWeight: 950;
+    fontSize: 22px;
+    boxShadow: 0 12px 28px rgba(37,99,235,.28);
+  }
+
+  q-style pageBuilderTitleStyle {
+    fontSize: 22px;
+    lineHeight: 1;
+    margin: 0;
+    letterSpacing: -.04em;
+  }
+
+  q-style pageBuilderCopyStyle {
+    margin: .35rem 0 0;
+    color: #607089;
+    fontSize: 13px;
+    lineHeight: 1.4;
+  }
+
+  q-style pageBuilderActionRowStyle {
+    display: flex;
+    gap: 10px;
+    flexWrap: wrap;
+  }
+
+  q-style pageBuilderActionStyle {
+    border: 0;
+    borderRadius: 999px;
+    padding: 10px 15px;
+    fontWeight: 800;
+    cursor: pointer;
+    boxShadow: 0 8px 22px rgba(15,23,42,.08);
+  }
+
+  q-style pageBuilderPrimaryActionStyle {
+    background: #0f172a;
+    color: white;
+  }
+
+  q-style pageBuilderSecondaryActionStyle {
+    background: white;
+    color: #1d4ed8;
+    border: 1px solid #c7d2fe;
+  }
+
+  q-style pageBuilderDangerActionStyle {
+    background: #fff1f2;
+    color: #be123c;
+    border: 1px solid #fecdd3;
+  }
+
+  q-style pageBuilderWorkspaceStyle {
+    minHeight: 0;
+    display: grid;
+    gridTemplateColumns: 300px minmax(0,1fr);
+    gap: 18px;
+    padding: 18px;
+  }
+
+  q-style pageBuilderMainStyle {
+    minWidth: 0;
+    display: grid;
+    gridTemplateRows: minmax(0,1fr) 260px;
+    gap: 18px;
+  }
+
+  q-style pageBuilderSidebarStyle {
+    minHeight: 0;
+    background: rgba(15,23,42,.92);
+    border: 1px solid rgba(148,163,184,.24);
+    borderRadius: 26px;
+    boxShadow: 0 28px 80px rgba(15,23,42,.22);
+    overflow: hidden;
+    color: white;
+  }
+
+  q-style pageBuilderSidebarHeadStyle {
+    padding: 22px 22px 10px;
+  }
+
+  q-style pageBuilderPanelStyle {
+    background: rgba(255,255,255,.78);
+    border: 1px solid rgba(148,163,184,.42);
+    borderRadius: 26px;
+    boxShadow: 0 22px 70px rgba(15,23,42,.12);
+    overflow: hidden;
+  }
+
+  q-style pageBuilderPanelHeadStyle {
+    display: flex;
+    justifyContent: space-between;
+    alignItems: center;
+    padding: 18px 20px;
+    borderBottom: 1px solid rgba(148,163,184,.28);
+    background: rgba(248,250,252,.82);
+  }
+
+  q-style pageBuilderSectionTitleStyle {
+    margin: 0;
+    fontSize: 18px;
+    letterSpacing: -.03em;
+  }
+
+  q-style pageBuilderStageStyle {
+    padding: 18px;
+    overflow: auto;
+  }
+
+  q-style pageBuilderStatusStyle {
+    fontSize: 12px;
+    fontWeight: 900;
+    textTransform: uppercase;
+    letterSpacing: .08em;
+    color: #1d4ed8;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    borderRadius: 999px;
+    padding: 8px 11px;
+  }
+
+  q-style pageBuilderPaletteBodyStyle {
+    display: grid;
+    gap: 10px;
+    border: 0;
+    borderRadius: 0;
+    background: transparent;
+    boxShadow: none;
+    padding: 10px 16px 18px;
+  }
+
+  q-style pageBuilderPaletteButtonStyle {
+    display: block;
+    position: relative;
+    minHeight: 76px;
+    padding: 0;
+    borderRadius: 18px;
+    background: white;
+    border: 1px solid rgba(148,163,184,.3);
+    boxShadow: 0 12px 26px rgba(0,0,0,.18);
+    cursor: grab;
+    overflow: hidden;
+  }
+
+  q-style pageBuilderPalettePreviewStyle {
+    minHeight: 76px;
+    padding: 14px;
+    background: linear-gradient(135deg,#ffffff,#eef6ff);
+    borderLeft: 5px solid #2563eb;
+  }
+
+  q-style pageBuilderDialogStyle {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    borderRadius: 24px;
+  }
+
+  q-style pageBuilderDialogCardStyle {
+    background: #f8fafc;
+    border: 1px solid rgba(148,163,184,.45);
+    borderRadius: 24px;
+    boxShadow: 0 36px 120px rgba(15,23,42,.38);
+    overflow: hidden;
+  }
+
+  q-style pageBuilderDialogHeadStyle {
+    display: flex;
+    justifyContent: space-between;
+    gap: 18px;
+    alignItems: flex-start;
+    padding: 18px 22px;
+    background: white;
+    borderBottom: 1px solid #dbe4f0;
+  }
+
+  q-style pageBuilderIconButtonStyle {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    borderRadius: 999px;
+    background: #eef2ff;
+    color: #1e293b;
+    fontSize: 23px;
+    lineHeight: 1;
+    cursor: pointer;
+  }
+
+  q-style pageBuilderFileBodyStyle {
+    padding: 14px 18px 18px;
+    minHeight: 360px;
+  }
+
+  q-style pageBuilderFileActionsStyle {
+    display: flex;
+    alignItems: center;
+    justifyContent: flex-end;
+    gap: 10px;
+    padding: 14px 22px 18px;
+    borderTop: 1px solid #dbe4f0;
+    background: #fff;
+  }
+
+  q-default-theme pageBuilderTheme {
+    .pb-app { pageBuilderAppStyle }
+    .pb-toolbar { pageBuilderToolbarStyle }
+    .pb-brand { pageBuilderBrandStyle }
+    .pb-logo { pageBuilderLogoStyle }
+    .pb-brand h1 { pageBuilderTitleStyle }
+    .pb-brand p { pageBuilderCopyStyle }
+    .pb-actions { pageBuilderActionRowStyle }
+    .pb-action { pageBuilderActionStyle }
+    .pb-action.primary { pageBuilderPrimaryActionStyle }
+    .pb-action.secondary { pageBuilderSecondaryActionStyle }
+    .pb-action.danger { pageBuilderDangerActionStyle }
+    .pb-workspace { pageBuilderWorkspaceStyle }
+    .pb-main { pageBuilderMainStyle }
+    .pb-sidebar { pageBuilderSidebarStyle }
+    .pb-sidebar-head { pageBuilderSidebarHeadStyle }
+    .pb-sidebar h2 { pageBuilderSectionTitleStyle }
+    .pb-sidebar p { pageBuilderCopyStyle }
+    .pb-canvas-shell { pageBuilderPanelStyle }
+    .pb-export-panel { pageBuilderPanelStyle }
+    .pb-canvas-meta { pageBuilderPanelHeadStyle }
+    .pb-export-head { pageBuilderPanelHeadStyle }
+    .pb-canvas-meta h2 { pageBuilderSectionTitleStyle }
+    .pb-export-head h2 { pageBuilderSectionTitleStyle }
+    .pb-canvas-meta p { pageBuilderCopyStyle }
+    .pb-export-head p { pageBuilderCopyStyle }
+    .pb-stage { pageBuilderStageStyle }
+    .pb-status { pageBuilderStatusStyle }
+    .q-palette-body { pageBuilderPaletteBodyStyle }
+    q-palette-toolbox-button { pageBuilderPaletteButtonStyle }
+    .pb-palette-preview { pageBuilderPalettePreviewStyle }
+    .pb-palette-preview h3 { pageBuilderSectionTitleStyle }
+    .pb-palette-preview p { pageBuilderCopyStyle }
+    .pb-palette-editor { pageBuilderDialogStyle }
+    .pb-component-builder { pageBuilderDialogStyle }
+    .pb-instance-editor { pageBuilderDialogStyle }
+    .pb-file-dialog { pageBuilderDialogStyle }
+    .pb-palette-editor-card { pageBuilderDialogCardStyle }
+    .pb-component-builder-card { pageBuilderDialogCardStyle }
+    .pb-instance-editor-card { pageBuilderDialogCardStyle }
+    .pb-file-card { pageBuilderDialogCardStyle }
+    .pb-palette-editor-head { pageBuilderDialogHeadStyle }
+    .pb-component-builder-head { pageBuilderDialogHeadStyle }
+    .pb-instance-editor-head { pageBuilderDialogHeadStyle }
+    .pb-file-head { pageBuilderDialogHeadStyle }
+    .pb-icon-button { pageBuilderIconButtonStyle }
+    .pb-file-body { pageBuilderFileBodyStyle }
+    .pb-file-actions { pageBuilderFileActionsStyle }
+  }
+
   div.pb-app {
     page-builder-toolbar { }
     main.pb-workspace {

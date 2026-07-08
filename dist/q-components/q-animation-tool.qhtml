@@ -202,7 +202,6 @@ q-component q-animation-tool {
 
   onready {
     this.style.display = "contents";
-    this.populateTargetSelect("");
   }
 
   div {
