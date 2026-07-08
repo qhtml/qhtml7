@@ -1,8 +1,138 @@
 q-component q-list-view {
-  q-property model: q-array { }
-  ul {
-    for (item in this.model) {
-      li { item }
+  q-property model: []
+  q-property selectedIndex: -1
+
+  q-signal itemSelected(index, value)
+  q-signal itemActivated(index, value)
+
+  function _normalizeModel(input) {
+    if (Array.isArray(input)) {
+      return input;
     }
+    if (input && typeof input === "object") {
+      if (Array.isArray(input.items)) {
+        return input.items;
+      }
+      var keys = Object.keys(input);
+      return keys.map(function(key) {
+        return input[key];
+      });
+    }
+    if (typeof input === "string") {
+      var text = String(input || "").trim();
+      if (!text) {
+        return [];
+      }
+      var parsed = JSON.parse(text);
+      return this._normalizeModel(parsed);
+    }
+    return [];
+  }
+
+  function setModel(nextModel) {
+    this.__listModel = this._normalizeModel(nextModel);
+    this.refresh();
+    return this.__listModel;
+  }
+
+  function _effectiveModel() {
+    if (Array.isArray(this.__listModel)) {
+      return this.__listModel;
+    }
+    var value = this.model;
+    if (value === null || typeof value === "undefined" || value === "") {
+      value = this.getAttribute("model");
+    }
+    return this._normalizeModel(value);
+  }
+
+  function _itemLabel(item) {
+    if (item && typeof item === "object") {
+      return String(item.label || item.name || item.title || item.text || JSON.stringify(item));
+    }
+    return String(item == null ? "" : item);
+  }
+
+  function _emitListEvent(name, detail, originalEvent) {
+    this.dispatchEvent(new CustomEvent(name, { bubbles: true, detail: detail }));
+    if (name === "q-list-select") {
+      this.selectedIndex = detail.index;
+      this.itemSelected(detail.index, detail.value);
+    } else if (name === "q-list-activate") {
+      this.itemActivated(detail.index, detail.value);
+    }
+  }
+
+  function refresh() {
+    var root = this.querySelector(".q-list-view-list");
+    var items = this._effectiveModel();
+    var component = this;
+    if (!root) {
+      root = document.createElement("ul");
+      root.className = "q-list-view-list";
+      this.appendChild(root);
+    }
+    root.innerHTML = "";
+    items.forEach(function(item, index) {
+      var row = document.createElement("li");
+      var button = document.createElement("button");
+      var detail = { index: index, value: item, label: component._itemLabel(item) };
+      row.className = "q-list-view-row";
+      button.type = "button";
+      button.className = "q-list-view-item";
+      if (String(component.selectedIndex) === String(index) || String(component.getAttribute("selectedIndex")) === String(index)) {
+        button.className += " selected";
+      }
+      button.textContent = detail.label;
+      button.addEventListener("click", function(event) {
+        event.stopPropagation();
+        component._emitListEvent("q-list-select", detail, event);
+        component.refresh();
+      });
+      button.addEventListener("dblclick", function(event) {
+        event.stopPropagation();
+        component._emitListEvent("q-list-activate", detail, event);
+      });
+      row.appendChild(button);
+      root.appendChild(row);
+    });
+  }
+
+  onready {
+    this.refresh();
+  }
+
+  q-style listRootStyle {
+    listStyle: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  q-style listItemStyle {
+    width: 100%;
+    display: block;
+    textAlign: left;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    borderRadius: 6px;
+    padding: 0.45rem 0.65rem;
+    cursor: pointer;
+  }
+
+  q-style listSelectedStyle {
+    backgroundColor: #dbeafe;
+    color: #1d4ed8;
+    fontWeight: 700;
+  }
+
+  q-default-theme qListViewTheme {
+    .q-list-view-list { listRootStyle }
+    .q-list-view-item { listItemStyle }
+    .selected { listSelectedStyle }
+  }
+
+  ul.q-list-view-list {
+
   }
 }
