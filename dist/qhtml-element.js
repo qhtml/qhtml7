@@ -3,7 +3,7 @@
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const ELEMENT_NAME = "q-html";
-  const QHTML_VERSION = "v7.3.3";
+  const QHTML_VERSION = "v7.3.4";
   const QHTML_IMPORT_MAX_PER_RESOURCE_DEFAULT = 100;
   let activePropertyTransactionId = "";
   let propertyTransactionCounter = 0;
@@ -2879,6 +2879,39 @@
     return entries;
   }
 
+  function paintPropertyEntryFromNode(domElement, propertyNode, registry) {
+    const name = qhtmlNodeName(propertyNode);
+    if (!name) {
+      return null;
+    }
+    const rawValue = typeof propertyNode.value === "function" ? propertyNode.value() : "";
+    return {
+      name,
+      entry: {
+        rawValue,
+        value: resolvePropertyValue(rawValue, domElement, propertyNode, registry),
+        qhtmlNode: propertyNode
+      }
+    };
+  }
+
+  function painterPropertyEntries(domElement, painter, registry) {
+    const painterNode = painter && (painter.node || painter);
+    const entries = [];
+    const count = painterNode && typeof painterNode.childCount === "function" ? painterNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = painterNode.childAt(index);
+      if (qhtmlNodeType(child) !== "QHTMLProperty") {
+        continue;
+      }
+      const entry = paintPropertyEntryFromNode(domElement, child, registry);
+      if (entry) {
+        entries.push(entry);
+      }
+    }
+    return entries;
+  }
+
   function paintTargetForEventName(eventName) {
     if (eventName === "paintbackground") {
       return ["background", "background-image"];
@@ -2897,8 +2930,49 @@
     paintTargetForEventName(eventName).forEach((styleName) => {
       domElement.style.setProperty(styleName, paintValue, "important");
     });
-    if (eventName === "paintborder" && !domElement.style.getPropertyValue("border-image-slice")) {
-      domElement.style.setProperty("border-image-slice", "1", "important");
+    if (eventName === "paintbackground") {
+      if (!domElement.style.getPropertyValue("background-repeat")) {
+        domElement.style.setProperty("background-repeat", "no-repeat");
+      }
+      if (!domElement.style.getPropertyValue("background-size")) {
+        domElement.style.setProperty("background-size", "100% 100%");
+      }
+      if (!domElement.style.getPropertyValue("background-position")) {
+        domElement.style.setProperty("background-position", "center");
+      }
+    }
+    if (eventName === "paintborder") {
+      if (!domElement.style.getPropertyValue("border-style")) {
+        domElement.style.setProperty("border-style", "solid", "important");
+      }
+      const computed = globalScope.getComputedStyle ? globalScope.getComputedStyle(domElement) : null;
+      const borderWidth = computed ? Number.parseFloat(computed.borderTopWidth || "0") : 0;
+      if (!domElement.style.getPropertyValue("border-width") && !borderWidth) {
+        domElement.style.setProperty("border-width", "16px", "important");
+      }
+      if (!domElement.style.getPropertyValue("border-color")) {
+        domElement.style.setProperty("border-color", "transparent", "important");
+      }
+      if (!domElement.style.getPropertyValue("border-image-slice")) {
+        domElement.style.setProperty("border-image-slice", "16 fill", "important");
+      }
+      if (!domElement.style.getPropertyValue("border-image-repeat")) {
+        domElement.style.setProperty("border-image-repeat", "stretch", "important");
+      }
+    }
+    if (eventName === "paintmask") {
+      [
+        ["mask-repeat", "no-repeat"],
+        ["-webkit-mask-repeat", "no-repeat"],
+        ["mask-size", "100% 100%"],
+        ["-webkit-mask-size", "100% 100%"],
+        ["mask-position", "center"],
+        ["-webkit-mask-position", "center"]
+      ].forEach(([styleName, value]) => {
+        if (!domElement.style.getPropertyValue(styleName)) {
+          domElement.style.setProperty(styleName, value);
+        }
+      });
     }
   }
 
@@ -2947,6 +3021,12 @@
     const byName = new Map(properties.map((property) => [property.name, property.entry.value]));
     const width = byName.get("width");
     const height = byName.get("height");
+    if (width && !domElement.style.getPropertyValue("width")) {
+      domElement.style.setProperty("width", qhtmlPaintCssValue(width));
+    }
+    if (height && !domElement.style.getPropertyValue("height")) {
+      domElement.style.setProperty("height", qhtmlPaintCssValue(height));
+    }
     if (width && !domElement.style.getPropertyValue("min-width")) {
       domElement.style.setProperty("min-width", qhtmlPaintCssValue(width));
     }
@@ -3042,6 +3122,10 @@
         fillText(...args) { return ctx.fillText(...args); },
         strokeText(...args) { return ctx.strokeText(...args); },
         measureText(...args) { return ctx.measureText(...args); },
+        createLinearGradient(...args) { return ctx.createLinearGradient(...args); },
+        createRadialGradient(...args) { return ctx.createRadialGradient(...args); },
+        createConicGradient(...args) { return typeof ctx.createConicGradient === "function" ? ctx.createConicGradient(...args) : null; },
+        createPattern(...args) { return ctx.createPattern(...args); },
         save(...args) { return ctx.save(...args); },
         restore(...args) { return ctx.restore(...args); },
         translate(...args) { return ctx.translate(...args); },
@@ -3082,12 +3166,12 @@
     const propertyNames = safeProperties.map((property) => property.name);
     const expandedBody = expandPainterInvocations(body, registry, "inline");
     const workletBodyPrefix = [
-      'const white = "white";',
-      'const black = "black";',
-      'const transparent = "transparent";',
+      'var white = "white";',
+      'var black = "black";',
+      'var transparent = "transparent";',
       ...propertyNames
         .filter((name) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
-        .map((name) => `const ${name} = this[${JSON.stringify(name)}];`)
+        .map((name) => `var ${name} = this[${JSON.stringify(name)}];`)
     ].join("\n");
     preparePaintElementBox(domElement, safeProperties);
     safeProperties.forEach((property) => {
@@ -3123,8 +3207,11 @@
           };
           ${paintScopeSource()}
           ${JSON.stringify(propertyNames)}.forEach((name) => { scope[name] = typed(read(name)); });
-          const source = ${JSON.stringify(workletBodyPrefix + "\n" + expandedBody)};
-          return Function("context", "with(this) {\\n" + source + "\\n}").call(scope, ctx);
+          const run = function(context) {
+            ${workletBodyPrefix}
+            ${expandedBody}
+          };
+          return run.call(scope, ctx);
         }
       }
       registerPaint(${JSON.stringify(paintName)}, QHTMLPaintWorklet);
@@ -3189,11 +3276,12 @@
       return;
     }
     const eventName = paintEventNameForStyleTarget(targetName);
+    const properties = painterPropertyEntries(domElement, painter, registry);
     registerPaintWorkletBody(
       domElement,
       eventName,
       typeof painter.body === "function" ? painter.body() : "",
-      [],
+      properties,
       registry,
       painter.node || painter,
       painter.name || painterName

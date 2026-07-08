@@ -18,7 +18,7 @@
 
 #include <string>
 
-inline constexpr const char QHTML_VERSION[] = "v7.3.3";
+inline constexpr const char QHTML_VERSION[] = "v7.3.4";
 
 inline std::string qhtmlVersionJs()
 {
@@ -861,6 +861,7 @@ public:
     }
 
     QString renderHtml() const override { return QHTMLTypedNode::renderHtml(); }
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override;
     QHTMLComponentSlot *cloneSlot() const
     {
         QHTMLComponentSlot *cloned = new QHTMLComponentSlot(qhtmlName(), attributes());
@@ -1326,6 +1327,17 @@ public:
         return renderHtmlWithContext(context);
     }
 
+    QString renderSlotForOwnedDefinition(QHTMLComponentSlot *componentSlot) const
+    {
+        SlotRenderContext context;
+        return renderSlot(componentSlot, context.withInstance(this));
+    }
+
+    static QString ownerDefinitionUUIDForSlot(QHTMLComponentSlot *componentSlot)
+    {
+        return componentSlotOwnerDefinitionUUID(componentSlot);
+    }
+
 private:
     QString renderHtmlWithContext(const SlotRenderContext &context) const
     {
@@ -1554,11 +1566,13 @@ private:
         }
 
         const QString ownerDefinitionUUID = componentSlotOwnerDefinitionUUID(componentSlot);
-        const QString currentDefinitionUUID = componentDefinitionUUID();
-        if (!ownerDefinitionUUID.isEmpty() && ownerDefinitionUUID != currentDefinitionUUID) {
+        if (!ownerDefinitionUUID.isEmpty()) {
             const QHTMLComponentInstance *ownerInstance = context.instanceForDefinitionUUID(ownerDefinitionUUID);
-            if (ownerInstance && ownerInstance != this) {
+            if (ownerInstance) {
                 return ownerInstance->renderOwnedSlot(componentSlot, context);
+            }
+            if (ownerDefinitionUUID != componentDefinitionUUID()) {
+                return QString();
             }
         }
         return renderOwnedSlot(componentSlot, context);
@@ -1883,6 +1897,21 @@ private:
 
     QHTMLComponentDefinition *m_definition = nullptr;
 };
+
+inline QString QHTMLComponentSlot::renderHtmlInContext(const QHTMLNode *contextNode) const
+{
+    const QHTMLComponentInstance *componentInstance = dynamic_cast<const QHTMLComponentInstance *>(contextNode);
+    if (componentInstance) {
+        QHTMLComponentSlot *slot = const_cast<QHTMLComponentSlot *>(this);
+        const QString ownerDefinitionUUID = QHTMLComponentInstance::ownerDefinitionUUIDForSlot(slot);
+        if (ownerDefinitionUUID.isEmpty() || ownerDefinitionUUID == componentInstance->componentDefinitionUUID()) {
+            return componentInstance->renderSlotForOwnedDefinition(slot);
+        }
+        return QString();
+    }
+    return renderHtml();
+}
+
 class QHTMLArrayNode final : public QHTMLNode
 {
 public:

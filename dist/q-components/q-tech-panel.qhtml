@@ -743,32 +743,48 @@ q-painter q-tech-panel-mask-painter {
 
 q-style q-tech-panel-surface-style {
   q-style-class { q-tech-panel-surface }
-  display: block
   position: relative
-  minHeight: 1px
+  box-sizing: border-box
+  overflow: hidden
   background-repeat: no-repeat
   background-size: 100% 100%
   background-position: center
-  q-style-painter {
-    background { q-tech-panel-painter }
-  }
-}
-
-q-style q-tech-panel-mask-style {
   mask-repeat: no-repeat
   mask-size: 100% 100%
   mask-position: center
   -webkit-mask-repeat: no-repeat
   -webkit-mask-size: 100% 100%
   -webkit-mask-position: center
+}
+
+q-style q-tech-panel-primer-base-style {
+  position: absolute
+  left: -10000px
+  top: -10000px
+  width: 1px
+  height: 1px
+  overflow: hidden
+  opacity: 0
+  pointer-events: none
+}
+
+q-style q-tech-panel-painter-primer-style {
+  q-style-class { q-tech-panel-painter-primer }
+  q-style-painter {
+    background { q-tech-panel-painter }
+  }
+}
+
+q-style q-tech-panel-mask-primer-style {
+  q-style-class { q-tech-panel-mask-primer }
   q-style-painter {
     mask { q-tech-panel-mask-painter }
   }
 }
 
 q-theme q-tech-panel-theme {
-  .q-tech-panel-painter-primer { q-tech-panel-surface-style }
-  .q-tech-panel-mask-primer { q-tech-panel-mask-style }
+  .q-tech-panel-painter-primer { q-tech-panel-primer-base-style q-tech-panel-painter-primer-style }
+  .q-tech-panel-mask-primer { q-tech-panel-primer-base-style q-tech-panel-mask-primer-style }
 }
 
 q-component q-tech-panel {
@@ -789,23 +805,34 @@ q-component q-tech-panel {
   q-property backgroundSize: "cover"
   q-property backgroundPosition: "center"
   q-property backgroundRepeat: "no-repeat"
+  q-property suppressUnslottedChildren: true
 
-  function hostElement() {
-    return this || this;
+  function contentContainer() {
+    if (!this || !this.children) {
+      return this;
+    }
+    for (var i = 0; i < this.children.length; i += 1) {
+      var child = this.children[i];
+      if (String(child.tagName || "").toLowerCase() === "q-theme-application") {
+        return child;
+      }
+    }
+    return this;
   }
 
-  function directPanelDivs() {
-    var host = this.hostElement();
+  function panelTargets() {
+    var container = this.contentContainer();
     var out = [];
-    if (!host || !host.children) {
+    if (!container || !container.children) {
       return out;
     }
-    for (var i = 0; i < host.children.length; i += 1) {
-      var child = host.children[i];
+    for (var i = 0; i < container.children.length; i += 1) {
+      var child = container.children[i];
       if (
         child &&
         String(child.tagName || "").toLowerCase() === "div" &&
-        String(child.getAttribute && child.getAttribute("q-tech-panel-primer") || "") !== "1"
+        !(child.classList && child.classList.contains("q-tech-panel-painter-primer")) &&
+        !(child.classList && child.classList.contains("q-tech-panel-mask-primer"))
       ) {
         out.push(child);
       }
@@ -813,154 +840,143 @@ q-component q-tech-panel {
     return out;
   }
 
-  function painterBackgroundImage() {
-    var host = this.hostElement();
-    var primer = host && typeof host.querySelector === "function" ? host.querySelector("[q-tech-panel-primer='1']") : null;
-    var fromPrimer = primer && primer.style ? String(primer.style.backgroundImage || "").trim() : "";
-    if (fromPrimer.indexOf("paint(") >= 0) {
-      return fromPrimer;
-    }
-    var registry = typeof globalThis !== "undefined" ? globalThis.__qhtmlPainterRegistry : null;
-    if (registry && typeof registry.forEach === "function") {
-      var found = "";
-      registry.forEach(function(value, key) {
-        var name = String(key || "");
-        if (!found && name.indexOf("q-tech-panel-painter") >= 0) {
-          found = "paint(" + name + ")";
-        }
-      });
-      return found;
-    }
-    return "";
-  }
-
-  function hidePainterPrimer() {
-    var host = this.hostElement();
-    var primers = host && typeof host.querySelectorAll === "function" ? host.querySelectorAll("[q-tech-panel-primer='1']") : [];
-    for (var i = 0; i < primers.length; i += 1) {
-      var primer = primers[i];
-      if (!primer || !primer.style) {
-        continue;
-      }
-      primer.style.setProperty("display", "none");
-      primer.style.setProperty("width", "0");
-      primer.style.setProperty("height", "0");
-      primer.style.setProperty("overflow", "hidden");
-      primer.style.setProperty("pointer-events", "none");
-    }
-  }
-
-  function painterMaskImage() {
-    var host = this.hostElement();
-    var primer = host && typeof host.querySelector === "function" ? host.querySelector("[q-tech-panel-mask-primer='1']") : null;
-    var fromPrimer = primer && primer.style ? String(primer.style.maskImage || primer.style.webkitMaskImage || "").trim() : "";
-    if (fromPrimer.indexOf("paint(") >= 0) {
-      return fromPrimer;
-    }
-    var registry = typeof globalThis !== "undefined" ? globalThis.__qhtmlPainterRegistry : null;
-    if (registry && typeof registry.forEach === "function") {
-      var found = "";
-      registry.forEach(function(value, key) {
-        var name = String(key || "");
-        if (!found && name.indexOf("q-tech-panel-mask-painter") >= 0) {
-          found = "paint(" + name + ")";
-        }
-      });
-      return found;
-    }
-    return "";
-  }
-
-  function composeBackgroundImage(target, paintBackground) {
-    if (!target || !target.style || !paintBackground) {
-      return "";
-    }
-    var host = this.hostElement();
-    var configured = host ? String(host.backgroundImage || "").trim() : "";
-    if (configured && configured !== "none") {
-      return paintBackground + ", " + configured;
-    }
-    var existing = String(target.style.backgroundImage || "").trim();
-    if (!existing || existing === "none") {
-      return paintBackground;
-    }
-    if (existing.indexOf("paint(") >= 0) {
-      return existing;
-    }
-    return paintBackground + ", " + existing;
-  }
-
   function panelPropertyMap() {
-    var host = this.hostElement();
     return {
-      borderWidth: host.borderWidth,
-      borderColor: host.borderColor,
-      shadowColor: host.shadowColor,
-      topLeft: host.topLeft,
-      topRight: host.topRight,
-      bottomRight: host.bottomRight,
-      bottomLeft: host.bottomLeft,
-      patternShift: host.patternShift,
-      patternSize: host.patternSize,
-      topDent: host.topDent,
-      topDentLength: host.topDentLength,
-      percentage: host.percentage,
-      backgroundSeed: host.backgroundSeed
+      borderWidth: this.borderWidth,
+      borderColor: this.borderColor,
+      shadowColor: this.shadowColor,
+      topLeft: this.topLeft,
+      topRight: this.topRight,
+      bottomRight: this.bottomRight,
+      bottomLeft: this.bottomLeft,
+      patternShift: this.patternShift,
+      patternSize: this.patternSize,
+      topDent: this.topDent,
+      topDentLength: this.topDentLength,
+      percentage: this.percentage,
+      backgroundSeed: this.backgroundSeed
     };
   }
 
+  function primerElement(kind) {
+    var selector = kind === "mask" ? ".q-tech-panel-mask-primer" : ".q-tech-panel-painter-primer";
+    return this.querySelector(selector);
+  }
+
+  function paintValueFromPrimer(kind) {
+    var eventName = kind === "mask" ? "paintmask" : "paintbackground";
+    var painterName = kind === "mask" ? "q-tech-panel-mask-painter" : "q-tech-panel-painter";
+    var primer = this.primerElement(kind);
+    if (!primer) {
+      return "";
+    }
+    var styleValue = "";
+    if (primer.style) {
+      styleValue = kind === "mask"
+        ? String(primer.style.maskImage || primer.style.webkitMaskImage || "").trim()
+        : String(primer.style.backgroundImage || "").trim();
+    }
+    if (styleValue.indexOf("paint(") >= 0) {
+      return styleValue;
+    }
+    var registry = this.__qhtmlRegistry;
+    var bindings = registry && registry.paintBindingsByElement ? registry.paintBindingsByElement.get(primer) : null;
+    if (bindings && typeof bindings.forEach === "function") {
+      var found = "";
+      bindings.forEach(function(binding) {
+        if (
+          !found &&
+          binding &&
+          binding.eventName === eventName &&
+          binding.painterName === painterName &&
+          binding.paintName
+        ) {
+          found = "paint(" + binding.paintName + ")";
+        }
+      });
+      return found;
+    }
+    return "";
+  }
+
+  function syncTargetSurfaceStyle(target) {
+    if (!target || !target.style || typeof target.style.setProperty !== "function") {
+      return;
+    }
+    if (target.classList && typeof target.classList.add === "function") {
+      target.classList.add("q-tech-panel-surface");
+    }
+    target.style.setProperty("position", "relative");
+    target.style.setProperty("box-sizing", "border-box");
+    target.style.setProperty("overflow", "hidden");
+    target.style.setProperty("background-repeat", "no-repeat");
+    target.style.setProperty("background-size", "100% 100%");
+    target.style.setProperty("background-position", "center");
+    target.style.setProperty("mask-mode", "alpha");
+    target.style.setProperty("mask-repeat", "no-repeat");
+    target.style.setProperty("mask-size", "100% 100%");
+    target.style.setProperty("mask-position", "center");
+    target.style.setProperty("-webkit-mask-repeat", "no-repeat");
+    target.style.setProperty("-webkit-mask-size", "100% 100%");
+    target.style.setProperty("-webkit-mask-position", "center");
+  }
+
   function applyTechPanelProperties() {
-    var targets = this.directPanelDivs();
+    var targets = this.panelTargets();
     var props = this.panelPropertyMap();
     var names = Object.keys(props);
-    var paintBackground = this.painterBackgroundImage();
-    var paintMask = this.painterMaskImage();
-    this.hidePainterPrimer();
+    var paintBackground = this.paintValueFromPrimer("background");
+    var paintMask = this.paintValueFromPrimer("mask");
     for (var i = 0; i < targets.length; i += 1) {
       var target = targets[i];
-      if (target.classList && typeof target.classList.add === "function") {
-        target.classList.add("q-tech-panel-surface");
-      }
-      if (!target.style || typeof target.style.setProperty !== "function") {
+      if (!target || !target.style || typeof target.style.setProperty !== "function") {
         continue;
       }
+      this.syncTargetSurfaceStyle(target);
       for (var ni = 0; ni < names.length; ni += 1) {
         var name = names[ni];
         var value = props[name];
         target.style.setProperty("--" + name, String(value == null ? "" : value));
       }
       if (paintBackground) {
-        target.style.setProperty("background-image", this.composeBackgroundImage(target, paintBackground));
+        target.style.setProperty("background-image", paintBackground);
       }
       if (paintMask) {
         target.style.setProperty("mask-image", paintMask);
         target.style.setProperty("-webkit-mask-image", paintMask);
-        target.style.setProperty("mask-mode", "alpha");
-        target.style.setProperty("mask-repeat", "no-repeat");
-        target.style.setProperty("mask-size", "100% 100%");
-        target.style.setProperty("mask-position", "center");
-        target.style.setProperty("-webkit-mask-repeat", "no-repeat");
-        target.style.setProperty("-webkit-mask-size", "100% 100%");
-        target.style.setProperty("-webkit-mask-position", "center");
       }
-      if (String(this.hostElement().backgroundImage || "").trim()) {
-        target.style.setProperty("background-size", "100% 100%, " + String(this.hostElement().backgroundSize || "cover"));
-        target.style.setProperty("background-position", "center, " + String(this.hostElement().backgroundPosition || "center"));
-        target.style.setProperty("background-repeat", "no-repeat, " + String(this.hostElement().backgroundRepeat || "no-repeat"));
-      }
-      if (!String(target.style.getPropertyValue("background-repeat") || "").trim()) {
-        target.style.setProperty("background-repeat", "no-repeat");
-      }
-      if (!String(target.style.getPropertyValue("background-size") || "").trim()) {
-        target.style.setProperty("background-size", "100% 100%");
-      }
-      if (!String(target.style.getPropertyValue("background-position") || "").trim()) {
-        target.style.setProperty("background-position", "center");
+      if (String(this.backgroundImage || "").trim()) {
+        target.style.setProperty("background-image", paintBackground ? paintBackground + ", " + String(this.backgroundImage) : String(this.backgroundImage));
+        target.style.setProperty("background-size", paintBackground ? "100% 100%, " + String(this.backgroundSize || "cover") : String(this.backgroundSize || "cover"));
+        target.style.setProperty("background-position", paintBackground ? "center, " + String(this.backgroundPosition || "center") : String(this.backgroundPosition || "center"));
+        target.style.setProperty("background-repeat", paintBackground ? "no-repeat, " + String(this.backgroundRepeat || "no-repeat") : String(this.backgroundRepeat || "no-repeat"));
       }
     }
   }
 
+  function watchPainterPrimers() {
+    if (this.__qTechPanelWatchingPainters) {
+      return;
+    }
+    this.__qTechPanelWatchingPainters = true;
+    var host = this;
+    var retry = function() {
+      host.applyTechPanelProperties();
+    };
+    var primers = this.querySelectorAll ? this.querySelectorAll(".q-tech-panel-painter-primer, .q-tech-panel-mask-primer") : [];
+    for (var i = 0; i < primers.length; i += 1) {
+      primers[i].addEventListener("QHTMLPaintWorkletReady", retry);
+    }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(retry);
+      requestAnimationFrame(function() { requestAnimationFrame(retry); });
+    }
+    setTimeout(retry, 60);
+    setTimeout(retry, 180);
+  }
+
   onready {
+    this.watchPainterPrimers();
     this.applyTechPanelProperties();
   }
 
@@ -983,17 +999,15 @@ q-component q-tech-panel {
   onbackgroundRepeatchanged { this.applyTechPanelProperties(); }
 
   q-tech-panel-theme {
-    q-tech-panel-surface-style,div.q-tech-panel-painter-primer {
+    div.q-tech-panel-painter-primer {
       q-tech-panel-primer: "1"
       aria-hidden: "true"
-      style { display: none; width: 1px; height: 1px; }
       text { }
     }
-    q-tech-panel-mask-style,div.q-tech-panel-mask-primer {
+    div.q-tech-panel-mask-primer {
       q-tech-panel-primer: "1"
       q-tech-panel-mask-primer: "1"
       aria-hidden: "true"
-      style { display: none; width: 1px; height: 1px; }
       text { }
     }
     slot { default }
