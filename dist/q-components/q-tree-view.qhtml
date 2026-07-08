@@ -221,6 +221,14 @@ q-component q-tree-view {
 
   onready { this.refresh(); }
 
+  onmodelchanged { this.refresh(); }
+
+  ontreemodelchanged { this.refresh(); }
+
+  onselectedpathchanged { this.refresh(); }
+
+  onfoldersonlychanged { this.refresh(); }
+
   q-style qTreeListStyle {
     listStyle: none;
     margin: 0;

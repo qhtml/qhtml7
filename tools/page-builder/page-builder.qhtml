@@ -608,9 +608,6 @@ q-component page-builder-file-dialog {
 
       div.pb-file-body {
         q-tree-view {
-          id: "pb-file-tree-probe"
-        }
-        div.pb-file-tree {
           id: "pb-file-tree"
         }
       }
@@ -649,9 +646,6 @@ q-component page-builder-file-manager {
 
       div.pb-file-body {
         q-tree-view {
-          id: "pb-file-manager-tree-probe"
-        }
-        div.pb-file-tree {
           id: "pb-file-manager-tree"
         }
       }
@@ -711,10 +705,8 @@ q-component page-builder-folder-picker {
 
       div.pb-file-body {
         q-tree-view {
-          id: "pb-folder-tree-probe"
-        }
-        div.pb-file-tree {
           id: "pb-folder-tree"
+          foldersOnly: true
         }
       }
 

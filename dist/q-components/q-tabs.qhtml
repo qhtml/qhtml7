@@ -258,6 +258,152 @@ q-component q-tabs {
     return panels;
   }
 
+  function remountHost() {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var host = tabs && tabs.closest ? tabs.closest("q-html") : null;
+    if (host && host.qhtmlDomTree && QHTML7 && typeof QHTML7.mountTree === "function") {
+      QHTML7.mountTree(host, host.qhtmlDomTree);
+      return true;
+    }
+    if (tabs && typeof tabs.refreshTabs === "function") {
+      tabs.refreshTabs();
+    }
+    return false;
+  }
+
+  function tabSource(tabObject) {
+    var tab = tabObject || {};
+    var name = String(tab.name || tab.label || tab.title || "Tab");
+    var body = String(tab.body || tab.content || tab.text || "");
+    if (tab.source || tab.qhtmlSource) {
+      return String(tab.source || tab.qhtmlSource);
+    }
+    return "q-tab { " +
+      "name { text { " + name + " } } " +
+      "body { div { text { " + body + " } } } " +
+      "}";
+  }
+
+  function tabChildIndex(tabRef) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var node = tabs ? tabs.qhtmlNode : null;
+    var wantedName = String(tabRef == null ? "" : tabRef);
+    var fallback = -1;
+    if (!node || typeof node.childCount !== "function" || typeof node.childAt !== "function") {
+      return -1;
+    }
+    if (typeof tabRef === "number") {
+      return Math.floor(tabRef);
+    }
+    for (var index = 0; index < node.childCount(); index += 1) {
+      var child = node.childAt(index);
+      if (!child || typeof child.qhtmlType !== "function") {
+        continue;
+      }
+      if (child.qhtmlType() !== "QHTMLComponentInstance" && child.qhtmlType() !== "QHTMLTypedNode") {
+        continue;
+      }
+      if (typeof child.keyword === "function" && child.keyword() !== "q-tab") {
+        continue;
+      }
+      fallback = index;
+      if (typeof child.qhtmlName === "function" && child.qhtmlName() === wantedName) {
+        return index;
+      }
+    }
+    return wantedName ? -1 : fallback;
+  }
+
+  function addTab(tabObject) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var node = tabs ? tabs.qhtmlNode : null;
+    var tab = tabObject || {};
+    var name = String(tab.name || tab.label || tab.title || "Tab");
+    var body = String(tab.body || tab.content || tab.text || "");
+    var buttons = tabs ? tabs.tabButtons() : new Array();
+    var bar = tabs ? tabs.querySelector(".q-tabs-bar") : null;
+    var bodyRoot = tabs ? tabs.querySelector(".q-tabs-body") : null;
+    var button;
+    var panel;
+    if (!node || typeof node.appendQHTMLSource !== "function") {
+      node = null;
+    }
+    if (!tabs || !bar || !bodyRoot) {
+      return false;
+    }
+    if (node) {
+      node.appendQHTMLSource(tabs.tabSource(tab));
+    }
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = "q-tab-button tab-button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("tabName", name);
+    button.setAttribute("aria-selected", "false");
+    button.setAttribute("tabindex", "-1");
+    button.textContent = name;
+    button.addEventListener("click", function() {
+      tabs.showTab(name);
+    });
+    panel = document.createElement("div");
+    panel.className = "q-tab-panel tab";
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("tabName", name);
+    panel.setAttribute("aria-hidden", "true");
+    panel.hidden = true;
+    panel.style.display = "none";
+    if (tab.html || tab.bodyHtml) {
+      panel.innerHTML = String(tab.html || tab.bodyHtml);
+    } else {
+      panel.textContent = body;
+    }
+    bar.appendChild(button);
+    bodyRoot.appendChild(panel);
+    tabs.showTab(buttons.length);
+    return true;
+  }
+
+  function removeTab(tabRef) {
+    var tabs = this.tabsRoot ? this.tabsRoot() : this;
+    var node = tabs ? tabs.qhtmlNode : null;
+    var panels = tabs ? tabs.tabPanels() : new Array();
+    var buttons = tabs ? tabs.tabButtons() : new Array();
+    var index = -1;
+    if (!tabs || panels.length <= 0) {
+      return false;
+    }
+    if (typeof tabRef === "number") {
+      index = tabs.numericTabIndex(tabRef, panels.length);
+    } else if (typeof tabRef === "undefined" || tabRef === null || tabRef === "") {
+      index = panels.length - 1;
+    } else {
+      var wanted = String(tabRef);
+      for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
+        if (panels[panelIndex] && panels[panelIndex].getAttribute("tabName") === wanted) {
+          index = panelIndex;
+          break;
+        }
+      }
+    }
+    if (index < 0 || index >= panels.length) {
+      return false;
+    }
+    if (buttons[index]) {
+      buttons[index].remove();
+    }
+    if (panels[index]) {
+      panels[index].remove();
+    }
+    if (node && typeof node.removeChildAt === "function" && typeof node.childCount === "function") {
+      var nodeIndex = tabs.tabChildIndex(tabRef);
+      if (nodeIndex >= 0 && nodeIndex < node.childCount()) {
+        node.removeChildAt(nodeIndex);
+      }
+    }
+    tabs.showTab(Math.min(index, panels.length - 2));
+    return true;
+  }
+
   onready {
     this.refreshTabs();
   }

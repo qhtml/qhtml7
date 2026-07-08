@@ -102,6 +102,14 @@ q-component q-list-view {
     this.refresh();
   }
 
+  onmodelchanged {
+    this.refresh();
+  }
+
+  onselectedindexchanged {
+    this.refresh();
+  }
+
   q-style listRootStyle {
     listStyle: none;
     margin: 0;
