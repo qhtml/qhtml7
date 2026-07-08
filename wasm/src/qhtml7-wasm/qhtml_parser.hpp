@@ -1574,6 +1574,37 @@ inline void QHTMLDomTree::loadFromAST(QHTMLAstNode *astRoot)
     bindComponentMembers();
 }
 
+inline int QHTMLNode::insertQHTMLSource(int index, const QString &source)
+{
+    QHTMLParser parser;
+    QHTMLDomTree parsedTree;
+    parsedTree.loadFromAST(parser.parse(source));
+
+    int inserted = 0;
+    const int boundedIndex = qBound(0, index, childCount());
+    while (parsedTree.childCount() > 0) {
+        if (QHTMLNode *child = parsedTree.takeChildAt(0)) {
+            insertChild(boundedIndex + inserted, child);
+            ++inserted;
+        }
+    }
+    return inserted;
+}
+
+inline int QHTMLNode::appendQHTMLSource(const QString &source)
+{
+    return insertQHTMLSource(childCount(), source);
+}
+
+inline int QHTMLNode::replaceChildWithQHTMLSource(int index, const QString &source)
+{
+    if (index < 0 || index >= childCount()) {
+        return 0;
+    }
+    removeChildAt(index);
+    return insertQHTMLSource(index, source);
+}
+
 inline void QHTMLDomTree::indexComponentDefinitions()
 {
     indexComponentDefinitionsFor(this);
@@ -2269,6 +2300,8 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     using emscripten::function;
 
     constant("QHTML_VERSION", std::string(QHTML_VERSION));
+    constant("QHTML_QUICKJS_ENABLED", true);
+    constant("QHTML_QUICKJS_SIZE_BUDGET_BYTES", QHTML_QUICKJS_SIZE_BUDGET_BYTES);
     function("qhtmlVersion", &qhtmlVersionJs);
 
     class_<QHTMLReference>("QHTMLReference")
@@ -2282,14 +2315,23 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("parent", &QHTMLNode::parentJs, allow_raw_pointers())
         .function("childCount", &QHTMLNode::childCount)
         .function("childAt", &QHTMLNode::childAt, allow_raw_pointers())
+        .function("appendChild", &QHTMLNode::appendChildJs, allow_raw_pointers())
+        .function("insertChild", &QHTMLNode::insertChildJs, allow_raw_pointers())
+        .function("removeChildAt", &QHTMLNode::removeChildAtJs)
+        .function("clearChildren", &QHTMLNode::clearChildrenJs)
+        .function("appendQHTMLSource", &QHTMLNode::appendQHTMLSourceJs)
+        .function("insertQHTMLSource", &QHTMLNode::insertQHTMLSourceJs)
+        .function("replaceChildWithQHTMLSource", &QHTMLNode::replaceChildWithQHTMLSourceJs)
         .function("setProperty", &QHTMLNode::setPropertyJs)
         .function("property", &QHTMLNode::propertyJs)
         .function("updateKeywordReference", &QHTMLNode::updateKeywordReferenceJs)
         .function("updateNamedReference", &QHTMLNode::updateNamedReferenceJs)
         .function("resolve", &QHTMLNode::resolveJs, allow_raw_pointers())
         .function("resolveType", &QHTMLNode::resolveTypeJs)
+        .function("evaluateExpression", &QHTMLNode::evaluateExpressionJs)
         .function("runtime", &QHTMLNode::runtime)
-        .function("renderHtml", &QHTMLNode::renderHtmlJs);
+        .function("renderHtml", &QHTMLNode::renderHtmlJs)
+        .function("sourceQHTML", &QHTMLNode::sourceQHTMLJs);
 
     class_<QHTMLDomNode, base<QHTMLNode>>("QHTMLDomNode");
     class_<QHTMLDomElement, base<QHTMLDomNode>>("QHTMLDomElement")
@@ -2580,7 +2622,10 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("clear", &QHTMLDomTree::clear)
         .function("root", &QHTMLDomTree::rootJs, allow_raw_pointers())
         .function("signalBus", &QHTMLDomTree::signalBusJs, allow_raw_pointers())
-        .function("renderHtml", &QHTMLDomTree::renderHtmlJs);
+        .function("quickJSAvailable", &QHTMLDomTree::quickJSAvailableJs)
+        .function("compileJavaScript", &QHTMLDomTree::compileJavaScriptJs)
+        .function("renderHtml", &QHTMLDomTree::renderHtmlJs)
+        .function("sourceQHTML", &QHTMLDomTree::sourceQHTMLJs);
 
     class_<QHTMLAstNode>("QHTMLAstNode")
         .function("astType", &QHTMLAstNode::astTypeJs)

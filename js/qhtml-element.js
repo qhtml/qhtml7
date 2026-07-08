@@ -974,6 +974,7 @@
     // Runtime helpers must be injected before user/DOM symbols so they cannot be
     // shadowed by an element id/name or a registry entry with the same identifier.
     reserve("$", createQHTMLSelectorHelper(domElement, sourceRegistry));
+    reserve("qhtmlMakeSignal", globalScope.qhtmlMakeSignal);
 
     if (sourceRegistry) {
       if (sourceRegistry.elementsByName) {
@@ -1072,288 +1073,6 @@
       return stripMatchingQuotes(text);
     }
     return undefined;
-  }
-
-  const QHTML_CSS_SHORTCUTS = new Map([
-    ["aligncontent", "align-content"],
-    ["align-content", "align-content"],
-    ["alignitems", "align-items"],
-    ["align-items", "align-items"],
-    ["alignself", "align-self"],
-    ["align-self", "align-self"],
-    ["aspectratio", "aspect-ratio"],
-    ["aspect-ratio", "aspect-ratio"],
-    ["background", "background"],
-    ["backgroundcolor", "background-color"],
-    ["background-color", "background-color"],
-    ["backgroundimage", "background-image"],
-    ["background-image", "background-image"],
-    ["backgroundposition", "background-position"],
-    ["background-position", "background-position"],
-    ["backgroundrepeat", "background-repeat"],
-    ["background-repeat", "background-repeat"],
-    ["backgroundsize", "background-size"],
-    ["background-size", "background-size"],
-    ["bordercolor", "border-color"],
-    ["border-color", "border-color"],
-    ["borderradius", "border-radius"],
-    ["border-radius", "border-radius"],
-    ["borderstyle", "border-style"],
-    ["border-style", "border-style"],
-    ["borderwidth", "border-width"],
-    ["border-width", "border-width"],
-    ["bottom", "bottom"],
-    ["boxshadow", "box-shadow"],
-    ["box-shadow", "box-shadow"],
-    ["boxsizing", "box-sizing"],
-    ["box-sizing", "box-sizing"],
-    ["color", "color"],
-    ["columngap", "column-gap"],
-    ["column-gap", "column-gap"],
-    ["cursor", "cursor"],
-    ["display", "display"],
-    ["filter", "filter"],
-    ["flex", "flex"],
-    ["flexbasis", "flex-basis"],
-    ["flex-basis", "flex-basis"],
-    ["flexdirection", "flex-direction"],
-    ["flex-direction", "flex-direction"],
-    ["flexgrow", "flex-grow"],
-    ["flex-grow", "flex-grow"],
-    ["flexshrink", "flex-shrink"],
-    ["flex-shrink", "flex-shrink"],
-    ["flexwrap", "flex-wrap"],
-    ["flex-wrap", "flex-wrap"],
-    ["fontfamily", "font-family"],
-    ["font-family", "font-family"],
-    ["fontsize", "font-size"],
-    ["font-size", "font-size"],
-    ["fontstyle", "font-style"],
-    ["font-style", "font-style"],
-    ["fontweight", "font-weight"],
-    ["font-weight", "font-weight"],
-    ["gap", "gap"],
-    ["gridarea", "grid-area"],
-    ["grid-area", "grid-area"],
-    ["gridcolumn", "grid-column"],
-    ["grid-column", "grid-column"],
-    ["gridrow", "grid-row"],
-    ["grid-row", "grid-row"],
-    ["height", "height"],
-    ["justifycontent", "justify-content"],
-    ["justify-content", "justify-content"],
-    ["justifyitems", "justify-items"],
-    ["justify-items", "justify-items"],
-    ["justifyself", "justify-self"],
-    ["justify-self", "justify-self"],
-    ["left", "left"],
-    ["letterspacing", "letter-spacing"],
-    ["letter-spacing", "letter-spacing"],
-    ["lineheight", "line-height"],
-    ["line-height", "line-height"],
-    ["margin", "margin"],
-    ["marginbottom", "margin-bottom"],
-    ["margin-bottom", "margin-bottom"],
-    ["marginleft", "margin-left"],
-    ["margin-left", "margin-left"],
-    ["marginright", "margin-right"],
-    ["margin-right", "margin-right"],
-    ["margintop", "margin-top"],
-    ["margin-top", "margin-top"],
-    ["maxheight", "max-height"],
-    ["max-height", "max-height"],
-    ["maxwidth", "max-width"],
-    ["max-width", "max-width"],
-    ["minheight", "min-height"],
-    ["min-height", "min-height"],
-    ["minwidth", "min-width"],
-    ["min-width", "min-width"],
-    ["objectfit", "object-fit"],
-    ["object-fit", "object-fit"],
-    ["objectposition", "object-position"],
-    ["object-position", "object-position"],
-    ["opacity", "opacity"],
-    ["order", "order"],
-    ["overflow", "overflow"],
-    ["overflowx", "overflow-x"],
-    ["overflow-x", "overflow-x"],
-    ["overflowy", "overflow-y"],
-    ["overflow-y", "overflow-y"],
-    ["padding", "padding"],
-    ["paddingbottom", "padding-bottom"],
-    ["padding-bottom", "padding-bottom"],
-    ["paddingleft", "padding-left"],
-    ["padding-left", "padding-left"],
-    ["paddingright", "padding-right"],
-    ["padding-right", "padding-right"],
-    ["paddingtop", "padding-top"],
-    ["padding-top", "padding-top"],
-    ["pointerevents", "pointer-events"],
-    ["pointer-events", "pointer-events"],
-    ["position", "position"],
-    ["right", "right"],
-    ["rowgap", "row-gap"],
-    ["row-gap", "row-gap"],
-    ["textalign", "text-align"],
-    ["text-align", "text-align"],
-    ["textdecoration", "text-decoration"],
-    ["text-decoration", "text-decoration"],
-    ["textoverflow", "text-overflow"],
-    ["text-overflow", "text-overflow"],
-    ["texttransform", "text-transform"],
-    ["text-transform", "text-transform"],
-    ["top", "top"],
-    ["transform", "transform"],
-    ["transformorigin", "transform-origin"],
-    ["transform-origin", "transform-origin"],
-    ["transition", "transition"],
-    ["visibility", "visibility"],
-    ["whitespace", "white-space"],
-    ["white-space", "white-space"],
-    ["width", "width"],
-    ["wordbreak", "word-break"],
-    ["word-break", "word-break"],
-    ["x", "left"],
-    ["y", "top"],
-    ["zindex", "z-index"],
-    ["z-index", "z-index"]
-  ]);
-
-  function qhtmlCssShortcutPropertyName(name) {
-    return QHTML_CSS_SHORTCUTS.get(String(name || "").trim().toLowerCase()) || "";
-  }
-
-  function isQHTMLCssShortcutProperty(name) {
-    return qhtmlCssShortcutPropertyName(name) !== "";
-  }
-
-  function cssShortcutJsPropertyName(cssName) {
-    return String(cssName || "").replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
-  }
-
-  function resolveCssShortcutValue(rawValue, domElement, propertyNode, registry) {
-    const resolved = resolvePropertyValue(rawValue, domElement, propertyNode, registry);
-    return String(resolved == null ? "" : resolved).replace(/\$\{([^}]+)\}/g, (fullMatch, expression) => {
-      const value = resolvePath(String(expression || "").trim(), registry, domElement);
-      return value == null ? "" : String(value);
-    });
-  }
-
-  function ensureQHTMLCssShortcutStore(domElement) {
-    if (!domElement.__qhtmlCssShortcutStyle) {
-      domElement.__qhtmlCssShortcutStyle = {
-        declarations: new Map(),
-        aliases: new Map()
-      };
-    }
-    return domElement.__qhtmlCssShortcutStyle;
-  }
-
-  function reapplyQHTMLCssShortcutStyle(domElement) {
-    const store = domElement && domElement.__qhtmlCssShortcutStyle;
-    if (!domElement || !domElement.style || !store || !store.declarations) {
-      return;
-    }
-    if ((store.declarations.has("left") || store.declarations.has("top")) &&
-        !store.declarations.has("position") &&
-        !domElement.style.getPropertyValue("position")) {
-      domElement.style.setProperty("position", "relative");
-    }
-    store.declarations.forEach((value, cssName) => {
-      domElement.style.setProperty(cssName, String(value));
-    });
-  }
-
-  function setQHTMLCssShortcutValue(domElement, propertyName, value) {
-    const cssName = qhtmlCssShortcutPropertyName(propertyName);
-    if (!domElement || !cssName) {
-      return false;
-    }
-    const store = ensureQHTMLCssShortcutStore(domElement);
-    store.declarations.set(cssName, String(value == null ? "" : value));
-    store.aliases.set(String(propertyName), cssName);
-    reapplyQHTMLCssShortcutStyle(domElement);
-    return true;
-  }
-
-  function defineQHTMLCssShortcutAccessor(domElement, propertyName, cssName) {
-    if (!domElement || !propertyName || !cssName || Object.prototype.hasOwnProperty.call(domElement, propertyName)) {
-      return;
-    }
-    try {
-      Object.defineProperty(domElement, propertyName, {
-        configurable: true,
-        enumerable: true,
-        get() {
-          const store = ensureQHTMLCssShortcutStore(domElement);
-          if (store.declarations.has(cssName)) {
-            return store.declarations.get(cssName);
-          }
-          return domElement.style ? domElement.style.getPropertyValue(cssName) : "";
-        },
-        set(nextValue) {
-          setQHTMLCssShortcutValue(domElement, propertyName, nextValue);
-        }
-      });
-    } catch {
-      // Native DOM properties that cannot be redefined are left untouched.
-    }
-  }
-
-  function bindCssShortcutAccessors(domElement) {
-    if (!domElement || domElement.__qhtmlCssShortcutAccessorsBound) {
-      return;
-    }
-    domElement.__qhtmlCssShortcutAccessorsBound = true;
-    const seen = new Set();
-    QHTML_CSS_SHORTCUTS.forEach((cssName, key) => {
-      if (key.includes("-")) {
-        return;
-      }
-      const propertyName = key === "x" || key === "y" ? key : cssShortcutJsPropertyName(cssName);
-      if (seen.has(propertyName)) {
-        return;
-      }
-      seen.add(propertyName);
-      defineQHTMLCssShortcutAccessor(domElement, propertyName, cssName);
-    });
-  }
-
-  function bindCssShortcutAssignments(domElement, qhtmlNode, registry) {
-    if (!domElement || !qhtmlNode) {
-      return;
-    }
-    bindCssShortcutAccessors(domElement);
-    const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
-    for (let index = 0; index < count; index += 1) {
-      const child = qhtmlNode.childAt(index);
-      if (qhtmlNodeType(child) !== "QHTMLPropertyAssignment") {
-        continue;
-      }
-      const propertyName = qhtmlNodeName(child);
-      if (!isQHTMLCssShortcutProperty(propertyName)) {
-        continue;
-      }
-      const rawValue = typeof child.value === "function" ? child.value() : "";
-      setQHTMLCssShortcutValue(
-        domElement,
-        propertyName,
-        resolveCssShortcutValue(rawValue, domElement, child, registry)
-      );
-    }
-  }
-
-  function reapplyQHTMLCssShortcutsInScope(scopeElement) {
-    if (!scopeElement) {
-      return;
-    }
-    reapplyQHTMLCssShortcutStyle(scopeElement);
-    if (!scopeElement.querySelectorAll) {
-      return;
-    }
-    Array.from(scopeElement.querySelectorAll("*")).forEach((element) => {
-      reapplyQHTMLCssShortcutStyle(element);
-    });
   }
 
   function parseStructuredProperty(value, domElement, registry) {
@@ -1752,9 +1471,6 @@
           }
           entry.lastTransactionId = transactionId;
           entry.value = nextValue;
-          if (isQHTMLCssShortcutProperty(propertyName)) {
-            setQHTMLCssShortcutValue(domElement, propertyName, nextValue);
-          }
           withPropertyTransaction(transactionId, () => {
             const signalName = `${propertyName}changed`;
             if (typeof domElement[signalName] === "function") {
@@ -1958,6 +1674,133 @@
     return classBody;
   }
 
+  function parseQHTMLClassBody(body) {
+    const source = String(body || "");
+    const signalDeclarations = [];
+    const declarationPattern = /(^|\n)([ \t]*)q-signal\s+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*\(([^)]*)\))?\s*;?[ \t]*(?=\n|$)/g;
+    const strippedBody = source.replace(declarationPattern, function (match, linePrefix, indentation, signalName, parameters) {
+      signalDeclarations.push({
+        name: String(signalName || "").trim(),
+        parameters: String(parameters || "").trim()
+      });
+      return linePrefix || "";
+    }).trim();
+    return { body: strippedBody, signalDeclarations };
+  }
+
+  function syntheticObjectSignalNode(ownerObject, signalName, parameters) {
+    const normalizedName = String(signalName || "signal").trim() || "signal";
+    const ownerUuid = ownerObject && ownerObject.qhtmlUUID ? String(ownerObject.qhtmlUUID) : "object";
+    const uuid = `class-signal-${normalizedName}-${ownerUuid}-${Math.random().toString(36).slice(2)}`;
+    const connected = [];
+    return {
+      qhtmlName: function () { return normalizedName; },
+      qhtmlType: function () { return "QHTMLClassSignal"; },
+      qhtmlUUID: function () { return uuid; },
+      parameters: function () { return String(parameters || ""); },
+      emit: function () {},
+      connect: function (target) {
+        connected.push(target);
+        return true;
+      },
+      signalBus: function () { return null; },
+      connected: function () { return connected.slice(); }
+    };
+  }
+
+  function createQHTMLObjectSignal(ownerObject, signalName, parameters, signalNode) {
+    const owner = ownerObject || globalScope;
+    const normalizedName = String(signalName || "signal").trim() || "signal";
+    const node = signalNode || syntheticObjectSignalNode(owner, normalizedName, parameters);
+    return createObjectSignal(owner, node, normalizedName);
+  }
+
+  function installQHTMLSignalHelpers(target) {
+    if (!target || (typeof target !== "object" && typeof target !== "function")) {
+      return target;
+    }
+    if (typeof target.qhtmlSignal !== "function") {
+      Object.defineProperty(target, "qhtmlSignal", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: function qhtmlSignal(signalName, parameters) {
+          const name = String(signalName || "signal").trim() || "signal";
+          const signal = createQHTMLObjectSignal(this || target, name, parameters);
+          if (isValidContextIdentifier(name)) {
+            this[name] = signal;
+          }
+          return signal;
+        }
+      });
+    }
+    if (typeof target.qhtmlMakeSignal !== "function") {
+      Object.defineProperty(target, "qhtmlMakeSignal", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: function qhtmlMakeInstanceSignal(signalName, parameters) {
+          if (typeof signalName === "string" && signalName.trim()) {
+            return this.qhtmlSignal(signalName, parameters);
+          }
+          return createQHTMLObjectSignal(this || target, "signal", parameters);
+        }
+      });
+    }
+    return target;
+  }
+
+  function bindQHTMLClassInstanceSignals(instance, classObject) {
+    if (!instance || !classObject) {
+      return instance;
+    }
+    installQHTMLSignalHelpers(instance);
+    const declarations = Array.isArray(classObject.qhtmlSignalDeclarations)
+      ? classObject.qhtmlSignalDeclarations
+      : [];
+    declarations.forEach((declaration) => {
+      const signalName = declaration && declaration.name ? String(declaration.name).trim() : "";
+      if (!isValidContextIdentifier(signalName)) {
+        return;
+      }
+      if (instance[signalName] && typeof instance[signalName].connect === "function") {
+        return;
+      }
+      instance[signalName] = createQHTMLObjectSignal(instance, signalName, declaration.parameters);
+    });
+    return instance;
+  }
+
+  function qhtmlMakeSignal(ownerOrName, nameOrParameters, maybeParameters) {
+    let owner = ownerOrName;
+    let signalName = typeof nameOrParameters === "string" ? nameOrParameters : "signal";
+    let parameters = maybeParameters;
+
+    if (typeof ownerOrName === "string" || ownerOrName == null) {
+      owner = (this && this !== globalScope) ? this : globalScope;
+      signalName = ownerOrName || signalName;
+      parameters = nameOrParameters;
+    }
+
+    return createQHTMLObjectSignal(owner || globalScope, signalName || "signal", parameters);
+  }
+
+  function installQHTMLSignalGlobals() {
+    if (typeof globalScope.qhtmlMakeSignal !== "function") {
+      Object.defineProperty(globalScope, "qhtmlMakeSignal", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: qhtmlMakeSignal
+      });
+    }
+    if (globalScope.QHTML7 && typeof globalScope.QHTML7.makeSignal !== "function") {
+      globalScope.QHTML7.makeSignal = qhtmlMakeSignal;
+    }
+  }
+
+  installQHTMLSignalGlobals();
+
   function bindClassInstanceMethods(instance) {
     if (!instance || !instance.constructor || !instance.constructor.prototype) {
       return;
@@ -1980,7 +1823,9 @@
       return registry.qhtmlClassesByName.get(className);
     }
 
-    const body = typeof classNode.body === "function" ? classNode.body() : "";
+    const rawBody = typeof classNode.body === "function" ? classNode.body() : "";
+    const parsedBody = parseQHTMLClassBody(rawBody);
+    const body = parsedBody.body;
     const classBody = qhtmlClassBodyForJavaScript(className, body);
     const context = executionContextFor(registry.rootElement, registry, []);
     try {
@@ -1989,10 +1834,13 @@
         `"use strict"; return class ${className} { ${classBody} };`
       );
       const classObject = factory.apply(registry.rootElement, context.values);
+      installQHTMLSignalHelpers(classObject.prototype);
       classObject.qhtmlNode = classNode;
       classObject.qhtmlName = className;
       classObject.qhtmlUUID = typeof classNode.qhtmlUUID === "function" ? classNode.qhtmlUUID() : "";
       classObject.qhtmlBody = body;
+      classObject.qhtmlRawBody = rawBody;
+      classObject.qhtmlSignalDeclarations = parsedBody.signalDeclarations;
       registry.qhtmlClassesByName.set(className, classObject);
       if (classObject.qhtmlUUID) {
         registry.qhtmlClassesByUuid.set(classObject.qhtmlUUID, classObject);
@@ -2058,6 +1906,7 @@
     const args = constructorArgumentsForClassInstance(instanceNode, ownerElement, registry);
     try {
       const instance = new classObject(...args);
+      bindQHTMLClassInstanceSignals(instance, classObject);
       bindClassInstanceMethods(instance);
       instance.qhtmlNode = instanceNode;
       instance.qhtmlName = instanceName;
@@ -2992,7 +2841,6 @@
       }
       domElement.style.setProperty(decl.name, decl.value);
     });
-    reapplyQHTMLCssShortcutStyle(domElement);
     reapplyPaintTargetsForElement(domElement, registry);
   }
 
@@ -3146,7 +2994,6 @@
       }
       element.style.setProperty(decl.name, decl.value);
     });
-    reapplyQHTMLCssShortcutStyle(element);
     if (registry) {
       reapplyPaintTargetsForElement(element, registry);
     }
@@ -3232,8 +3079,6 @@
       }
       unwrapApplication(applicationElement);
     });
-
-    reapplyQHTMLCssShortcutsInScope(rootElement);
   }
 
   function qhtmlPaintCssValue(value) {
@@ -3833,468 +3678,6 @@
     globalScope.requestAnimationFrame(repaint);
   }
 
-  function parseQHTMLVideoBoolean(value, fallbackValue) {
-    if (value === true || value === false) {
-      return value;
-    }
-    if (value === 1 || value === "1") {
-      return true;
-    }
-    if (value === 0 || value === "0") {
-      return false;
-    }
-    const text = String(value == null ? "" : value).trim().toLowerCase();
-    if (text === "true" || text === "yes" || text === "on") {
-      return true;
-    }
-    if (text === "false" || text === "no" || text === "off") {
-      return false;
-    }
-    return Boolean(fallbackValue);
-  }
-
-  function parseQHTMLVideoNumber(value, fallbackValue) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallbackValue;
-  }
-
-  function bytesToBase64(bytes) {
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-      const chunk = bytes.subarray(offset, offset + chunkSize);
-      binary += String.fromCharCode.apply(null, chunk);
-    }
-    return btoa(binary);
-  }
-
-  function base64ToBytes(base64) {
-    const binary = atob(String(base64 || ""));
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-    return bytes;
-  }
-
-  async function decodeQHTMLVideoPayload(base64, codec) {
-    const bytes = base64ToBytes(base64);
-    if (!codec || codec === "raw") {
-      return bytes;
-    }
-    if (codec !== "gzip") {
-      throw new Error(`Unsupported q-vid payload codec: ${codec}`);
-    }
-    if (typeof DecompressionStream !== "function") {
-      throw new Error("This q-vid asset uses gzip payloads, but DecompressionStream is unavailable.");
-    }
-    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-    const buffer = await new Response(stream).arrayBuffer();
-    return new Uint8Array(buffer);
-  }
-
-  async function normalizeQHTMLVideoAssetForWasm(asset) {
-    const source = asset && asset.asset ? asset.asset : asset;
-    if (!source || typeof source !== "object") {
-      throw new Error("Invalid q-vid asset.");
-    }
-    const normalized = Object.assign({}, source);
-    const codec = normalized.codec || "raw";
-    if (codec === "raw" || !codec) {
-      normalized.codec = "raw";
-      return normalized;
-    }
-    normalized.keyFrame = bytesToBase64(await decodeQHTMLVideoPayload(normalized.keyFrame, codec));
-    if (Array.isArray(normalized.deltas)) {
-      if (normalized.format === "q-vid-delta-binary-v1" ||
-          normalized.format === "sprite-delta-binary-v2") {
-        normalized.deltas = await Promise.all(normalized.deltas.map(async (delta) => {
-          return bytesToBase64(await decodeQHTMLVideoPayload(delta || "", codec));
-        }));
-      } else {
-        normalized.deltas = await Promise.all(normalized.deltas.map(async (delta) => {
-          if (!Array.isArray(delta)) {
-            return delta;
-          }
-          return Promise.all(delta.map(async (tile) => {
-            const copy = Object.assign({}, tile);
-            copy.bytes = bytesToBase64(await decodeQHTMLVideoPayload(copy.bytes || "", codec));
-            return copy;
-          }));
-        }));
-      }
-    }
-    normalized.codec = "raw";
-    return normalized;
-  }
-
-  function extractQHTMLVideoAsset(text, src) {
-    const source = String(text || "").trim();
-    if (!source) {
-      throw new Error("Empty q-vid asset.");
-    }
-    if (source[0] === "{") {
-      const parsed = JSON.parse(source);
-      const asset = parsed && parsed.asset ? parsed.asset : parsed;
-      if (src && !asset.src) {
-        asset.src = src;
-      }
-      return asset;
-    }
-
-    const pending = [];
-    const fakeGlobal = {
-      __pendingQVidAssets: pending,
-      QVidAssetRegistry: {
-        register(asset) {
-          pending.push(asset);
-        }
-      }
-    };
-    const fakeDocument = { currentScript: src ? { src } : null };
-    new Function("globalThis", "window", "self", "global", "document", source)(
-      fakeGlobal,
-      fakeGlobal,
-      fakeGlobal,
-      fakeGlobal,
-      fakeDocument
-    );
-    const asset = pending[pending.length - 1] ||
-      (Array.isArray(fakeGlobal.__pendingQVidAssets) ? fakeGlobal.__pendingQVidAssets[fakeGlobal.__pendingQVidAssets.length - 1] : null);
-    if (!asset) {
-      throw new Error("The q-vid asset did not register QVidAssetRegistry data.");
-    }
-    if (src && !asset.src) {
-      asset.src = src;
-    }
-    return asset;
-  }
-
-  function qhtmlVideoEvent(element, name, detail) {
-    if (typeof CustomEvent !== "function" || !element || typeof element.dispatchEvent !== "function") {
-      return;
-    }
-    element.dispatchEvent(new CustomEvent(name, {
-      detail: detail || {},
-      bubbles: true,
-      composed: true
-    }));
-  }
-
-  function bindQHTMLVideoRuntime(domElement, videoNode, registry) {
-    if (!domElement || domElement.__qhtmlVideoRuntimeBound) {
-      return;
-    }
-    const qtModule = globalScope.QHTML7 && globalScope.QHTML7.Module;
-    if (!qtModule || typeof qtModule.QHTMLVideoPlayer !== "function") {
-      console.error("QHTMLVideoPlayer is not exported by the QHTML7 WASM module.");
-      return;
-    }
-
-    domElement.__qhtmlVideoRuntimeBound = true;
-    domElement.__qhtmlVideoNode = videoNode || null;
-    const player = new qtModule.QHTMLVideoPlayer();
-    const canvas = domElement.querySelector("[qhtml-video-canvas]") || domElement.querySelector("canvas");
-    const state = {
-      player,
-      canvas,
-      context: canvas && canvas.getContext ? canvas.getContext("2d") : null,
-      imageData: null,
-      timer: 0,
-      loading: null,
-      loadedAsset: null,
-      scale: parseQHTMLVideoNumber(domElement.getAttribute("scale"), 1)
-    };
-
-    domElement.qhtmlVideoPlayer = player;
-    domElement.videoPlayer = player;
-
-    function metadata() {
-      if (!player.isLoaded()) {
-        return {};
-      }
-      try {
-        return JSON.parse(player.metadataJson());
-      } catch {
-        return {
-          asset: {
-            width: player.width(),
-            height: player.height(),
-            frameCount: player.frameCount()
-          },
-          player: {
-            currentFrame: player.currentFrame(),
-            frameDuration: player.frameDuration(),
-            running: player.running()
-          }
-        };
-      }
-    }
-
-    function applyCanvasSize() {
-      if (!state.canvas || !player.isLoaded()) {
-        return;
-      }
-      const width = Math.max(1, player.width());
-      const height = Math.max(1, player.height());
-      if (state.canvas.width !== width) {
-        state.canvas.width = width;
-      }
-      if (state.canvas.height !== height) {
-        state.canvas.height = height;
-      }
-      state.canvas.style.display = "block";
-      state.canvas.style.maxWidth = "100%";
-      state.canvas.style.height = "auto";
-      state.canvas.style.width = `${Math.max(1, Math.round(width * state.scale))}px`;
-      domElement.style.display = "inline-block";
-      domElement.style.maxWidth = "100%";
-      domElement.style.aspectRatio = `${width} / ${height}`;
-      state.imageData = state.context && state.context.createImageData
-        ? state.context.createImageData(width, height)
-        : null;
-    }
-
-    function drawCurrentFrame() {
-      if (!state.context || !state.imageData || !player.isLoaded()) {
-        return player.currentFrame();
-      }
-      const bytes = base64ToBytes(player.frameBase64());
-      state.imageData.data.set(new Uint8ClampedArray(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-      state.context.putImageData(state.imageData, 0, 0);
-      const currentFrame = player.currentFrame();
-      domElement.setAttribute("currentFrame", String(currentFrame));
-      qhtmlVideoEvent(domElement, "q-vid-frame", { currentFrame, metadata: metadata() });
-      return currentFrame;
-    }
-
-    function stopTimer() {
-      if (state.timer) {
-        globalScope.clearTimeout(state.timer);
-        state.timer = 0;
-      }
-    }
-
-    function scheduleNextFrame() {
-      stopTimer();
-      if (!player.running()) {
-        return;
-      }
-      state.timer = globalScope.setTimeout(() => {
-        player.step(1);
-        drawCurrentFrame();
-        if (player.running()) {
-          scheduleNextFrame();
-        } else {
-          qhtmlVideoEvent(domElement, "q-vid-stop", { metadata: metadata() });
-          qhtmlVideoEvent(domElement, "q-vid-stopped", { metadata: metadata() });
-        }
-      }, Math.max(1, player.frameDuration()));
-    }
-
-    function syncPlayerOptions(options) {
-      const opts = options || {};
-      player.setFrameDuration(Math.max(1, Math.trunc(parseQHTMLVideoNumber(opts.frameDuration ?? domElement.getAttribute("frameDuration"), 30))));
-      player.setReverse(parseQHTMLVideoBoolean(opts.reverse ?? domElement.getAttribute("reverse"), false));
-      player.setRepeat(parseQHTMLVideoBoolean(opts.repeat ?? domElement.getAttribute("repeat"), true));
-      state.scale = Math.max(0.01, parseQHTMLVideoNumber(opts.scale ?? domElement.getAttribute("scale"), state.scale || 1));
-      if (player.isLoaded()) {
-        const startFrame = Math.max(0, Math.trunc(parseQHTMLVideoNumber(opts.startFrame ?? domElement.getAttribute("startFrame"), player.startFrame())));
-        const rawEnd = opts.endFrame ?? domElement.getAttribute("endFrame");
-        const parsedEnd = Math.trunc(parseQHTMLVideoNumber(rawEnd, player.endFrame()));
-        const endFrame = rawEnd == null || parsedEnd <= startFrame
-          ? player.endFrame()
-          : parsedEnd;
-        player.setRange(startFrame, endFrame);
-      }
-      applyCanvasSize();
-    }
-
-    function installAssetText(text, srcLabel, attributeSrc) {
-      return Promise.resolve()
-        .then(() => extractQHTMLVideoAsset(text, srcLabel))
-        .then((asset) => normalizeQHTMLVideoAssetForWasm(asset))
-        .then((asset) => {
-          const ok = player.loadAssetJson(JSON.stringify({ asset }));
-          if (!ok) {
-            throw new Error(player.lastError() || "QHTMLVideoPlayer could not load q-vid asset.");
-          }
-          state.loadedAsset = asset;
-          domElement.setAttribute("src", String(attributeSrc || srcLabel || asset.src || ""));
-          syncPlayerOptions();
-          if (domElement.hasAttribute("currentFrame")) {
-            player.setCurrentFrame(Math.trunc(parseQHTMLVideoNumber(domElement.getAttribute("currentFrame"), player.currentFrame())));
-          }
-          applyCanvasSize();
-          drawCurrentFrame();
-          qhtmlVideoEvent(domElement, "q-vid-load", {
-            asset,
-            metadata: metadata(),
-            width: player.width(),
-            height: player.height(),
-            frameCount: player.frameCount()
-          });
-          if (parseQHTMLVideoBoolean(domElement.getAttribute("running"), false)) {
-            domElement.start();
-          }
-          return asset;
-        })
-        .catch((error) => {
-          qhtmlVideoEvent(domElement, "q-vid-error", { error, message: error && error.message ? error.message : String(error) });
-          throw error;
-        });
-    }
-
-    domElement.loadText = async function loadQHTMLVideoText(text, srcLabel) {
-      state.loading = installAssetText(text, String(srcLabel || "inline.qvid"), String(srcLabel || ""));
-      return state.loading;
-    };
-
-    domElement.load = async function loadQHTMLVideo(srcValue) {
-      const requestedSrc = String(srcValue == null ? domElement.getAttribute("src") || "" : srcValue || "").trim();
-      if (!requestedSrc) {
-        return null;
-      }
-      const absoluteSrc = new URL(requestedSrc, document.baseURI).href;
-      state.loading = fetch(absoluteSrc)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`Failed to load q-vid asset: ${response.status} ${response.statusText}`);
-          }
-          return response.text();
-        })
-        .then((text) => installAssetText(text, absoluteSrc, requestedSrc));
-      return state.loading;
-    };
-
-    domElement.loadSource = domElement.load;
-    domElement.metadata = metadata;
-
-    domElement.start = function startQHTMLVideo() {
-      if (!player.isLoaded()) {
-        const src = domElement.getAttribute("src");
-        if (src) {
-          return domElement.load(src).then(() => domElement.start());
-        }
-        return null;
-      }
-      syncPlayerOptions();
-      player.setRunning(true);
-      domElement.setAttribute("running", "true");
-      qhtmlVideoEvent(domElement, "q-vid-start", { metadata: metadata() });
-      qhtmlVideoEvent(domElement, "q-vid-started", { metadata: metadata() });
-      scheduleNextFrame();
-      return player.currentFrame();
-    };
-
-    domElement.stop = function stopQHTMLVideo() {
-      stopTimer();
-      const wasRunning = player.running();
-      player.setRunning(false);
-      domElement.setAttribute("running", "false");
-      if (wasRunning) {
-        qhtmlVideoEvent(domElement, "q-vid-stop", { metadata: metadata() });
-        qhtmlVideoEvent(domElement, "q-vid-stopped", { metadata: metadata() });
-      }
-      return player.currentFrame();
-    };
-
-    domElement.restart = function restartQHTMLVideo() {
-      if (player.isLoaded()) {
-        player.setCurrentFrame(player.reverse() ? player.endFrame() : player.startFrame());
-        drawCurrentFrame();
-      }
-      return domElement.start();
-    };
-
-    domElement.step = function stepQHTMLVideo(count) {
-      if (!player.isLoaded()) {
-        return player.currentFrame();
-      }
-      const frame = player.step(Math.trunc(parseQHTMLVideoNumber(count, 1)) || 1);
-      drawCurrentFrame();
-      return frame;
-    };
-
-    domElement.setCurrentFrame = function setQHTMLVideoCurrentFrame(frame) {
-      player.setCurrentFrame(Math.trunc(parseQHTMLVideoNumber(frame, 0)));
-      return drawCurrentFrame();
-    };
-    domElement.setFrameDuration = function setQHTMLVideoFrameDuration(value) {
-      player.setFrameDuration(Math.max(1, Math.trunc(parseQHTMLVideoNumber(value, player.frameDuration()))));
-      domElement.setAttribute("frameDuration", String(player.frameDuration()));
-    };
-    domElement.setReverse = function setQHTMLVideoReverse(value) {
-      player.setReverse(parseQHTMLVideoBoolean(value, false));
-      domElement.setAttribute("reverse", String(player.reverse()));
-    };
-    domElement.setRepeat = function setQHTMLVideoRepeat(value) {
-      player.setRepeat(parseQHTMLVideoBoolean(value, true));
-      domElement.setAttribute("repeat", String(player.repeat()));
-    };
-    domElement.setStartFrame = function setQHTMLVideoStartFrame(value) {
-      player.setStartFrame(Math.max(0, Math.trunc(parseQHTMLVideoNumber(value, 0))));
-      domElement.setAttribute("startFrame", String(player.startFrame()));
-      drawCurrentFrame();
-    };
-    domElement.setEndFrame = function setQHTMLVideoEndFrame(value) {
-      player.setEndFrame(Math.max(0, Math.trunc(parseQHTMLVideoNumber(value, player.endFrame()))));
-      domElement.setAttribute("endFrame", String(player.endFrame()));
-      drawCurrentFrame();
-    };
-    domElement.setScale = function setQHTMLVideoScale(value) {
-      state.scale = Math.max(0.01, parseQHTMLVideoNumber(value, 1));
-      domElement.setAttribute("scale", String(state.scale));
-      applyCanvasSize();
-    };
-
-    Object.defineProperties(domElement, {
-      currentFrame: {
-        configurable: true,
-        get() { return player.currentFrame(); },
-        set(value) { domElement.setCurrentFrame(value); }
-      },
-      frameDuration: {
-        configurable: true,
-        get() { return player.frameDuration(); },
-        set(value) { domElement.setFrameDuration(value); }
-      },
-      reverse: {
-        configurable: true,
-        get() { return player.reverse(); },
-        set(value) { domElement.setReverse(value); }
-      },
-      repeat: {
-        configurable: true,
-        get() { return player.repeat(); },
-        set(value) { domElement.setRepeat(value); }
-      },
-      running: {
-        configurable: true,
-        get() { return player.running(); },
-        set(value) {
-          if (parseQHTMLVideoBoolean(value, false)) {
-            domElement.start();
-          } else {
-            domElement.stop();
-          }
-        }
-      },
-      scale: {
-        configurable: true,
-        get() { return state.scale; },
-        set(value) { domElement.setScale(value); }
-      }
-    });
-
-    syncPlayerOptions();
-    if (domElement.getAttribute("src")) {
-      domElement.load(domElement.getAttribute("src")).catch((error) => {
-        console.error("Unable to load QHTML q-vid asset", error);
-      });
-    }
-  }
-
   function bindRuntimeChildren(domElement, qhtmlNode, registry) {
     if (!domElement || !qhtmlNode) {
       return;
@@ -4337,12 +3720,9 @@
     }
 
     applyInlineChildStyles(domElement, qhtmlNode, registry);
-    bindCssShortcutAssignments(domElement, qhtmlNode, registry);
 
     if (qhtmlNodeType(qhtmlNode) === "QHTMLCanvas") {
       bindCanvasRuntime(domElement, qhtmlNode, registry);
-    } else if (qhtmlNodeType(qhtmlNode) === "QHTMLVideo") {
-      bindQHTMLVideoRuntime(domElement, qhtmlNode, registry);
     }
   }
 
@@ -4361,11 +3741,10 @@
       const nodeType = qhtmlNodeType(node);
       if (!node ||
           (nodeType !== "QHTMLDomElement" &&
-          nodeType !== "QHTMLLayout" &&
+           nodeType !== "QHTMLLayout" &&
            nodeType !== "QHTMLRowLayout" &&
            nodeType !== "QHTMLColumnLayout" &&
-           nodeType !== "QHTMLCanvas" &&
-           nodeType !== "QHTMLVideo")) {
+           nodeType !== "QHTMLCanvas")) {
         return;
       }
       domElement.qhtmlNode = node;
@@ -5030,11 +4409,44 @@
 
   globalScope.QHTML7 = Object.assign(globalScope.QHTML7 || {}, {
     QHTML_VERSION,
+    QHTML_QUICKJS_ENABLED: Boolean(globalScope.QHTML7.Module && globalScope.QHTML7.Module.QHTML_QUICKJS_ENABLED),
+    QHTML_QUICKJS_SIZE_BUDGET_BYTES: globalScope.QHTML7.Module && globalScope.QHTML7.Module.QHTML_QUICKJS_SIZE_BUDGET_BYTES,
     QHTMLElement,
     qhtmlVersion: QHTML_VERSION,
     version: QHTML_VERSION,
+    createTree(source) {
+      return instantiateParserTree(source).tree;
+    },
     parse(source) {
       return instantiateParserTree(source).tree;
+    },
+    renderSource(source) {
+      const tree = instantiateParserTree(source).tree;
+      return tree && typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
+    },
+    sourceFromTree(tree) {
+      return tree && typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "";
+    },
+    async mountTree(element, tree) {
+      if (!element || !tree) {
+        return null;
+      }
+      element.qhtmlDomTree = tree;
+      element.qhtmlDom = tree;
+      element.qhtmlSource = typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "";
+      element.qhtmlResolvedSource = element.qhtmlSource;
+      if (typeof tree.runtime === "function") {
+        tree.runtime();
+      }
+      element.innerHTML = typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
+      bindComponentDomRuntime(element, tree);
+      element.setAttribute("ready", "1");
+      element.__qhtml7Mounted = true;
+      element.dispatchEvent(new CustomEvent("QHTMLReady", {
+        bubbles: true,
+        detail: { source: element.qhtmlSource, qhtmlDom: tree }
+      }));
+      return tree;
     },
     mountElement,
     mountAll
