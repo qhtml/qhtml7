@@ -139,6 +139,7 @@ protected:
     {
         return {
             QStringLiteral("q-component"),
+            QStringLiteral("q-worker"),
             QStringLiteral("q-property"),
             QStringLiteral("q-signal"),
             QStringLiteral("q-class"),
@@ -154,6 +155,9 @@ protected:
             QStringLiteral("q-property-animation"),
             QStringLiteral("q-painter"),
             QStringLiteral("q-canvas"),
+            QStringLiteral("q-video"),
+            QStringLiteral("q-vid-player"),
+            QStringLiteral("native-vid-player"),
             QStringLiteral("q-style-painter"),
             QStringLiteral("q-layout"),
             QStringLiteral("q-row"),
@@ -335,6 +339,9 @@ private:
         if (qhtmlKeyword == QStringLiteral("q-component")) {
             return new QHTMLComponentDefinition(qhtmlName, m_attributes);
         }
+        if (qhtmlKeyword == QStringLiteral("q-worker")) {
+            return new QHTMLWorker(qhtmlName, m_attributes);
+        }
         if (qhtmlKeyword == QStringLiteral("q-property")) {
             return new QHTMLProperty(qhtmlName, m_attributes);
         }
@@ -369,7 +376,7 @@ private:
             return new QHTMLTemplate(qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("q-script") || qhtmlKeyword == QStringLiteral("script")) {
-            return new QHTMLScript(qhtmlName, m_attributes);
+            return new QHTMLScript(qhtmlName, m_attributes, qhtmlContent);
         }
         if (qhtmlKeyword == QStringLiteral("q-model-view")) {
             return new QHTMLModelView(qhtmlName, m_attributes);
@@ -388,6 +395,11 @@ private:
         }
         if (qhtmlKeyword == QStringLiteral("q-canvas")) {
             return new QHTMLCanvas(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-video") ||
+            qhtmlKeyword == QStringLiteral("q-vid-player") ||
+            qhtmlKeyword == QStringLiteral("native-vid-player")) {
+            return new QHTMLVideo(qhtmlKeyword, qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("q-layout")) {
             return new QHTMLLayout(qhtmlKeyword, qhtmlName, m_attributes);
@@ -1418,6 +1430,16 @@ inline QHTMLAstNode *nodeFromStatement(const QString &statement)
                                     false);
     }
 
+    static const QRegularExpression scriptStatementRx(
+        QStringLiteral("^\\s*(?:[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+\\s*(?:\\(|=)|(?:const|let|var)\\s+[A-Za-z_$][A-Za-z0-9_$]*\\s*=)"),
+        QRegularExpression::DotMatchesEverythingOption);
+    if (scriptStatementRx.match(statement).hasMatch()) {
+        return new QHTMLAstNamedTypeNode(QStringLiteral("q-script"),
+                                        QString(),
+                                        {},
+                                        statement);
+    }
+
     static const QRegularExpression propertyRx(
         QStringLiteral("^\\s*q-property\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*(.*?)\\s*$"),
         QRegularExpression::DotMatchesEverythingOption);
@@ -1882,6 +1904,7 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
             const bool alreadyConcreteComponent =
                 dynamic_cast<QHTMLComponentDefinition *>(typed) ||
                 dynamic_cast<QHTMLComponentInstance *>(typed) ||
+                dynamic_cast<QHTMLWorker *>(typed) ||
                 dynamic_cast<QHTMLComponentSlot *>(typed) ||
                 dynamic_cast<QHTMLSlotDefault *>(typed) ||
                 dynamic_cast<QHTMLPropertyAssignment *>(typed) ||
@@ -1893,6 +1916,7 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
                 dynamic_cast<QHTMLStyle *>(typed) ||
                 dynamic_cast<QHTMLTheme *>(typed) ||
                 dynamic_cast<QHTMLClass *>(typed) ||
+                dynamic_cast<QHTMLScript *>(typed) ||
                 dynamic_cast<QHTMLStyleApplication *>(typed) ||
                 dynamic_cast<QHTMLThemeApplication *>(typed);
             if (!alreadyConcreteComponent) {
@@ -1948,7 +1972,8 @@ inline void QHTMLDomTree::ensureReadySignal(QHTMLNode *scope)
 
     const bool renderedSignalOwner =
         dynamic_cast<QHTMLDomElement *>(scope) ||
-        dynamic_cast<QHTMLComponentInstance *>(scope);
+        dynamic_cast<QHTMLComponentInstance *>(scope) ||
+        dynamic_cast<QHTMLWorker *>(scope);
     if (!renderedSignalOwner) {
         return;
     }
@@ -1996,7 +2021,7 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
             dynamic_cast<QHTMLEventHandler *>(child) ||
             dynamic_cast<QHTMLConnect *>(child) ||
             dynamic_cast<QHTMLForNode *>(child) ||
-            dynamic_cast<QHTMLModelView *>(child) ||
+           dynamic_cast<QHTMLModelView *>(child) ||
             dynamic_cast<QHTMLModel *>(child) ||
             dynamic_cast<QHTMLArray *>(child) ||
             dynamic_cast<QHTMLMap *>(child) ||
@@ -2009,6 +2034,8 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
             dynamic_cast<QHTMLStyle *>(child) ||
             dynamic_cast<QHTMLTheme *>(child) ||
             dynamic_cast<QHTMLClass *>(child) ||
+            dynamic_cast<QHTMLScript *>(child) ||
+            dynamic_cast<QHTMLWorker *>(child) ||
             dynamic_cast<QHTMLComponentDefinition *>(child) ||
             dynamic_cast<QHTMLComponentInstance *>(child)) {
             scope->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
@@ -2277,6 +2304,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("value", &QHTMLUnknownFragment::valueJs);
     class_<QHTMLTypedNode, base<QHTMLDomNode>>("QHTMLTypedNode")
         .function("keyword", &QHTMLTypedNode::keywordJs);
+    class_<QHTMLWorker, base<QHTMLTypedNode>>("QHTMLWorker");
     class_<QHTMLFunction, base<QHTMLTypedNode>>("QHTMLFunction")
         .function("parameters", &QHTMLFunction::parameterListJs)
         .function("body", &QHTMLFunction::bodyJs)
@@ -2407,6 +2435,9 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("body", &QHTMLConnect::bodyJs)
         .function("sourcePath", &QHTMLConnect::sourcePathJs)
         .function("targetPath", &QHTMLConnect::targetPathJs);
+    class_<QHTMLScript, base<QHTMLTypedNode>>("QHTMLScript")
+        .function("body", &QHTMLScript::bodyJs)
+        .function("setBody", &QHTMLScript::setBodyJs);
     class_<QHTMLTimer, base<QHTMLTypedNode>>("QHTMLTimer")
         .function("interval", &QHTMLTimer::interval)
         .function("setInterval", &QHTMLTimer::setIntervalJs)
@@ -2456,6 +2487,59 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     class_<QHTMLCanvas, base<QHTMLTypedNode>>("QHTMLCanvas")
         .function("paintBody", &QHTMLCanvas::paintBodyJs)
         .function("paintHandler", &QHTMLCanvas::paintHandlerJs, allow_raw_pointers());
+    class_<QHTMLVideoAsset, base<QHTMLReference>>("QHTMLVideoAsset")
+        .constructor<>()
+        .function("loadJson", &QHTMLVideoAsset::loadJsonJs)
+        .function("isLoaded", &QHTMLVideoAsset::isLoaded)
+        .function("width", &QHTMLVideoAsset::width)
+        .function("height", &QHTMLVideoAsset::height)
+        .function("sourceWidth", &QHTMLVideoAsset::sourceWidth)
+        .function("sourceHeight", &QHTMLVideoAsset::sourceHeight)
+        .function("frameCount", &QHTMLVideoAsset::frameCount)
+        .function("storedFrameCount", &QHTMLVideoAsset::storedFrameCount)
+        .function("frameStep", &QHTMLVideoAsset::frameStep)
+        .function("defaultFrameDuration", &QHTMLVideoAsset::defaultFrameDuration)
+        .function("format", &QHTMLVideoAsset::formatJs)
+        .function("codec", &QHTMLVideoAsset::codecJs)
+        .function("interpolation", &QHTMLVideoAsset::interpolationJs)
+        .function("name", &QHTMLVideoAsset::nameJs)
+        .function("src", &QHTMLVideoAsset::srcJs)
+        .function("lastError", &QHTMLVideoAsset::lastErrorJs)
+        .function("frameBase64", &QHTMLVideoAsset::frameBase64Js)
+        .function("frameJson", &QHTMLVideoAsset::frameJsonJs)
+        .function("metadataJson", &QHTMLVideoAsset::metadataJsonJs);
+    class_<QHTMLVideoPlayer, base<QHTMLReference>>("QHTMLVideoPlayer")
+        .constructor<>()
+        .function("loadAssetJson", &QHTMLVideoPlayer::loadAssetJsonJs)
+        .function("isLoaded", &QHTMLVideoPlayer::isLoaded)
+        .function("asset", &QHTMLVideoPlayer::assetJs, allow_raw_pointers())
+        .function("width", &QHTMLVideoPlayer::width)
+        .function("height", &QHTMLVideoPlayer::height)
+        .function("frameCount", &QHTMLVideoPlayer::frameCount)
+        .function("storedFrameCount", &QHTMLVideoPlayer::storedFrameCount)
+        .function("currentFrame", &QHTMLVideoPlayer::currentFrame)
+        .function("startFrame", &QHTMLVideoPlayer::startFrame)
+        .function("endFrame", &QHTMLVideoPlayer::endFrame)
+        .function("frameDuration", &QHTMLVideoPlayer::frameDuration)
+        .function("reverse", &QHTMLVideoPlayer::reverse)
+        .function("repeat", &QHTMLVideoPlayer::repeat)
+        .function("running", &QHTMLVideoPlayer::running)
+        .function("lastError", &QHTMLVideoPlayer::lastErrorJs)
+        .function("setFrameDuration", &QHTMLVideoPlayer::setFrameDurationJs)
+        .function("setReverse", &QHTMLVideoPlayer::setReverseJs)
+        .function("setRepeat", &QHTMLVideoPlayer::setRepeatJs)
+        .function("setRunning", &QHTMLVideoPlayer::setRunningJs)
+        .function("setRange", &QHTMLVideoPlayer::setRangeJs)
+        .function("setStartFrame", &QHTMLVideoPlayer::setStartFrameJs)
+        .function("setEndFrame", &QHTMLVideoPlayer::setEndFrameJs)
+        .function("setCurrentFrame", &QHTMLVideoPlayer::setCurrentFrameJs)
+        .function("step", &QHTMLVideoPlayer::stepJs)
+        .function("frameBase64", &QHTMLVideoPlayer::frameBase64Js)
+        .function("frameBase64At", &QHTMLVideoPlayer::frameBase64AtJs)
+        .function("metadataJson", &QHTMLVideoPlayer::metadataJsonJs);
+    class_<QHTMLVideo, base<QHTMLTypedNode>>("QHTMLVideo")
+        .function("tagName", &QHTMLVideo::tagNameJs)
+        .function("assignmentValue", &QHTMLVideo::assignmentValueJs);
     class_<QHTMLComponentSlot, base<QHTMLTypedNode>>("QHTMLComponentSlot");
     class_<QHTMLSlotDefault, base<QHTMLTypedNode>>("QHTMLSlotDefault");
     class_<QHTMLStyle, base<QHTMLTypedNode>>("QHTMLStyle")

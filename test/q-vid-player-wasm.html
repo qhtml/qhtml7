@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML WASM q-vid Player Test</title>
+  <script src="../dist/qhtml-wasm.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101418;
+      --panel: #171e25;
+      --panel-2: #0d1217;
+      --text: #e9f1f8;
+      --muted: #94a3b8;
+      --line: #2f3b48;
+      --accent: #5fd4b4;
+      --warn: #f59e0b;
+      --bad: #fb7185;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 36px;
+      display: grid;
+      gap: 16px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.45rem;
+      letter-spacing: 0;
+    }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel,
+    .stage {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .panel {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .stage {
+      min-height: 520px;
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto minmax(360px, 1fr) auto;
+      gap: 12px;
+    }
+
+    label,
+    .label {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+
+    input[type="checkbox"] {
+      width: auto;
+    }
+
+    input[type="range"] {
+      padding-inline: 0;
+    }
+
+    input[type="file"]::file-selector-button,
+    button {
+      cursor: pointer;
+      background: #1d2a34;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    .primary {
+      border-color: #2fae91;
+      background: #13483f;
+    }
+
+    .grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .two {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .stage-head,
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .viewport {
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.04) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.04) 75%),
+        #080b0f;
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+      padding: 24px;
+    }
+
+    q-vid-player {
+      display: inline-block;
+      border: 1px solid rgba(95, 212, 180, 0.36);
+      background: transparent;
+    }
+
+    q-vid-player canvas {
+      image-rendering: auto;
+    }
+
+    .status {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      background: var(--panel-2);
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .status.ok {
+      color: var(--accent);
+      border-color: rgba(95, 212, 180, 0.52);
+    }
+
+    .status.err {
+      color: var(--bad);
+      border-color: rgba(251, 113, 133, 0.55);
+    }
+
+    pre {
+      margin: 0;
+      max-height: 170px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: var(--panel-2);
+      color: #c7f9e7;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>QHTML WASM q-vid Player</h1>
+        <div class="subtle">Exercises the rendered <code>q-vid-player</code> node backed by the WASM <code>QHTMLVideoPlayer</code>.</div>
+      </div>
+      <div class="subtle" id="versionReadout">QHTML_VERSION</div>
+    </header>
+
+    <div class="layout">
+      <section class="panel" aria-label="Controls">
+        <div class="grid">
+          <label for="assetUrl">Asset URL</label>
+          <input id="assetUrl" type="text" value="../tools/assets/hud-extend.qvid">
+          <button id="loadUrl" class="primary" type="button">Load URL</button>
+        </div>
+
+        <div class="grid">
+          <label for="assetFile">Local .qvid file</label>
+          <input id="assetFile" type="file" accept=".qvid,.js,text/plain,text/javascript,application/javascript">
+        </div>
+
+        <div class="grid two">
+          <button id="restart" type="button">Restart</button>
+          <button id="toggle" type="button">Stop</button>
+        </div>
+
+        <div class="grid two">
+          <button id="stepBack" type="button">-1 Frame</button>
+          <button id="stepForward" type="button">+1 Frame</button>
+        </div>
+
+        <div class="grid two">
+          <div class="grid">
+            <label for="frameDuration">Frame ms</label>
+            <input id="frameDuration" type="number" min="1" step="1" value="30">
+          </div>
+          <div class="grid">
+            <label for="scale">Scale</label>
+            <input id="scale" type="number" min="0.05" max="8" step="0.05" value="2">
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div class="grid">
+            <label for="startFrame">Start</label>
+            <input id="startFrame" type="number" min="0" step="1" value="0">
+          </div>
+          <div class="grid">
+            <label for="endFrame">End</label>
+            <input id="endFrame" type="number" min="0" step="1" value="0">
+          </div>
+        </div>
+
+        <div class="grid">
+          <label for="currentFrame">Current frame</label>
+          <input id="currentFrame" type="range" min="0" max="0" step="1" value="0">
+        </div>
+
+        <div class="row">
+          <span class="label">Reverse</span>
+          <input id="reverse" type="checkbox">
+        </div>
+
+        <div class="row">
+          <span class="label">Repeat</span>
+          <input id="repeat" type="checkbox" checked>
+        </div>
+
+        <div id="status" class="status">Waiting for QHTML runtime.</div>
+      </section>
+
+      <section class="stage" aria-label="QHTML q-vid preview">
+        <div class="stage-head">
+          <span id="assetName">No asset loaded</span>
+          <span id="frameReadout">Frame 0 / 0</span>
+        </div>
+
+        <div class="viewport">
+          <q-html id="qhtmlTest">
+q-vid-player myplayer {
+  src: "../tools/assets/hud-extend.qvid"
+  frameDuration: 30
+  scale: 2
+  repeat: true
+  running: true
+}
+          </q-html>
+        </div>
+
+        <div class="grid">
+          <div class="metrics">
+            <span id="metricSize">Canvas: -</span>
+            <span id="metricFrames">Frames: -</span>
+            <span id="metricCodec">Codec: -</span>
+          </div>
+          <pre id="metadata">{}</pre>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const $ = (id) => document.getElementById(id);
+      const controls = {
+        versionReadout: $("versionReadout"),
+        assetUrl: $("assetUrl"),
+        assetFile: $("assetFile"),
+        loadUrl: $("loadUrl"),
+        restart: $("restart"),
+        toggle: $("toggle"),
+        stepBack: $("stepBack"),
+        stepForward: $("stepForward"),
+        frameDuration: $("frameDuration"),
+        scale: $("scale"),
+        startFrame: $("startFrame"),
+        endFrame: $("endFrame"),
+        currentFrame: $("currentFrame"),
+        reverse: $("reverse"),
+        repeat: $("repeat"),
+        status: $("status"),
+        assetName: $("assetName"),
+        frameReadout: $("frameReadout"),
+        metricSize: $("metricSize"),
+        metricFrames: $("metricFrames"),
+        metricCodec: $("metricCodec"),
+        metadata: $("metadata"),
+        qhtmlTest: $("qhtmlTest")
+      };
+
+      let player = null;
+      let suppressFrameInput = false;
+
+      function setStatus(message, kind = "") {
+        controls.status.textContent = message;
+        controls.status.classList.toggle("ok", kind === "ok");
+        controls.status.classList.toggle("err", kind === "err");
+      }
+
+      function metadata() {
+        if (!player || typeof player.metadata !== "function") {
+          return {};
+        }
+        return player.metadata() || {};
+      }
+
+      function updateDiagnostics() {
+        const info = metadata();
+        const asset = info.asset || {};
+        const state = info.player || {};
+        const frameCount = Number(asset.frameCount || 0);
+        const currentFrame = Number(state.currentFrame || (player ? player.currentFrame : 0) || 0);
+        controls.assetName.textContent = asset.src || asset.name || "No asset loaded";
+        controls.frameReadout.textContent = `Frame ${currentFrame} / ${Math.max(0, frameCount - 1)}`;
+        controls.metricSize.textContent = asset.width && asset.height ? `Canvas: ${asset.width} x ${asset.height}` : "Canvas: -";
+        controls.metricFrames.textContent = frameCount ? `Frames: ${frameCount}` : "Frames: -";
+        controls.metricCodec.textContent = asset.codec ? `Codec: ${asset.codec}` : "Codec: -";
+        controls.metadata.textContent = JSON.stringify(info, null, 2);
+        suppressFrameInput = true;
+        controls.currentFrame.max = String(Math.max(0, frameCount - 1));
+        controls.currentFrame.value = String(currentFrame);
+        suppressFrameInput = false;
+        controls.toggle.textContent = player && player.running ? "Stop" : "Start";
+      }
+
+      function applyControlValues() {
+        if (!player) return;
+        player.setFrameDuration(Number(controls.frameDuration.value || 30));
+        player.setScale(Number(controls.scale.value || 1));
+        player.setReverse(controls.reverse.checked);
+        player.setRepeat(controls.repeat.checked);
+        player.setStartFrame(Number(controls.startFrame.value || 0));
+        const end = Number(controls.endFrame.value || 0);
+        if (end > Number(controls.startFrame.value || 0)) {
+          player.setEndFrame(end);
+        }
+      }
+
+      async function loadUrl() {
+        if (!player) return;
+        try {
+          applyControlValues();
+          setStatus("Loading " + controls.assetUrl.value);
+          await player.load(controls.assetUrl.value);
+          setStatus("Loaded through WASM QHTMLVideoPlayer.", "ok");
+          updateDiagnostics();
+        } catch (error) {
+          setStatus(error && error.message ? error.message : String(error), "err");
+        }
+      }
+
+      controls.qhtmlTest.addEventListener("QHTMLReady", () => {
+        controls.versionReadout.textContent = window.QHTML_VERSION || (window.QHTML7 && window.QHTML7.version) || "QHTML_VERSION";
+        player = controls.qhtmlTest.querySelector("q-vid-player[name='myplayer']");
+        if (!player) {
+          setStatus("Rendered q-vid-player[name='myplayer'] was not found.", "err");
+          return;
+        }
+        player.addEventListener("q-vid-load", () => {
+          setStatus("Loaded through WASM QHTMLVideoPlayer.", "ok");
+          updateDiagnostics();
+        });
+        player.addEventListener("q-vid-frame", updateDiagnostics);
+        player.addEventListener("q-vid-start", updateDiagnostics);
+        player.addEventListener("q-vid-stop", updateDiagnostics);
+        player.addEventListener("q-vid-error", (event) => {
+          const detail = event.detail || {};
+          setStatus(detail.message || (detail.error && detail.error.message) || "q-vid error", "err");
+        });
+        setStatus("Mounted q-vid-player[name='myplayer']; loading bundled asset.");
+      });
+
+      controls.loadUrl.addEventListener("click", loadUrl);
+      controls.assetFile.addEventListener("change", async () => {
+        const file = controls.assetFile.files && controls.assetFile.files[0];
+        if (!file || !player) return;
+        try {
+          applyControlValues();
+          setStatus("Reading " + file.name);
+          await player.loadText(await file.text(), file.name);
+          setStatus("Loaded local file through WASM QHTMLVideoPlayer.", "ok");
+          updateDiagnostics();
+        } catch (error) {
+          setStatus(error && error.message ? error.message : String(error), "err");
+        }
+      });
+      controls.restart.addEventListener("click", () => {
+        applyControlValues();
+        if (player) player.restart();
+      });
+      controls.toggle.addEventListener("click", () => {
+        if (!player) return;
+        if (player.running) {
+          player.stop();
+        } else {
+          applyControlValues();
+          player.start();
+        }
+        updateDiagnostics();
+      });
+      controls.stepBack.addEventListener("click", () => {
+        if (player) {
+          player.step(-1);
+          updateDiagnostics();
+        }
+      });
+      controls.stepForward.addEventListener("click", () => {
+        if (player) {
+          player.step(1);
+          updateDiagnostics();
+        }
+      });
+      controls.currentFrame.addEventListener("input", () => {
+        if (!player || suppressFrameInput) return;
+        player.setCurrentFrame(Number(controls.currentFrame.value || 0));
+        updateDiagnostics();
+      });
+      ["frameDuration", "scale", "startFrame", "endFrame"].forEach((id) => {
+        controls[id].addEventListener("change", () => {
+          applyControlValues();
+          updateDiagnostics();
+        });
+      });
+      controls.reverse.addEventListener("change", () => {
+        if (player) player.setReverse(controls.reverse.checked);
+        updateDiagnostics();
+      });
+      controls.repeat.addEventListener("change", () => {
+        if (player) player.setRepeat(controls.repeat.checked);
+        updateDiagnostics();
+      });
+    })();
+  </script>
+</body>
+</html>

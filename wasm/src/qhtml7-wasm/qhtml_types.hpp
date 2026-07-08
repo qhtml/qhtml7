@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QHash>
+#include <QtCore/QByteArray>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -15,7 +16,10 @@
 #include <QtCore/QTimer>
 #include <QtCore/QUuid>
 #include <QtCore/QVector>
+#include <QtCore/QtMath>
 
+#include <algorithm>
+#include <cstring>
 #include <string>
 
 inline constexpr const char QHTML_VERSION[] = "v7.3.4";
@@ -30,11 +34,15 @@ class QHTMLFunction;
 class QHTMLSignal;
 class QHTMLSignalBus;
 class QHTMLComponentSlot;
+class QHTMLWorker;
 class QHTMLStyle;
 class QHTMLTheme;
 class QHTMLImportNode;
 class QHTMLPainter;
 class QHTMLCanvas;
+class QHTMLVideo;
+class QHTMLVideoAsset;
+class QHTMLVideoPlayer;
 
 class QHTMLReference
 {
@@ -1119,6 +1127,8 @@ protected:
                type == QStringLiteral("QHTMLConnect") ||
                type == QStringLiteral("QHTMLStyle") ||
                type == QStringLiteral("QHTMLTheme") ||
+               type == QStringLiteral("QHTMLScript") ||
+               type == QStringLiteral("QHTMLWorker") ||
                type == QStringLiteral("QHTMLImportNode");
     }
 
@@ -1741,6 +1751,8 @@ private:
                type == QStringLiteral("QHTMLStyle") ||
                type == QStringLiteral("QHTMLTheme") ||
                type == QStringLiteral("QHTMLClass") ||
+               type == QStringLiteral("QHTMLScript") ||
+               type == QStringLiteral("QHTMLWorker") ||
                type == QStringLiteral("QHTMLComponentSlot") ||
                type == QStringLiteral("QHTMLSlotDefault");
     }
@@ -1896,6 +1908,20 @@ private:
     }
 
     QHTMLComponentDefinition *m_definition = nullptr;
+};
+
+class QHTMLWorker final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLWorker(const QString &name = QString(),
+                         const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("q-worker"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLWorker"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("worker"));
+    }
+
+    QString renderHtml() const override { return QString(); }
 };
 
 inline QString QHTMLComponentSlot::renderHtmlInContext(const QHTMLNode *contextNode) const
@@ -3864,7 +3890,9 @@ private:
                type == QStringLiteral("QHTMLEventHandler") ||
                type == QStringLiteral("QHTMLSignal") ||
                type == QStringLiteral("QHTMLFunction") ||
-               type == QStringLiteral("QHTMLStyle");
+               type == QStringLiteral("QHTMLStyle") ||
+               type == QStringLiteral("QHTMLScript") ||
+               type == QStringLiteral("QHTMLWorker");
     }
 
     QString renderFallbackChildren() const
@@ -3877,6 +3905,710 @@ private:
         }
         return out;
     }
+};
+
+struct QHTMLVideoTile
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+    QByteArray bytes;
+};
+
+class QHTMLVideoAsset final : public QHTMLReference
+{
+public:
+    QHTMLVideoAsset()
+        : QHTMLReference(QStringLiteral("QHTMLVideoAsset"), QStringLiteral("video-asset"))
+    {
+    }
+
+    bool loadJson(const QString &json)
+    {
+        clear();
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            m_lastError = QStringLiteral("Invalid q-vid asset JSON: ") + parseError.errorString();
+            return false;
+        }
+
+        const QJsonObject root = document.object();
+        const QJsonObject asset = root.value(QStringLiteral("asset")).isObject()
+            ? root.value(QStringLiteral("asset")).toObject()
+            : root;
+
+        m_format = asset.value(QStringLiteral("format")).toString();
+        if (!isSupportedFormat(m_format)) {
+            m_lastError = QStringLiteral("Unsupported q-vid asset format: ") + (m_format.isEmpty() ? QStringLiteral("unknown") : m_format);
+            return false;
+        }
+
+        m_name = asset.value(QStringLiteral("name")).toString(QStringLiteral("q_vid_asset"));
+        m_src = asset.value(QStringLiteral("src")).toString(m_name);
+        m_width = asset.value(QStringLiteral("width")).toInt(0);
+        m_height = asset.value(QStringLiteral("height")).toInt(0);
+        m_sourceWidth = asset.value(QStringLiteral("sourceWidth")).toInt(m_width);
+        m_sourceHeight = asset.value(QStringLiteral("sourceHeight")).toInt(m_height);
+        m_frameCount = asset.value(QStringLiteral("frameCount")).toInt(0);
+        m_tileSize = asset.value(QStringLiteral("tileSize")).toInt(32);
+        m_tolerance = asset.value(QStringLiteral("tolerance")).toInt(0);
+        m_codec = asset.value(QStringLiteral("codec")).toString(QStringLiteral("raw"));
+        m_deltaMode = asset.value(QStringLiteral("deltaMode")).toString(QStringLiteral("tile"));
+        m_pack = asset.value(QStringLiteral("pack")).toString(QStringLiteral("legacy"));
+        m_frameStep = qMax(1, asset.value(QStringLiteral("frameStep")).toInt(1));
+        m_defaultFrameDuration = qMax(1, asset.value(QStringLiteral("defaultFrameDuration")).toInt(30));
+        m_interpolation = asset.value(QStringLiteral("interpolation")).toString();
+
+        if (m_width < 1 || m_height < 1) {
+            m_lastError = QStringLiteral("Invalid q-vid asset dimensions.");
+            return false;
+        }
+        if (m_frameCount < 1) {
+            m_lastError = QStringLiteral("Invalid q-vid asset frameCount.");
+            return false;
+        }
+        if (m_codec != QStringLiteral("raw") && !m_codec.isEmpty()) {
+            m_lastError = QStringLiteral("Unsupported q-vid codec in C++ decoder: ") + m_codec +
+                QStringLiteral(". qhtml-element.js must normalize compressed payloads before loadJson().");
+            return false;
+        }
+
+        m_keyFrameBytes = QByteArray::fromBase64(asset.value(QStringLiteral("keyFrame")).toString().toLatin1());
+        const qsizetype expectedBytes = static_cast<qsizetype>(m_width) * static_cast<qsizetype>(m_height) * 4;
+        if (m_keyFrameBytes.size() != expectedBytes) {
+            m_lastError = QStringLiteral("Invalid q-vid keyframe byte length. Expected %1, got %2.")
+                .arg(expectedBytes)
+                .arg(m_keyFrameBytes.size());
+            return false;
+        }
+
+        normalizeStoredFrameNumbers(asset.value(QStringLiteral("storedFrameNumbers")).toArray());
+        if (m_interpolation.isEmpty()) {
+            m_interpolation = m_storedFrameNumbers.size() < m_frameCount
+                ? QStringLiteral("linear-rgba-v1")
+                : QStringLiteral("none");
+        }
+
+        m_deltas = asset.value(QStringLiteral("deltas")).toArray();
+        m_frameCache.insert(0, m_keyFrameBytes);
+        m_loaded = true;
+        m_lastError.clear();
+        return true;
+    }
+
+    bool loadJsonJs(const std::string &json) { return loadJson(QString::fromStdString(json)); }
+
+    void clear()
+    {
+        m_loaded = false;
+        m_lastError.clear();
+        m_format.clear();
+        m_name.clear();
+        m_src.clear();
+        m_width = 0;
+        m_height = 0;
+        m_sourceWidth = 0;
+        m_sourceHeight = 0;
+        m_frameCount = 0;
+        m_tileSize = 32;
+        m_tolerance = 0;
+        m_codec = QStringLiteral("raw");
+        m_deltaMode = QStringLiteral("tile");
+        m_pack = QStringLiteral("legacy");
+        m_frameStep = 1;
+        m_defaultFrameDuration = 30;
+        m_interpolation.clear();
+        m_storedFrameNumbers.clear();
+        m_deltas = QJsonArray();
+        m_keyFrameBytes.clear();
+        m_deltaCache.clear();
+        m_frameCache.clear();
+    }
+
+    bool isLoaded() const { return m_loaded; }
+    int width() const { return m_width; }
+    int height() const { return m_height; }
+    int sourceWidth() const { return m_sourceWidth; }
+    int sourceHeight() const { return m_sourceHeight; }
+    int frameCount() const { return m_frameCount; }
+    int storedFrameCount() const { return m_storedFrameNumbers.size(); }
+    int frameStep() const { return m_frameStep; }
+    int defaultFrameDuration() const { return m_defaultFrameDuration; }
+    QString format() const { return m_format; }
+    QString codec() const { return m_codec; }
+    QString interpolation() const { return m_interpolation; }
+    QString name() const { return m_name; }
+    QString src() const { return m_src; }
+    QString lastError() const { return m_lastError; }
+
+    std::string formatJs() const { return m_format.toStdString(); }
+    std::string codecJs() const { return m_codec.toStdString(); }
+    std::string interpolationJs() const { return m_interpolation.toStdString(); }
+    std::string nameJs() const { return m_name.toStdString(); }
+    std::string srcJs() const { return m_src.toStdString(); }
+    std::string lastErrorJs() const { return m_lastError.toStdString(); }
+
+    QByteArray frameBytes(int frameIndex) const
+    {
+        if (!m_loaded || m_frameCount < 1) {
+            return QByteArray();
+        }
+        const int target = clampInt(frameIndex, 0, m_frameCount - 1);
+        if (m_storedFrameNumbers.size() < m_frameCount) {
+            const StoredFrameBlend blend = storedFrameBlend(target);
+            const QByteArray before = storedFrameBytes(blend.beforeIndex);
+            const QByteArray after = blend.afterIndex == blend.beforeIndex ? before : storedFrameBytes(blend.afterIndex);
+            if (after == before || blend.alpha <= 0.0) {
+                return before;
+            }
+            if (blend.alpha >= 1.0) {
+                return after;
+            }
+            return blendBytes(before, after, blend.alpha);
+        }
+        return storedFrameBytes(target);
+    }
+
+    QString frameBase64(int frameIndex) const
+    {
+        return QString::fromLatin1(frameBytes(frameIndex).toBase64());
+    }
+
+    std::string frameBase64Js(int frameIndex) const { return frameBase64(frameIndex).toStdString(); }
+
+    QString frameJson(int frameIndex) const
+    {
+        QJsonObject object;
+        object.insert(QStringLiteral("frameIndex"), clampInt(frameIndex, 0, qMax(0, m_frameCount - 1)));
+        object.insert(QStringLiteral("width"), m_width);
+        object.insert(QStringLiteral("height"), m_height);
+        object.insert(QStringLiteral("bytes"), frameBase64(frameIndex));
+        return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
+    }
+
+    std::string frameJsonJs(int frameIndex) const { return frameJson(frameIndex).toStdString(); }
+
+    QString metadataJson() const
+    {
+        QJsonObject object;
+        object.insert(QStringLiteral("format"), m_format);
+        object.insert(QStringLiteral("name"), m_name);
+        object.insert(QStringLiteral("src"), m_src);
+        object.insert(QStringLiteral("width"), m_width);
+        object.insert(QStringLiteral("height"), m_height);
+        object.insert(QStringLiteral("sourceWidth"), m_sourceWidth);
+        object.insert(QStringLiteral("sourceHeight"), m_sourceHeight);
+        object.insert(QStringLiteral("frameCount"), m_frameCount);
+        object.insert(QStringLiteral("storedFrameCount"), m_storedFrameNumbers.size());
+        object.insert(QStringLiteral("frameStep"), m_frameStep);
+        object.insert(QStringLiteral("defaultFrameDuration"), m_defaultFrameDuration);
+        object.insert(QStringLiteral("codec"), m_codec);
+        object.insert(QStringLiteral("deltaMode"), m_deltaMode);
+        object.insert(QStringLiteral("pack"), m_pack);
+        object.insert(QStringLiteral("interpolation"), m_interpolation);
+        QJsonArray stored;
+        for (int frame : m_storedFrameNumbers) {
+            stored.append(frame);
+        }
+        object.insert(QStringLiteral("storedFrameNumbers"), stored);
+        return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
+    }
+
+    std::string metadataJsonJs() const { return metadataJson().toStdString(); }
+
+private:
+    struct StoredFrameBlend
+    {
+        int beforeIndex = 0;
+        int afterIndex = 0;
+        double alpha = 0.0;
+    };
+
+    static bool isSupportedFormat(const QString &format)
+    {
+        return format == QStringLiteral("q-vid-rgba-tile-v1") ||
+               format == QStringLiteral("q-vid-delta-binary-v1") ||
+               format == QStringLiteral("sprite-delta-rgba-tile-v1") ||
+               format == QStringLiteral("sprite-delta-binary-v2");
+    }
+
+    bool usesPackedBinaryDeltas() const
+    {
+        return m_format == QStringLiteral("q-vid-delta-binary-v1") ||
+               m_format == QStringLiteral("sprite-delta-binary-v2");
+    }
+
+    static int clampInt(int value, int min, int max)
+    {
+        if (max < min) {
+            return min;
+        }
+        return qMin(max, qMax(min, value));
+    }
+
+    static quint32 readU32LE(const QByteArray &bytes, int offset)
+    {
+        const uchar *p = reinterpret_cast<const uchar *>(bytes.constData() + offset);
+        return static_cast<quint32>(p[0]) |
+               (static_cast<quint32>(p[1]) << 8) |
+               (static_cast<quint32>(p[2]) << 16) |
+               (static_cast<quint32>(p[3]) << 24);
+    }
+
+    void normalizeStoredFrameNumbers(const QJsonArray &source)
+    {
+        QVector<int> numbers;
+        if (!source.isEmpty()) {
+            for (const QJsonValue &value : source) {
+                numbers.append(clampInt(value.toInt(0), 0, m_frameCount - 1));
+            }
+        } else {
+            numbers.reserve(m_frameCount);
+            for (int i = 0; i < m_frameCount; ++i) {
+                numbers.append(i);
+            }
+        }
+
+        if (numbers.isEmpty() || numbers.first() != 0) {
+            numbers.prepend(0);
+        }
+        std::sort(numbers.begin(), numbers.end());
+        m_storedFrameNumbers.clear();
+        for (int value : numbers) {
+            if (!m_storedFrameNumbers.contains(value)) {
+                m_storedFrameNumbers.append(value);
+            }
+        }
+        if (m_storedFrameNumbers.isEmpty() || m_storedFrameNumbers.first() != 0) {
+            m_storedFrameNumbers.prepend(0);
+        }
+    }
+
+    QVector<QHTMLVideoTile> decodeDelta(int deltaIndex) const
+    {
+        if (m_deltaCache.contains(deltaIndex)) {
+            return m_deltaCache.value(deltaIndex);
+        }
+
+        const int index = clampInt(deltaIndex, 0, qMax(0, m_deltas.size() - 1));
+        QVector<QHTMLVideoTile> tiles = usesPackedBinaryDeltas()
+            ? unpackPackedDelta(QByteArray::fromBase64(m_deltas.at(index).toString().toLatin1()))
+            : unpackJsonDelta(m_deltas.at(index).toArray());
+        m_deltaCache.insert(deltaIndex, tiles);
+        return tiles;
+    }
+
+    QVector<QHTMLVideoTile> unpackJsonDelta(const QJsonArray &delta) const
+    {
+        QVector<QHTMLVideoTile> tiles;
+        tiles.reserve(delta.size());
+        for (const QJsonValue &value : delta) {
+            const QJsonObject object = value.toObject();
+            QHTMLVideoTile tile;
+            tile.x = object.value(QStringLiteral("x")).toInt(0);
+            tile.y = object.value(QStringLiteral("y")).toInt(0);
+            tile.w = object.value(QStringLiteral("w")).toInt(0);
+            tile.h = object.value(QStringLiteral("h")).toInt(0);
+            tile.bytes = QByteArray::fromBase64(object.value(QStringLiteral("bytes")).toString().toLatin1());
+            const qsizetype expected = static_cast<qsizetype>(tile.w) * static_cast<qsizetype>(tile.h) * 4;
+            if (tile.w > 0 && tile.h > 0 && tile.bytes.size() == expected && tileWithinBounds(tile)) {
+                tiles.append(tile);
+            }
+        }
+        return tiles;
+    }
+
+    QVector<QHTMLVideoTile> unpackPackedDelta(const QByteArray &bytes) const
+    {
+        QVector<QHTMLVideoTile> tiles;
+        if (bytes.size() < 4) {
+            m_lastError = QStringLiteral("Invalid q-vid delta stream: missing tile count.");
+            return tiles;
+        }
+        int offset = 0;
+        const quint32 tileCount = readU32LE(bytes, offset);
+        offset += 4;
+        tiles.reserve(static_cast<int>(qMin<quint32>(tileCount, static_cast<quint32>(4096))));
+        for (quint32 i = 0; i < tileCount; ++i) {
+            if (offset + 16 > bytes.size()) {
+                m_lastError = QStringLiteral("Invalid q-vid delta stream: truncated tile header.");
+                return tiles;
+            }
+            QHTMLVideoTile tile;
+            tile.x = static_cast<int>(readU32LE(bytes, offset)); offset += 4;
+            tile.y = static_cast<int>(readU32LE(bytes, offset)); offset += 4;
+            tile.w = static_cast<int>(readU32LE(bytes, offset)); offset += 4;
+            tile.h = static_cast<int>(readU32LE(bytes, offset)); offset += 4;
+            const qsizetype length = static_cast<qsizetype>(tile.w) * static_cast<qsizetype>(tile.h) * 4;
+            if (!tileWithinBounds(tile) || length < 0) {
+                m_lastError = QStringLiteral("Invalid q-vid tile bounds.");
+                return tiles;
+            }
+            if (offset + length > bytes.size()) {
+                m_lastError = QStringLiteral("Invalid q-vid delta stream: truncated tile payload.");
+                return tiles;
+            }
+            tile.bytes = bytes.mid(offset, length);
+            offset += static_cast<int>(length);
+            tiles.append(tile);
+        }
+        return tiles;
+    }
+
+    bool tileWithinBounds(const QHTMLVideoTile &tile) const
+    {
+        return tile.x >= 0 && tile.y >= 0 && tile.w > 0 && tile.h > 0 &&
+               tile.x + tile.w <= m_width && tile.y + tile.h <= m_height;
+    }
+
+    void applyTiles(QByteArray &target, const QVector<QHTMLVideoTile> &tiles) const
+    {
+        const qsizetype expectedBytes = static_cast<qsizetype>(m_width) * static_cast<qsizetype>(m_height) * 4;
+        if (target.size() != expectedBytes) {
+            target.resize(expectedBytes);
+        }
+        for (const QHTMLVideoTile &tile : tiles) {
+            const qsizetype rowBytes = static_cast<qsizetype>(tile.w) * 4;
+            for (int row = 0; row < tile.h; ++row) {
+                const qsizetype srcStart = static_cast<qsizetype>(row) * rowBytes;
+                const qsizetype dstStart = (static_cast<qsizetype>(tile.y + row) * m_width + tile.x) * 4;
+                if (srcStart + rowBytes <= tile.bytes.size() && dstStart + rowBytes <= target.size()) {
+                    memcpy(target.data() + dstStart, tile.bytes.constData() + srcStart, static_cast<size_t>(rowBytes));
+                }
+            }
+        }
+    }
+
+    int nearestCachedStoredFrameBefore(int target) const
+    {
+        int nearest = 0;
+        for (auto it = m_frameCache.constBegin(); it != m_frameCache.constEnd(); ++it) {
+            const int key = it.key();
+            if (key < target && key > nearest) {
+                nearest = key;
+            }
+        }
+        return nearest;
+    }
+
+    QByteArray storedFrameBytes(int storedFrameIndex) const
+    {
+        const int target = clampInt(storedFrameIndex, 0, qMax(0, m_storedFrameNumbers.size() - 1));
+        if (m_frameCache.contains(target)) {
+            return m_frameCache.value(target);
+        }
+        const int start = nearestCachedStoredFrameBefore(target);
+        QByteArray working = m_frameCache.value(start, m_keyFrameBytes);
+        for (int frame = start + 1; frame <= target; ++frame) {
+            applyTiles(working, decodeDelta(frame - 1));
+            m_frameCache.insert(frame, working);
+        }
+        return m_frameCache.value(target);
+    }
+
+    StoredFrameBlend storedFrameBlend(int frameIndex) const
+    {
+        StoredFrameBlend blend;
+        if (m_storedFrameNumbers.isEmpty()) {
+            return blend;
+        }
+        blend.afterIndex = m_storedFrameNumbers.size() - 1;
+        for (int i = 0; i < m_storedFrameNumbers.size(); ++i) {
+            const int frameNumber = m_storedFrameNumbers.at(i);
+            if (frameNumber <= frameIndex) {
+                blend.beforeIndex = i;
+            }
+            if (frameNumber >= frameIndex) {
+                blend.afterIndex = i;
+                break;
+            }
+        }
+        const int beforeFrame = m_storedFrameNumbers.at(blend.beforeIndex);
+        const int afterFrame = m_storedFrameNumbers.at(blend.afterIndex);
+        const int span = afterFrame - beforeFrame;
+        blend.alpha = span > 0 ? static_cast<double>(frameIndex - beforeFrame) / static_cast<double>(span) : 0.0;
+        if (blend.alpha < 0.0) blend.alpha = 0.0;
+        if (blend.alpha > 1.0) blend.alpha = 1.0;
+        return blend;
+    }
+
+    QByteArray blendBytes(const QByteArray &before, const QByteArray &after, double alpha) const
+    {
+        const int size = qMin(before.size(), after.size());
+        QByteArray out;
+        out.resize(size);
+        const double inverse = 1.0 - alpha;
+        const uchar *b = reinterpret_cast<const uchar *>(before.constData());
+        const uchar *a = reinterpret_cast<const uchar *>(after.constData());
+        uchar *o = reinterpret_cast<uchar *>(out.data());
+        for (int i = 0; i < size; ++i) {
+            o[i] = static_cast<uchar>(qBound(0, static_cast<int>(qRound(static_cast<double>(b[i]) * inverse + static_cast<double>(a[i]) * alpha)), 255));
+        }
+        return out;
+    }
+
+    mutable QString m_lastError;
+    bool m_loaded = false;
+    QString m_format;
+    QString m_name;
+    QString m_src;
+    int m_width = 0;
+    int m_height = 0;
+    int m_sourceWidth = 0;
+    int m_sourceHeight = 0;
+    int m_frameCount = 0;
+    int m_tileSize = 32;
+    int m_tolerance = 0;
+    QString m_codec = QStringLiteral("raw");
+    QString m_deltaMode = QStringLiteral("tile");
+    QString m_pack = QStringLiteral("legacy");
+    int m_frameStep = 1;
+    int m_defaultFrameDuration = 30;
+    QString m_interpolation;
+    QVector<int> m_storedFrameNumbers;
+    QJsonArray m_deltas;
+    QByteArray m_keyFrameBytes;
+    mutable QHash<int, QVector<QHTMLVideoTile>> m_deltaCache;
+    mutable QHash<int, QByteArray> m_frameCache;
+};
+
+class QHTMLVideoPlayer final : public QHTMLReference
+{
+public:
+    QHTMLVideoPlayer()
+        : QHTMLReference(QStringLiteral("QHTMLVideoPlayer"), QStringLiteral("video-player"))
+    {
+    }
+
+    bool loadAssetJson(const QString &json)
+    {
+        const bool ok = m_asset.loadJson(json);
+        if (!ok) {
+            return false;
+        }
+        m_startFrame = 0;
+        m_endFrame = qMax(0, m_asset.frameCount() - 1);
+        m_currentFrame = m_reverse ? m_endFrame : m_startFrame;
+        if (m_frameDuration < 1) {
+            m_frameDuration = m_asset.defaultFrameDuration();
+        }
+        return true;
+    }
+
+    bool loadAssetJsonJs(const std::string &json) { return loadAssetJson(QString::fromStdString(json)); }
+
+    bool isLoaded() const { return m_asset.isLoaded(); }
+    QHTMLVideoAsset *asset() { return &m_asset; }
+    QHTMLVideoAsset *assetJs() { return &m_asset; }
+    int width() const { return m_asset.width(); }
+    int height() const { return m_asset.height(); }
+    int frameCount() const { return m_asset.frameCount(); }
+    int storedFrameCount() const { return m_asset.storedFrameCount(); }
+    int currentFrame() const { return m_currentFrame; }
+    int startFrame() const { return m_startFrame; }
+    int endFrame() const { return m_endFrame; }
+    int frameDuration() const { return m_frameDuration; }
+    bool reverse() const { return m_reverse; }
+    bool repeat() const { return m_repeat; }
+    bool running() const { return m_running; }
+    QString lastError() const { return m_asset.lastError(); }
+    std::string lastErrorJs() const { return lastError().toStdString(); }
+
+    void setFrameDuration(int ms) { m_frameDuration = qMax(1, ms); }
+    void setFrameDurationJs(int ms) { setFrameDuration(ms); }
+    void setReverse(bool value) { m_reverse = value; }
+    void setReverseJs(bool value) { setReverse(value); }
+    void setRepeat(bool value) { m_repeat = value; }
+    void setRepeatJs(bool value) { setRepeat(value); }
+    void setRunning(bool value) { m_running = value; }
+    void setRunningJs(bool value) { setRunning(value); }
+
+    void setRange(int startFrame, int endFrame)
+    {
+        if (!m_asset.isLoaded()) {
+            m_startFrame = qMax(0, startFrame);
+            m_endFrame = qMax(0, endFrame);
+            return;
+        }
+        m_startFrame = clampInt(startFrame, 0, m_asset.frameCount() - 1);
+        m_endFrame = clampInt(endFrame, 0, m_asset.frameCount() - 1);
+        setCurrentFrame(m_currentFrame);
+    }
+    void setRangeJs(int startFrame, int endFrame) { setRange(startFrame, endFrame); }
+
+    void setStartFrame(int frame) { setRange(frame, m_endFrame); }
+    void setStartFrameJs(int frame) { setStartFrame(frame); }
+    void setEndFrame(int frame) { setRange(m_startFrame, frame); }
+    void setEndFrameJs(int frame) { setEndFrame(frame); }
+
+    void setCurrentFrame(int frame)
+    {
+        if (!m_asset.isLoaded()) {
+            m_currentFrame = qMax(0, frame);
+            return;
+        }
+        m_currentFrame = clampInt(frame, qMin(m_startFrame, m_endFrame), qMax(m_startFrame, m_endFrame));
+    }
+    void setCurrentFrameJs(int frame) { setCurrentFrame(frame); }
+
+    int step(int count = 1)
+    {
+        if (!m_asset.isLoaded()) {
+            return m_currentFrame;
+        }
+        const int direction = m_reverse ? -1 : 1;
+        const int minFrame = qMin(m_startFrame, m_endFrame);
+        const int maxFrame = qMax(m_startFrame, m_endFrame);
+        const int requested = m_currentFrame + direction * count;
+        if (m_repeat) {
+            m_currentFrame = wrapInclusive(requested, minFrame, maxFrame);
+        } else {
+            m_currentFrame = clampInt(requested, minFrame, maxFrame);
+            if (requested != m_currentFrame) {
+                m_running = false;
+            }
+        }
+        return m_currentFrame;
+    }
+    int stepJs(int count) { return step(count); }
+
+    QString frameBase64() const { return m_asset.frameBase64(m_currentFrame); }
+    QString frameBase64At(int frameIndex) const { return m_asset.frameBase64(frameIndex); }
+    std::string frameBase64Js() const { return frameBase64().toStdString(); }
+    std::string frameBase64AtJs(int frameIndex) const { return frameBase64At(frameIndex).toStdString(); }
+
+    QString metadataJson() const
+    {
+        QJsonObject player;
+        player.insert(QStringLiteral("currentFrame"), m_currentFrame);
+        player.insert(QStringLiteral("startFrame"), m_startFrame);
+        player.insert(QStringLiteral("endFrame"), m_endFrame);
+        player.insert(QStringLiteral("frameDuration"), m_frameDuration);
+        player.insert(QStringLiteral("reverse"), m_reverse);
+        player.insert(QStringLiteral("repeat"), m_repeat);
+        player.insert(QStringLiteral("running"), m_running);
+        QJsonObject root;
+        root.insert(QStringLiteral("asset"), QJsonDocument::fromJson(m_asset.metadataJson().toUtf8()).object());
+        root.insert(QStringLiteral("player"), player);
+        return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    }
+    std::string metadataJsonJs() const { return metadataJson().toStdString(); }
+
+private:
+    static int clampInt(int value, int min, int max)
+    {
+        if (max < min) {
+            return min;
+        }
+        return qMin(max, qMax(min, value));
+    }
+
+    static int wrapInclusive(int value, int min, int max)
+    {
+        if (max < min) {
+            return min;
+        }
+        const int span = max - min + 1;
+        return ((((value - min) % span) + span) % span) + min;
+    }
+
+    QHTMLVideoAsset m_asset;
+    int m_frameDuration = 30;
+    bool m_reverse = false;
+    bool m_repeat = true;
+    bool m_running = false;
+    int m_startFrame = 0;
+    int m_endFrame = 0;
+    int m_currentFrame = 0;
+};
+
+class QHTMLVideo final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLVideo(const QString &keyword = QStringLiteral("q-vid-player"),
+                        const QString &name = QString(),
+                        const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(keyword, name, attributes),
+          m_tagName(keyword == QStringLiteral("q-video") ? QStringLiteral("q-vid-player") : keyword)
+    {
+        setQHTMLType(QStringLiteral("QHTMLVideo"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("video"));
+    }
+
+    QString tagName() const { return m_tagName; }
+    std::string tagNameJs() const { return m_tagName.toStdString(); }
+
+    QString assignmentValue(const QString &name, const QString &fallback = QString()) const
+    {
+        const QString lowerName = name.toLower();
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (assignment && assignment->qhtmlName().toLower() == lowerName) {
+                return stripQuotes(assignment->value().trimmed());
+            }
+        }
+        const QString attributeValue = attributes().value(name);
+        return attributeValue.isEmpty() ? fallback : stripQuotes(attributeValue);
+    }
+
+    std::string assignmentValueJs(const std::string &name) const
+    {
+        return assignmentValue(QString::fromStdString(name)).toStdString();
+    }
+
+    QString renderHtml() const override
+    {
+        QString out = QStringLiteral("<") + m_tagName +
+                      QStringLiteral(" qhtml-video=\"1\" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
+        const QString nodeName = qhtmlName().trimmed();
+        if (!nodeName.isEmpty()) {
+            out += QStringLiteral(" name=\"") + escapeAttribute(nodeName) + QStringLiteral("\"");
+        }
+
+        QSet<QString> written;
+        const QStringList attributeKeys = attributes().keys();
+        for (const QString &key : attributeKeys) {
+            const QString value = attributes().value(key);
+            if (!key.trimmed().isEmpty() && !value.isEmpty()) {
+                out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(stripQuotes(value)) + QStringLiteral("\"");
+                written.insert(key.toLower());
+            }
+        }
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment || assignment->qhtmlName().isEmpty()) {
+                continue;
+            }
+            const QString key = assignment->qhtmlName();
+            if (written.contains(key.toLower())) {
+                continue;
+            }
+            out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(stripQuotes(assignment->value())) + QStringLiteral("\"");
+            written.insert(key.toLower());
+        }
+        out += QStringLiteral("><canvas qhtml-video-canvas=\"1\"></canvas></") + m_tagName + QStringLiteral(">");
+        return out;
+    }
+
+private:
+    static QString stripQuotes(QString value)
+    {
+        value = value.trimmed();
+        if (value.size() >= 2) {
+            const QChar first = value.at(0);
+            const QChar last = value.at(value.size() - 1);
+            if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+                (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+                (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+                return value.mid(1, value.size() - 2);
+            }
+        }
+        return value;
+    }
+
+    QString m_tagName;
 };
 
 class QHTMLConnect final : public QHTMLTypedNode
@@ -4561,10 +5293,24 @@ class QHTMLScript final : public QHTMLTypedNode
 {
 public:
     explicit QHTMLScript(const QString &name = QString(),
-                         const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("script"), name, attributes)
+                         const QHash<QString, QString> &attributes = {},
+                         const QString &body = QString())
+        : QHTMLTypedNode(QStringLiteral("script"), name, attributes),
+          m_body(body.trimmed())
     {
+        setQHTMLType(QStringLiteral("QHTMLScript"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("script"));
     }
+
+    QString body() const { return m_body; }
+    std::string bodyJs() const { return body().toStdString(); }
+    void setBody(const QString &body) { m_body = body.trimmed(); }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
+
+    QString renderHtml() const override { return QString(); }
+
+private:
+    QString m_body;
 };
 
 

@@ -752,3 +752,33 @@ q-canvas mycanvas {
 ```
 
 * Note*  if you specify the width or height (or anything really in QHTML) in CSS units like 50% or 100vh, they are converted into pixels when getting the value of those properties by performing the necessary calculations to determine what the exact pixel size is of the value you specified. When accessing this.width and this.height, they will return a single integer regardless of what type of unit you put in there, and if the dimensions change, some of those units will automatically re-adjust and return new values depending on the nature of the change and the units you choose.  This can cause flickering or re-painting calls to happen in environments that frequently adjust the layout and dimensions or when animating objects containing a q-canvas inside of it.
+
+
+------------------------------------------------
+
+23. Next thing we need is this: q-state-machine, and q-state, which will be represented as
+QHTMLStateMachine and QHTMLState. Each QStateMachine will be comprised of multiple QHTMLState objects
+for its children.  Each one will have an assigned name when instantiated, so they must be named
+types, never anonymous.
+
+```
+
+q-state-machine mymachine {
+  q-state state1 {
+    div,span,text { helllo world }
+  }
+  q-state state2 {
+    div,span,h2,text { testing }
+  }
+  ...
+}
+
+```
+
+To activate a state you set the state property to one of the states via name. So,
+
+```
+button { onclick { mymachine.state = mymachine.state1; } text { toggle state 1 } }
+```
+
+It is possible to setup a state outside of a state machine as long as it can be resolved (ie is in the QHTML Context where the expression is called from.  CHanging a state will effectively update the QHTML that is rendered both in the DOM and to runtime, so it requires update whenever the state changes along with re-parsing of the state's current contents and then rendering them into the DOM. There are optimizations possible here, but do not need to be done as of yet unless they are super simple to implement, which they probably are not.
