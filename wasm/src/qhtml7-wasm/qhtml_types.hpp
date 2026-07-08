@@ -136,6 +136,21 @@ inline bool qhtmlIsCssShortcutProperty(const QString &name)
     return !qhtmlCssShortcutPropertyName(name).isEmpty();
 }
 
+inline QString qhtmlScalarValue(QString value)
+{
+    value = value.trimmed();
+    if (value.size() >= 2) {
+        const QChar first = value.at(0);
+        const QChar last = value.at(value.size() - 1);
+        if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+            (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+            (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+            return value.mid(1, value.size() - 2);
+        }
+    }
+    return value;
+}
+
 class QHTMLAstNode;
 class QHTMLFunction;
 class QHTMLSignal;
@@ -150,6 +165,9 @@ class QHTMLCanvas;
 class QHTMLVideo;
 class QHTMLVideoAsset;
 class QHTMLVideoPlayer;
+class QHTMLNode;
+
+inline QString qhtmlInterpolateTextForContext(QString value, const QHTMLNode *contextNode);
 
 class QHTMLReference
 {
@@ -606,17 +624,20 @@ private:
         }
 
         QString out = QStringLiteral("<") + m_tagName;
+        const QHTMLNode *childContext = contextNode ? contextNode : this;
         const QStringList keys = m_attributes.keys();
         for (const QString &key : keys) {
             const QString value = m_attributes.value(key);
             if (!value.isEmpty()) {
-                out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
+                out += QStringLiteral(" ") + key + QStringLiteral("=\"") +
+                       escapeAttribute(qhtmlInterpolateTextForContext(value, childContext)) +
+                       QStringLiteral("\"");
             }
         }
         out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
         out += QStringLiteral(">");
         for (QHTMLNode *child : children()) {
-            out += contextNode ? child->renderHtmlInContext(contextNode) : child->renderHtml();
+            out += child->renderHtmlInContext(childContext);
         }
         out += QStringLiteral("</") + m_tagName + QStringLiteral(">");
         return out;
@@ -638,6 +659,10 @@ public:
     QString value() const { return m_value; }
     std::string valueJs() const { return value().toStdString(); }
     QString renderHtml() const override { return escapeText(m_value); }
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override
+    {
+        return escapeText(qhtmlInterpolateTextForContext(m_value, contextNode));
+    }
 
 private:
     QString m_value;
@@ -655,6 +680,10 @@ public:
     QString value() const { return m_value; }
     std::string valueJs() const { return value().toStdString(); }
     QString renderHtml() const override { return m_value; }
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override
+    {
+        return qhtmlInterpolateTextForContext(m_value, contextNode);
+    }
 
 private:
     QString m_value;
@@ -672,6 +701,10 @@ public:
     QString value() const { return m_value; }
     std::string valueJs() const { return value().toStdString(); }
     QString renderHtml() const override { return escapeText(m_value); }
+    QString renderHtmlInContext(const QHTMLNode *contextNode) const override
+    {
+        return escapeText(qhtmlInterpolateTextForContext(m_value, contextNode));
+    }
 
 private:
     QString m_value;
@@ -1961,16 +1994,7 @@ private:
 
     QString interpolateInstanceText(QString value) const
     {
-        static const QRegularExpression rx(QStringLiteral("\\$\\{\\s*([^}]+?)\\s*\\}"));
-        QRegularExpressionMatchIterator it = rx.globalMatch(value);
-        int offset = 0;
-        while (it.hasNext()) {
-            const QRegularExpressionMatch match = it.next();
-            const QString replacement = resolveInterpolationValue(match.captured(1).trimmed());
-            value.replace(match.capturedStart(0) + offset, match.capturedLength(0), replacement);
-            offset += replacement.size() - match.capturedLength(0);
-        }
-        return value;
+        return qhtmlInterpolateTextForContext(value, this);
     }
 
     QString resolveInterpolationValue(QString expression) const
@@ -1979,11 +2003,8 @@ private:
         if (expression.startsWith(QStringLiteral("this."))) {
             expression = expression.mid(5).trimmed();
         }
-        const int dot = expression.indexOf(QLatin1Char('.'));
-        if (dot > 0) {
-            expression = expression.left(dot).trimmed();
-        }
-        return propertyValueForName(expression);
+        const QString resolved = qhtmlInterpolateTextForContext(QStringLiteral("${") + expression + QStringLiteral("}"), this);
+        return resolved == QStringLiteral("${") + expression + QStringLiteral("}") ? propertyValueForName(expression) : resolved;
     }
 
     QString propertyValueForName(const QString &name) const
@@ -3333,6 +3354,151 @@ private:
     QHTMLNode *m_valueNode = nullptr;
     mutable QHTMLNode *m_legacyValueNode = nullptr;
 };
+
+inline bool qhtmlExpressionCanResolve(QString expression, const QHTMLNode *contextNode);
+
+inline QString qhtmlResolveExpressionValue(QString expression,
+                                           const QHTMLNode *contextNode,
+                                           QSet<QString> &resolving,
+                                           int depth);
+
+inline QString qhtmlResolvePropertyValue(QString rawValue,
+                                         const QHTMLNode *contextNode,
+                                         QSet<QString> &resolving,
+                                         int depth)
+{
+    QString value = qhtmlScalarValue(rawValue);
+    if (value.contains(QStringLiteral("${"))) {
+        value = qhtmlInterpolateTextForContext(value, contextNode);
+    }
+
+    const bool dottedPath = value.contains(QLatin1Char('.')) || value.startsWith(QStringLiteral("this."));
+    if ((dottedPath || qhtmlExpressionCanResolve(value, contextNode)) && depth < 16) {
+        const QString resolved = qhtmlResolveExpressionValue(value, contextNode, resolving, depth + 1);
+        if (!resolved.isNull()) {
+            return resolved;
+        }
+    }
+
+    return value;
+}
+
+inline QString qhtmlNodeScalarValue(const QHTMLNode *node,
+                                    const QHTMLNode *contextNode,
+                                    QSet<QString> &resolving,
+                                    int depth)
+{
+    if (!node) {
+        return QString();
+    }
+    if (const QHTMLProperty *property = dynamic_cast<const QHTMLProperty *>(node)) {
+        return qhtmlResolvePropertyValue(property->value(), contextNode, resolving, depth);
+    }
+    if (const QHTMLPropertyAssignment *assignment = dynamic_cast<const QHTMLPropertyAssignment *>(node)) {
+        return qhtmlResolvePropertyValue(assignment->value(), contextNode, resolving, depth);
+    }
+    return QString();
+}
+
+inline bool qhtmlExpressionCanResolve(QString expression, const QHTMLNode *contextNode)
+{
+    expression = expression.trimmed();
+    if (!contextNode || expression.isEmpty()) {
+        return false;
+    }
+    if (expression.startsWith(QStringLiteral("this."))) {
+        return true;
+    }
+    const QString firstPart = expression.split(QLatin1Char('.'), Qt::SkipEmptyParts).value(0).trimmed();
+    return !firstPart.isEmpty() && contextNode->resolve(firstPart) != nullptr;
+}
+
+inline QString qhtmlResolveExpressionValue(QString expression,
+                                           const QHTMLNode *contextNode,
+                                           QSet<QString> &resolving,
+                                           int depth)
+{
+    expression = expression.trimmed();
+    if (!contextNode || expression.isEmpty() || depth > 16) {
+        return QString();
+    }
+
+    const QString guard = QStringLiteral("%1:%2").arg(contextNode->qhtmlUUID(), expression);
+    if (resolving.contains(guard)) {
+        return QString();
+    }
+    resolving.insert(guard);
+
+    QStringList parts = expression.split(QLatin1Char('.'), Qt::SkipEmptyParts);
+    if (parts.isEmpty()) {
+        resolving.remove(guard);
+        return QString();
+    }
+
+    QHTMLReference *current = nullptr;
+    const QHTMLNode *currentNode = nullptr;
+    int index = 0;
+    if (parts.first() == QStringLiteral("this")) {
+        currentNode = contextNode;
+        current = const_cast<QHTMLNode *>(contextNode);
+        index = 1;
+    } else {
+        current = contextNode->resolve(parts.first());
+        currentNode = dynamic_cast<QHTMLNode *>(current);
+        index = 1;
+    }
+
+    while (currentNode && index < parts.size()) {
+        const QString part = parts.at(index).trimmed();
+        if (part == QStringLiteral("qhtmlParent")) {
+            currentNode = currentNode->parent();
+            current = const_cast<QHTMLNode *>(currentNode);
+            ++index;
+            continue;
+        }
+
+        if (const QHTMLProperty *property = dynamic_cast<const QHTMLProperty *>(currentNode)) {
+            QHTMLJsonDocument document(property->value());
+            const QString jsonValue = document.valueAtPath(parts.mid(index).join(QStringLiteral(".")));
+            resolving.remove(guard);
+            return jsonValue;
+        }
+
+        current = currentNode->resolve(part);
+        currentNode = dynamic_cast<QHTMLNode *>(current);
+        ++index;
+    }
+
+    const QString resolved = qhtmlNodeScalarValue(currentNode, contextNode, resolving, depth + 1);
+    resolving.remove(guard);
+    if (!resolved.isNull()) {
+        return resolved;
+    }
+
+    if (currentNode && currentNode != contextNode) {
+        return currentNode->qhtmlName();
+    }
+    return QString();
+}
+
+inline QString qhtmlInterpolateTextForContext(QString value, const QHTMLNode *contextNode)
+{
+    if (!contextNode || !value.contains(QStringLiteral("${"))) {
+        return value;
+    }
+
+    static const QRegularExpression rx(QStringLiteral("\\$\\{\\s*([^}]+?)\\s*\\}"));
+    QRegularExpressionMatchIterator it = rx.globalMatch(value);
+    int offset = 0;
+    QSet<QString> resolving;
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        const QString replacement = qhtmlResolveExpressionValue(match.captured(1).trimmed(), contextNode, resolving, 0);
+        value.replace(match.capturedStart(0) + offset, match.capturedLength(0), replacement);
+        offset += replacement.size() - match.capturedLength(0);
+    }
+    return value;
+}
 
 class QHTMLImportNode final : public QHTMLTypedNode
 {
