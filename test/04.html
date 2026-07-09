@@ -5,34 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QHTML WASM Signals Visual Test 04</title>
   <script src="../dist/qhtml-wasm.js"></script>
-  <script>
-    window.qhtmlMakeSignal = function qhtmlMakeSignal(owner) {
-      var connections = [];
-      var signal = function () {
-        var args = Array.prototype.slice.call(arguments);
-        return connections.map(function (target) {
-          if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
-            return target.__qhtmlInvokeFromSignal(args, { sender: owner });
-          }
-          return typeof target === "function" ? target.apply(owner, args) : undefined;
-        });
-      };
-      signal.connect = function (target) {
-        if (!target) {
-          return false;
-        }
-        connections.push(target);
-        return true;
-      };
-      signal.disconnectAll = function () {
-        connections.length = 0;
-      };
-      signal.connections = function () {
-        return connections.slice();
-      };
-      return signal;
-    };
-  </script>
   <style>
     :root {
       color-scheme: light;
@@ -256,9 +228,7 @@ dotwalk-driver { }
       <h2>6. q-class JavaScript signal into QHTML JavaScript</h2>
       <q-html>
 q-class wasmSignalSource {
-  wasmSignalSource() {
-    this.fromWasm = window.qhtmlMakeSignal(this);
-  }
+  q-signal fromWasm(payload)
 
   function emitFromWasm(payload) {
     this.fromWasm(payload);
@@ -293,9 +263,7 @@ wasm-signal-driver { }
       <h2>7. QHTML signal into q-class and back</h2>
       <q-html>
 q-class wasmRoundTrip {
-  wasmRoundTrip() {
-    this.completed = window.qhtmlMakeSignal(this);
-  }
+  q-signal completed(payload)
 
   function receiveFromQhtml(payload) {
     this.completed({ message: payload.message });
@@ -333,9 +301,7 @@ qhtml-wasm-roundtrip-driver { }
       <h2>8. q-class signal connected to q-component function</h2>
       <q-html>
 q-class classSignalModel {
-  classSignalModel() {
-    this.fired = window.qhtmlMakeSignal(this);
-  }
+  q-signal fired(message)
 
   function fire(message) {
     this.fired(message);
@@ -370,9 +336,7 @@ class-signal-driver { }
       <h2>9. q-component signal connected to q-class function</h2>
       <q-html>
 q-class classSignalSink {
-  classSignalSink() {
-    this.confirmed = window.qhtmlMakeSignal(this);
-  }
+  q-signal confirmed(message)
 
   function receive(message) {
     this.confirmed(message);

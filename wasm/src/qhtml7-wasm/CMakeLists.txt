@@ -8,6 +8,7 @@ qt_standard_project_setup()
 qt_add_executable(qhtml7-wasm
     main.cpp
     qhtml_types.hpp qhtml_parser.hpp
+    ../../../lib/quickjs/cutils.c
     ../../../lib/quickjs/dtoa.c
     ../../../lib/quickjs/libregexp.c
     ../../../lib/quickjs/libunicode.c

@@ -18,6 +18,8 @@
 #include <QtCore/QVector>
 #include <QtCore/QtMath>
 
+#include <emscripten/bind.h>
+
 #include <algorithm>
 #include <cstring>
 #include <string>
@@ -165,6 +167,8 @@ class QHTMLFunction;
 class QHTMLSignal;
 class QHTMLSignalBus;
 class QHTMLComponentSlot;
+class QHTMLComponentInstance;
+class QHTMLComponentInstanceSlot;
 class QHTMLWorker;
 class QHTMLStyle;
 class QHTMLTheme;
@@ -178,6 +182,8 @@ class QHTMLNode;
 class QHTMLJavaScriptRuntime;
 
 inline QString qhtmlInterpolateTextForContext(QString value, const QHTMLNode *contextNode);
+inline QString qhtmlResolvePropertyValue(QString rawValue, const QHTMLNode *contextNode, QSet<QString> &resolving, int depth);
+inline QString qhtmlResolveCssValueForContext(QString value, const QHTMLNode *contextNode);
 
 class QHTMLReference
 {
@@ -634,6 +640,10 @@ public:
     }
 
     std::string sourceQHTMLJs() const { return sourceQHTML().toStdString(); }
+    QJsonObject toJsonObject() const;
+    QString toJSONText() const;
+    std::string toJSONTextJs() const { return toJSONText().toStdString(); }
+    emscripten::val toJSONJs() const;
 
     static QString escapeText(const QString &value)
     {
@@ -732,6 +742,8 @@ public:
     }
     QHash<QString, QString> attributes() const { return m_attributes; }
 
+    QString inlineStyleForContext(const QHTMLNode *contextNode) const;
+
     QString renderHtml() const override
     {
         return renderHtmlForContext(nullptr);
@@ -781,12 +793,19 @@ private:
         const QHTMLNode *childContext = contextNode ? contextNode : this;
         const QStringList keys = m_attributes.keys();
         for (const QString &key : keys) {
+            if (key == QStringLiteral("style")) {
+                continue;
+            }
             const QString value = m_attributes.value(key);
             if (!value.isEmpty()) {
                 out += QStringLiteral(" ") + key + QStringLiteral("=\"") +
                        escapeAttribute(qhtmlInterpolateTextForContext(value, childContext)) +
                        QStringLiteral("\"");
             }
+        }
+        const QString inlineStyle = inlineStyleForContext(childContext);
+        if (!inlineStyle.trimmed().isEmpty()) {
+            out += QStringLiteral(" style=\"") + escapeAttribute(inlineStyle) + QStringLiteral("\"");
         }
         out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
         out += QStringLiteral(">");
@@ -1304,6 +1323,31 @@ private:
     QString m_value;
 };
 
+inline QString QHTMLDomElement::inlineStyleForContext(const QHTMLNode *contextNode) const
+{
+    const QHTMLNode *childContext = contextNode ? contextNode : this;
+    QStringList declarations;
+    const QString existingStyle = m_attributes.value(QStringLiteral("style")).trimmed();
+    if (!existingStyle.isEmpty()) {
+        declarations << qhtmlInterpolateTextForContext(existingStyle, childContext);
+    }
+    QSet<QString> emitted;
+    for (QHTMLNode *child : children()) {
+        QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+        if (!assignment) {
+            continue;
+        }
+        const QString cssName = qhtmlCssShortcutPropertyName(assignment->qhtmlName());
+        if (cssName.isEmpty() || emitted.contains(cssName)) {
+            continue;
+        }
+        declarations << cssName + QStringLiteral(":") +
+                            qhtmlResolveCssValueForContext(assignment->value(), childContext);
+        emitted.insert(cssName);
+    }
+    return declarations.join(QStringLiteral(";"));
+}
+
 class QHTMLLayout : public QHTMLTypedNode
 {
 public:
@@ -1323,6 +1367,118 @@ public:
     QString direction() const { return m_direction; }
     std::string directionJs() const { return m_direction.toStdString(); }
 
+    QHTMLLayout *addRow(QHTMLLayout *row)
+    {
+        if (row) {
+            appendChild(row);
+            refreshLayoutContextReferences();
+        }
+        return row;
+    }
+
+    QHTMLLayout *addRowJs(QHTMLLayout *row) { return addRow(row); }
+
+    QHTMLLayout *addCol(QHTMLLayout *col)
+    {
+        if (col) {
+            appendChild(col);
+            refreshLayoutContextReferences();
+        }
+        return col;
+    }
+
+    QHTMLLayout *addColJs(QHTMLLayout *col) { return addCol(col); }
+
+    QHTMLLayout *addLayout(QHTMLLayout *layout)
+    {
+        if (layout) {
+            appendChild(layout);
+            refreshLayoutContextReferences();
+        }
+        return layout;
+    }
+
+    QHTMLLayout *addLayoutJs(QHTMLLayout *layout) { return addLayout(layout); }
+
+    QHTMLLayout *insertRow(int index, const QHash<QString, QString> &attributes = {})
+    {
+        QHTMLLayout *row = new QHTMLLayout(QStringLiteral("q-row"),
+                                           QString(),
+                                           attributes,
+                                           QStringLiteral("row"),
+                                           QStringLiteral("QHTMLRowLayout"));
+        row->setProperty(QStringLiteral("kind"), QStringLiteral("row-layout"));
+        insertChild(index, row);
+        refreshLayoutContextReferences();
+        return row;
+    }
+
+    QHTMLLayout *insertRowJs(int index, emscripten::val attributes)
+    {
+        return insertRow(index, attributesFromJs(attributes));
+    }
+
+    QHTMLLayout *insertCol(int index, const QHash<QString, QString> &attributes = {})
+    {
+        QHTMLLayout *col = new QHTMLLayout(QStringLiteral("q-col"),
+                                           QString(),
+                                           attributes,
+                                           QStringLiteral("column"),
+                                           QStringLiteral("QHTMLColumnLayout"));
+        col->setProperty(QStringLiteral("kind"), QStringLiteral("column-layout"));
+        insertChild(index, col);
+        refreshLayoutContextReferences();
+        return col;
+    }
+
+    QHTMLLayout *insertColJs(int index, emscripten::val attributes)
+    {
+        return insertCol(index, attributesFromJs(attributes));
+    }
+
+    int rows() const { return assignmentIntValue(QStringLiteral("rows"), 0); }
+    int rowsJs() const { return rows(); }
+    int cols() const { return assignmentIntValue(QStringLiteral("cols"), 0); }
+    int colsJs() const { return cols(); }
+
+    QVector<QHTMLNode *> layoutChildren() const
+    {
+        QVector<QHTMLNode *> out;
+        for (QHTMLNode *child : children()) {
+            if (child && !isLayoutNode(child) && !isRuntimeLayoutChild(child)) {
+                out.append(child);
+            }
+        }
+        return out;
+    }
+
+    emscripten::val layoutChildrenJs() const
+    {
+        emscripten::val out = emscripten::val::array();
+        int index = 0;
+        for (QHTMLNode *child : layoutChildren()) {
+            out.set(index++, child);
+        }
+        return out;
+    }
+
+    int layoutChildCount() const { return layoutChildren().size(); }
+    int layoutChildCountJs() const { return layoutChildCount(); }
+
+    QHTMLNode *layoutChildAt(int index) const
+    {
+        const QVector<QHTMLNode *> filtered = layoutChildren();
+        return index >= 0 && index < filtered.size() ? filtered.at(index) : nullptr;
+    }
+
+    QHTMLNode *layoutChildAtJs(int index) const { return layoutChildAt(index); }
+
+    void runtime() override
+    {
+        refreshLayoutContextReferences();
+        QHTMLTypedNode::runtime();
+    }
+
     QString renderHtml() const override
     {
         return renderHtmlForContext(nullptr);
@@ -1334,14 +1490,30 @@ public:
     }
 
 private:
+    static QHash<QString, QString> attributesFromJs(emscripten::val attributes)
+    {
+        QHash<QString, QString> out;
+        if (attributes.isUndefined() || attributes.isNull()) {
+            return out;
+        }
+        emscripten::val keys = emscripten::val::global("Object").call<emscripten::val>("keys", attributes);
+        const int length = keys["length"].as<int>();
+        for (int i = 0; i < length; ++i) {
+            const std::string key = keys[i].as<std::string>();
+            const std::string value = attributes[key.c_str()].as<std::string>();
+            out.insert(QString::fromStdString(key), QString::fromStdString(value));
+        }
+        return out;
+    }
+
     QString renderHtmlForContext(const QHTMLNode *contextNode) const
     {
         QString out = QStringLiteral("<div qhtml-layout=\"") + escapeAttribute(keyword()) +
                       QStringLiteral("\" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) +
                       QStringLiteral("\" class=\"") + escapeAttribute(layoutClass()) +
                       QStringLiteral("\" style=\"") + escapeAttribute(layoutStyle()) +
-                      QStringLiteral("\">");
-        out += renderLayoutChildren(contextNode);
+                      QStringLiteral("\"") + layoutAttributes(contextNode) + QStringLiteral(">");
+        out += renderLayoutChildren(contextNode ? contextNode : this);
         out += QStringLiteral("</div>");
         return out;
     }
@@ -1373,6 +1545,13 @@ protected:
         return fallback;
     }
 
+    int assignmentIntValue(const QString &name, int fallback = 0) const
+    {
+        bool ok = false;
+        const int value = assignmentValue(name).toInt(&ok);
+        return ok ? value : fallback;
+    }
+
     QString layoutStyle() const
     {
         QStringList declarations;
@@ -1397,7 +1576,96 @@ protected:
         appendOptionalDeclaration(declarations, QStringLiteral("overflow"));
         appendOptionalDeclaration(declarations, QStringLiteral("padding"));
         appendOptionalDeclaration(declarations, QStringLiteral("margin"));
+        appendCssShortcutDeclarations(declarations);
         return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
+    }
+
+    void appendCssShortcutDeclarations(QStringList &declarations) const
+    {
+        const QSet<QString> handled = {
+            QStringLiteral("width"),
+            QStringLiteral("height"),
+            QStringLiteral("flex"),
+            QStringLiteral("gap"),
+            QStringLiteral("alignItems"),
+            QStringLiteral("align-items"),
+            QStringLiteral("justifyContent"),
+            QStringLiteral("justify-content"),
+            QStringLiteral("overflow"),
+            QStringLiteral("padding"),
+            QStringLiteral("margin"),
+            QStringLiteral("rows"),
+            QStringLiteral("cols"),
+            QStringLiteral("class"),
+            QStringLiteral("style")
+        };
+        QSet<QString> emitted;
+        for (const QString &declaration : declarations) {
+            const int colon = declaration.indexOf(QLatin1Char(':'));
+            if (colon > 0) {
+                emitted.insert(declaration.left(colon).trimmed());
+            }
+        }
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment || handled.contains(assignment->qhtmlName())) {
+                continue;
+            }
+            const QString cssName = qhtmlCssShortcutPropertyName(assignment->qhtmlName());
+            if (cssName.isEmpty() || emitted.contains(cssName)) {
+                continue;
+            }
+            declarations << cssName + QStringLiteral(":") + cssValue(assignment->value());
+            emitted.insert(cssName);
+        }
+    }
+
+    QString layoutAttributes(const QHTMLNode *contextNode) const
+    {
+        QString out;
+        const QHTMLNode *childContext = contextNode ? contextNode : this;
+        const QStringList layoutPropertyNames = {
+            QStringLiteral("width"),
+            QStringLiteral("height"),
+            QStringLiteral("flex"),
+            QStringLiteral("gap"),
+            QStringLiteral("alignitems"),
+            QStringLiteral("align-items"),
+            QStringLiteral("justifycontent"),
+            QStringLiteral("justify-content"),
+            QStringLiteral("overflow"),
+            QStringLiteral("padding"),
+            QStringLiteral("margin"),
+            QStringLiteral("rows"),
+            QStringLiteral("cols"),
+            QStringLiteral("class"),
+            QStringLiteral("style")
+        };
+
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment) {
+                continue;
+            }
+            const QString name = assignment->qhtmlName().trimmed();
+            const QString lowerName = name.toLower();
+            if (name.isEmpty() || layoutPropertyNames.contains(lowerName)) {
+                continue;
+            }
+            if (!lowerName.startsWith(QStringLiteral("data-")) &&
+                !lowerName.startsWith(QStringLiteral("aria-")) &&
+                lowerName != QStringLiteral("id") &&
+                lowerName != QStringLiteral("name") &&
+                lowerName != QStringLiteral("role") &&
+                lowerName != QStringLiteral("title") &&
+                lowerName != QStringLiteral("tabindex")) {
+                continue;
+            }
+            out += QStringLiteral(" ") + name + QStringLiteral("=\"") +
+                   escapeAttribute(qhtmlInterpolateTextForContext(cssValue(assignment->value()), childContext)) +
+                   QStringLiteral("\"");
+        }
+        return out;
     }
 
     void appendOptionalDeclaration(QStringList &declarations,
@@ -1420,6 +1688,14 @@ protected:
 
     QString renderLayoutChildren(const QHTMLNode *contextNode) const
     {
+        if (hasGeneratedGrid()) {
+            return renderGeneratedGrid(contextNode);
+        }
+        return renderSequentialLayoutChildren(contextNode);
+    }
+
+    QString renderSequentialLayoutChildren(const QHTMLNode *contextNode) const
+    {
         QString out;
         for (QHTMLNode *child : children()) {
             if (!child || isRuntimeLayoutChild(child)) {
@@ -1435,6 +1711,131 @@ protected:
             }
         }
         return out;
+    }
+
+    bool hasGeneratedGrid() const
+    {
+        return rows() > 0 || cols() > 0;
+    }
+
+    QVector<QHTMLNode *> gridItems() const
+    {
+        QVector<QHTMLNode *> out;
+        for (QHTMLNode *child : children()) {
+            if (child && !isRuntimeLayoutChild(child)) {
+                out.append(child);
+            }
+        }
+        return out;
+    }
+
+    QString renderGeneratedGrid(const QHTMLNode *contextNode) const
+    {
+        const QVector<QHTMLNode *> items = gridItems();
+        int rowCount = qMax(1, rows());
+        int colCount = qMax(1, cols());
+        if (rows() <= 0 && cols() > 0) {
+            rowCount = qMax(1, qCeil(double(items.size()) / double(colCount)));
+        }
+        if (cols() <= 0 && rows() > 0) {
+            colCount = qMax(1, qCeil(double(items.size()) / double(rowCount)));
+        }
+
+        QString out;
+        int itemIndex = 0;
+        for (int row = 0; row < rowCount; ++row) {
+            out += layoutBoxHtml(QStringLiteral("q-row"),
+                                 QStringLiteral("row"),
+                                 QStringLiteral("qhtml-layout qhtml-layout-row"),
+                                 generatedRowStyle());
+            for (int col = 0; col < colCount; ++col) {
+                QHTMLNode *item = itemIndex < items.size() ? items.at(itemIndex++) : nullptr;
+                if (item && item->qhtmlType() == QStringLiteral("QHTMLColumnLayout")) {
+                    out += item->renderHtmlInContext(contextNode);
+                } else {
+                    out += layoutBoxHtml(QStringLiteral("q-col"),
+                                         QStringLiteral("column"),
+                                         QStringLiteral("qhtml-layout qhtml-layout-col"),
+                                         generatedColStyle());
+                    if (item) {
+                        out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
+                               escapeAttribute(itemStyle()) + QStringLiteral("\">") +
+                               item->renderHtmlInContext(contextNode) +
+                               QStringLiteral("</div>");
+                    }
+                    out += QStringLiteral("</div>");
+                }
+            }
+            out += QStringLiteral("</div>");
+        }
+        return out;
+    }
+
+    static QString layoutBoxHtml(const QString &keyword,
+                                 const QString &direction,
+                                 const QString &className,
+                                 const QString &style)
+    {
+        return QStringLiteral("<div qhtml-layout=\"") + escapeAttribute(keyword) +
+               QStringLiteral("\" qhtml-generated-layout=\"1\" class=\"") + escapeAttribute(className) +
+               QStringLiteral("\" style=\"") + escapeAttribute(style) +
+               QStringLiteral("\" data-qhtml-direction=\"") + escapeAttribute(direction) +
+               QStringLiteral("\">");
+    }
+
+    QString generatedRowStyle() const
+    {
+        QStringList declarations;
+        declarations << QStringLiteral("display:flex");
+        declarations << QStringLiteral("flex-direction:row");
+        declarations << QStringLiteral("box-sizing:border-box");
+        declarations << QStringLiteral("min-width:0");
+        declarations << QStringLiteral("min-height:0");
+        declarations << QStringLiteral("flex:1 1 0");
+        declarations << QStringLiteral("width:100%");
+        declarations << QStringLiteral("height:auto");
+        return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
+    }
+
+    QString generatedColStyle() const
+    {
+        QStringList declarations;
+        declarations << QStringLiteral("display:flex");
+        declarations << QStringLiteral("flex-direction:column");
+        declarations << QStringLiteral("box-sizing:border-box");
+        declarations << QStringLiteral("min-width:0");
+        declarations << QStringLiteral("min-height:0");
+        declarations << QStringLiteral("flex:1 1 0");
+        declarations << QStringLiteral("width:100%");
+        declarations << QStringLiteral("height:100%");
+        return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
+    }
+
+    void refreshLayoutContextReferences()
+    {
+        collectLayoutContextReferences(this);
+    }
+
+    void collectLayoutContextReferences(QHTMLNode *scope)
+    {
+        if (!scope) {
+            return;
+        }
+        for (QHTMLNode *child : scope->children()) {
+            if (!child || isRuntimeLayoutChild(child)) {
+                continue;
+            }
+            if (isLayoutNode(child)) {
+                if (!child->qhtmlName().isEmpty()) {
+                    updateObjectReference(child->qhtmlName(), child);
+                }
+                collectLayoutContextReferences(child);
+                continue;
+            }
+            if (isLayoutReferenceChild(child) && !child->qhtmlName().isEmpty()) {
+                updateObjectReference(child->qhtmlName(), child);
+            }
+        }
     }
 
     static QString cssValue(QString value)
@@ -1482,6 +1883,19 @@ protected:
                type == QStringLiteral("QHTMLImportNode");
     }
 
+    static bool isLayoutReferenceChild(QHTMLNode *node)
+    {
+        if (!node) {
+            return false;
+        }
+        const QString type = node->qhtmlType();
+        if (type == QStringLiteral("QHTMLComponentDefinition") ||
+            type == QStringLiteral("QHTMLComponentInstance")) {
+            return false;
+        }
+        return dynamic_cast<QHTMLTypedNode *>(node) != nullptr;
+    }
+
 private:
     QString m_direction;
 };
@@ -1514,6 +1928,29 @@ public:
     {
         setProperty(QStringLiteral("kind"), QStringLiteral("column-layout"));
     }
+};
+
+class QHTMLComponentInstanceSlot final : public QHTMLTypedNode
+{
+public:
+    QHTMLComponentInstanceSlot(QHTMLComponentInstance *owner = nullptr,
+                               QHTMLComponentSlot *definitionSlot = nullptr);
+
+    QHTMLComponentInstance *owner() const { return m_owner; }
+    QHTMLComponentInstance *ownerJs() const { return m_owner; }
+    QHTMLComponentSlot *definitionSlot() const { return m_definitionSlot; }
+    QHTMLComponentSlot *definitionSlotJs() const { return m_definitionSlot; }
+
+    QHTMLNode *append(QHTMLNode *node);
+    QHTMLNode *appendJs(QHTMLNode *node) { return append(node); }
+    bool remove(QHTMLNode *node);
+    bool removeJs(QHTMLNode *node) { return remove(node); }
+    QVector<QHTMLNode *> children() const;
+    emscripten::val childrenJs() const;
+
+private:
+    QHTMLComponentInstance *m_owner = nullptr;
+    QHTMLComponentSlot *m_definitionSlot = nullptr;
 };
 
 class QHTMLComponentDefinition final : public QHTMLTypedNode
@@ -1562,6 +1999,12 @@ public:
         setProperty(QStringLiteral("kind"), QStringLiteral("component-instance"));
     }
 
+    ~QHTMLComponentInstance() override
+    {
+        qDeleteAll(m_slotViews);
+        m_slotViews.clear();
+    }
+
     void setDefinition(QHTMLComponentDefinition *definition) { m_definition = definition; }
     QHTMLComponentDefinition *definition() const { return m_definition; }
     QHTMLComponentDefinition *definitionJs() const { return m_definition; }
@@ -1577,6 +2020,16 @@ public:
     }
 
     int slotCount() const { return collectSlots().size(); }
+
+    emscripten::val slotsJs() const
+    {
+        refreshSlotViews();
+        emscripten::val out = emscripten::val::array();
+        for (int i = 0; i < m_slotViews.size(); ++i) {
+            out.set(i, m_slotViews.at(i));
+        }
+        return out;
+    }
 
     QHTMLComponentSlot *slotAt(int index) const
     {
@@ -1649,6 +2102,56 @@ public:
         return findChildComponentsOfType(QString::fromStdString(componentType)).toStdString();
     }
 
+    QHTMLNode *appendToSlot(const QString &slotName, QHTMLNode *node)
+    {
+        if (slotName.isEmpty() || !node || !slot(slotName)) {
+            return nullptr;
+        }
+        QHTMLNode *overrideNode = slotOverride(slotName, true);
+        QHTMLNode *cloned = cloneSlotApiNode(node);
+        if (!overrideNode || !cloned) {
+            delete cloned;
+            return nullptr;
+        }
+        overrideNode->appendChild(cloned);
+        return cloned;
+    }
+
+    bool removeFromSlot(const QString &slotName, QHTMLNode *node)
+    {
+        QHTMLNode *overrideNode = slotOverride(slotName, false);
+        if (!overrideNode || !node) {
+            return false;
+        }
+        for (int i = 0; i < overrideNode->childCount(); ++i) {
+            QHTMLNode *child = overrideNode->childAt(i);
+            if (child == node || (child && child->qhtmlUUID() == node->qhtmlUUID())) {
+                return overrideNode->removeChildAt(i);
+            }
+        }
+        return false;
+    }
+
+    QVector<QHTMLNode *> slotChildren(const QString &slotName) const
+    {
+        QVector<QHTMLNode *> out;
+        if (slotName.isEmpty()) {
+            return out;
+        }
+        if (QHTMLNode *overrideNode = slotOverride(slotName, false)) {
+            return overrideNode->children();
+        }
+        if (QHTMLComponentSlot *componentSlot = slot(slotName)) {
+            if (componentSlot->childCount() > 0) {
+                return componentSlot->children();
+            }
+        }
+        if (QHTMLSlotDefault *slotDefault = defaultForSlot(slotName)) {
+            return slotDefault->children();
+        }
+        return out;
+    }
+
 private:
     class SlotRenderContext
     {
@@ -1715,6 +2218,9 @@ private:
         const QHash<QString, QString> localAttributes = attributes();
         const QStringList keys = localAttributes.keys();
         for (const QString &key : keys) {
+            if (key == QStringLiteral("style")) {
+                continue;
+            }
             const QString value = localAttributes.value(key);
             if (!value.isEmpty()) {
                 out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
@@ -1725,6 +2231,10 @@ private:
         for (const QString &key : assignedKeys) {
             const QString value = assignedAttributes.value(key);
             out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
+        }
+        const QString inlineStyle = instanceInlineStyle();
+        if (!inlineStyle.trimmed().isEmpty()) {
+            out += QStringLiteral(" style=\"") + escapeAttribute(inlineStyle) + QStringLiteral("\"");
         }
         out += QStringLiteral(" component-definition=\"") + escapeAttribute(m_definition->qhtmlUUID()) + QStringLiteral("\"");
         out += QStringLiteral(" component-instance=\"") + escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
@@ -1828,6 +2338,30 @@ private:
         return value;
     }
 
+    QString instanceInlineStyle() const
+    {
+        QStringList declarations;
+        const QString existingStyle = attributes().value(QStringLiteral("style")).trimmed();
+        if (!existingStyle.isEmpty()) {
+            declarations << qhtmlInterpolateTextForContext(existingStyle, this);
+        }
+        QSet<QString> emitted;
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment) {
+                continue;
+            }
+            const QString cssName = qhtmlCssShortcutPropertyName(assignment->qhtmlName());
+            if (cssName.isEmpty() || emitted.contains(cssName)) {
+                continue;
+            }
+            declarations << cssName + QStringLiteral(":") +
+                                qhtmlResolveCssValueForContext(assignment->value(), this);
+            emitted.insert(cssName);
+        }
+        return declarations.join(QStringLiteral(";"));
+    }
+
     QString renderTemplateWithSlots(const SlotRenderContext &context) const
     {
         return renderChildrenWithSlots(m_definition, context);
@@ -1865,10 +2399,17 @@ private:
             const QHash<QString, QString> localAttributes = element->attributes();
             const QStringList keys = localAttributes.keys();
             for (const QString &key : keys) {
+                if (key == QStringLiteral("style")) {
+                    continue;
+                }
                 const QString value = localAttributes.value(key);
                 if (!value.isEmpty()) {
                     out += QStringLiteral(" ") + key + QStringLiteral("=\"") + escapeAttribute(value) + QStringLiteral("\"");
                 }
+            }
+            const QString inlineStyle = element->inlineStyleForContext(this);
+            if (!inlineStyle.trimmed().isEmpty()) {
+                out += QStringLiteral(" style=\"") + escapeAttribute(inlineStyle) + QStringLiteral("\"");
             }
             out += QStringLiteral(" qhtml-node=\"") + escapeAttribute(element->qhtmlUUID()) + QStringLiteral("\"");
             out += QStringLiteral(">");
@@ -1966,7 +2507,7 @@ private:
         return QString();
     }
 
-    QHTMLNode *slotOverride(const QString &name) const
+    QHTMLNode *slotOverride(const QString &name, bool createIfMissing = false) const
     {
         if (name.isEmpty()) {
             return nullptr;
@@ -1975,6 +2516,11 @@ private:
             if (child && child->qhtmlName() == name) {
                 return child;
             }
+        }
+        if (createIfMissing) {
+            QHTMLNode *overrideNode = new QHTMLNode(QStringLiteral("QHTMLComponentInstanceSlotOverride"), name);
+            const_cast<QHTMLComponentInstance *>(this)->appendChild(overrideNode);
+            return overrideNode;
         }
         return nullptr;
     }
@@ -2100,6 +2646,10 @@ private:
                type == QStringLiteral("QHTMLPropertyAssignment") ||
                type == QStringLiteral("QHTMLTimer") ||
                type == QStringLiteral("QHTMLPropertyAnimation") ||
+               type == QStringLiteral("QHTMLSequentialAnimation") ||
+               type == QStringLiteral("QHTMLParallelAnimation") ||
+               type == QStringLiteral("QHTMLScriptAction") ||
+               type == QStringLiteral("QHTMLBehavior") ||
                type == QStringLiteral("QHTMLImportNode") ||
                type == QStringLiteral("QHTMLStyle") ||
                type == QStringLiteral("QHTMLTheme") ||
@@ -2249,7 +2799,96 @@ private:
     }
 
     QHTMLComponentDefinition *m_definition = nullptr;
+    mutable QVector<QHTMLComponentInstanceSlot *> m_slotViews;
+
+    void refreshSlotViews() const
+    {
+        qDeleteAll(m_slotViews);
+        m_slotViews.clear();
+        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
+            m_slotViews.append(new QHTMLComponentInstanceSlot(const_cast<QHTMLComponentInstance *>(this), componentSlot));
+        }
+    }
+
+    static QHTMLNode *cloneSlotApiNode(QHTMLNode *node)
+    {
+        if (!node) {
+            return nullptr;
+        }
+        if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(node)) {
+            return new QHTMLTextFragment(text->value());
+        }
+        if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(node)) {
+            return new QHTMLHTMLFragment(html->value());
+        }
+        if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(node)) {
+            return new QHTMLUnknownFragment(unknown->value());
+        }
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(node)) {
+            QHTMLDomElement *cloned = new QHTMLDomElement(element->tagName(), element->attributes());
+            for (QHTMLNode *child : element->children()) {
+                cloned->appendChild(cloneSlotApiNode(child));
+            }
+            return cloned;
+        }
+        if (QHTMLComponentSlot *componentSlot = dynamic_cast<QHTMLComponentSlot *>(node)) {
+            return componentSlot->cloneSlot();
+        }
+        if (QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(node)) {
+            QHTMLComponentInstance *cloned = new QHTMLComponentInstance(component->qhtmlName(),
+                                                                       component->attributes(),
+                                                                       component->definition());
+            for (QHTMLNode *child : component->children()) {
+                cloned->appendChild(cloneSlotApiNode(child));
+            }
+            return cloned;
+        }
+        if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(node)) {
+            return assignment->cloneAssignment();
+        }
+        QHTMLNode *cloned = new QHTMLNode(node->qhtmlType(), node->qhtmlName());
+        for (QHTMLNode *child : node->children()) {
+            cloned->appendChild(cloneSlotApiNode(child));
+        }
+        return cloned;
+    }
 };
+
+inline QHTMLComponentInstanceSlot::QHTMLComponentInstanceSlot(QHTMLComponentInstance *owner,
+                                                             QHTMLComponentSlot *definitionSlot)
+    : QHTMLTypedNode(QStringLiteral("q-component-instance-slot"),
+                     definitionSlot ? definitionSlot->qhtmlName() : QString())
+{
+    m_owner = owner;
+    m_definitionSlot = definitionSlot;
+    setQHTMLType(QStringLiteral("QHTMLComponentInstanceSlot"));
+    setProperty(QStringLiteral("kind"), QStringLiteral("component-instance-slot"));
+}
+
+inline QHTMLNode *QHTMLComponentInstanceSlot::append(QHTMLNode *node)
+{
+    return m_owner && m_definitionSlot ? m_owner->appendToSlot(qhtmlName(), node) : nullptr;
+}
+
+inline bool QHTMLComponentInstanceSlot::remove(QHTMLNode *node)
+{
+    return m_owner && m_definitionSlot ? m_owner->removeFromSlot(qhtmlName(), node) : false;
+}
+
+inline QVector<QHTMLNode *> QHTMLComponentInstanceSlot::children() const
+{
+    return m_owner && m_definitionSlot ? m_owner->slotChildren(qhtmlName()) : QVector<QHTMLNode *>();
+}
+
+inline emscripten::val QHTMLComponentInstanceSlot::childrenJs() const
+{
+    emscripten::val out = emscripten::val::array();
+    const QVector<QHTMLNode *> localChildren = children();
+    for (int i = 0; i < localChildren.size(); ++i) {
+        out.set(i, localChildren.at(i));
+    }
+    return out;
+}
 
 class QHTMLWorker final : public QHTMLTypedNode
 {
@@ -3877,13 +4516,20 @@ inline QString qhtmlNodeScalarValue(const QHTMLNode *node,
     return QString();
 }
 
+inline QString qhtmlResolveCssValueForContext(QString value, const QHTMLNode *contextNode)
+{
+    QSet<QString> resolving;
+    return qhtmlResolvePropertyValue(value, contextNode, resolving, 0);
+}
+
 inline bool qhtmlExpressionCanResolve(QString expression, const QHTMLNode *contextNode)
 {
     expression = expression.trimmed();
     if (!contextNode || expression.isEmpty()) {
         return false;
     }
-    if (expression.startsWith(QStringLiteral("this."))) {
+    if (expression.startsWith(QStringLiteral("this.")) ||
+        expression.startsWith(QStringLiteral("object."))) {
         return true;
     }
     const QString firstPart = expression.split(QLatin1Char('.'), Qt::SkipEmptyParts).value(0).trimmed();
@@ -3922,7 +4568,7 @@ inline QString qhtmlResolveExpressionValue(QString expression,
     QHTMLReference *current = nullptr;
     const QHTMLNode *currentNode = nullptr;
     int index = 0;
-    if (parts.first() == QStringLiteral("this")) {
+    if (parts.first() == QStringLiteral("this") || parts.first() == QStringLiteral("object")) {
         currentNode = contextNode;
         current = const_cast<QHTMLNode *>(contextNode);
         index = 1;
@@ -4450,6 +5096,24 @@ public:
     QString body() const { return m_body; }
     std::string bodyJs() const { return m_body.toStdString(); }
 
+    bool propagate() const
+    {
+        const bool present = attributes().contains(QStringLiteral("propagate")) ||
+                             attributes().contains(QStringLiteral("propogate"));
+        const QString value = attributes().value(QStringLiteral("propagate"),
+                                                 attributes().value(QStringLiteral("propogate"))).trimmed().toLower();
+        if (!present) {
+            return false;
+        }
+        if (value.isEmpty()) {
+            return true;
+        }
+        return value == QStringLiteral("true") ||
+               value == QStringLiteral("1") ||
+               value == QStringLiteral("yes") ||
+               value == QStringLiteral("on");
+    }
+
     QHTMLEventHandler *cloneEventHandler() const
     {
         QHash<QString, QString> clonedAttributes = attributes();
@@ -4460,7 +5124,7 @@ public:
     QString renderHtml() const override { return QString(); }
     QString sourceQHTML(int indentLevel = 0) const override
     {
-        QString header = m_eventName;
+        QString header = propagate() ? QStringLiteral("propagate ") + m_eventName : m_eventName;
         if (!parameterList().isEmpty()) {
             header += QStringLiteral("(") + parameterList() + QStringLiteral(")");
         }
@@ -5624,7 +6288,7 @@ public:
         setProperty(QStringLiteral("kind"), QStringLiteral("property-animation"));
         m_startedSignal = appendBuiltInSignal(QStringLiteral("started"));
         m_stoppedSignal = appendBuiltInSignal(QStringLiteral("stopped"));
-        m_steppedSignal = appendBuiltInSignal(QStringLiteral("stepped"), QStringLiteral("value, currentStep"));
+        m_steppedSignal = appendBuiltInSignal(QStringLiteral("stepped"), QStringLiteral("stepNum, value"));
         m_endedSignal = appendBuiltInSignal(QStringLiteral("ended"));
         m_finishedSignal = appendBuiltInSignal(QStringLiteral("finished"));
     }
@@ -5746,8 +6410,8 @@ public:
             ++m_currentStep;
             if (m_steppedSignal) {
                 emitted += m_steppedSignal->emitSignal({
-                    QString::number(x, 'g', 16),
-                    QString::number(m_currentStep)
+                    QString::number(m_currentStep),
+                    QString::number(x, 'g', 16)
                 }, this);
             }
         }
@@ -5875,13 +6539,329 @@ private:
     int m_duration = 0;
     QString m_easing = QStringLiteral("linear");
     bool m_repeat = false;
-    int m_steps = 60;
+    int m_steps = 100;
     int m_currentStep = 0;
     double m_from = 0.0;
     double m_to = 0.0;
     double m_stepAmount = 0.0;
     QVector<double> m_stepStones;
     bool m_running = false;
+};
+
+class QHTMLScriptAction final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLScriptAction(const QString &name = QString(),
+                               const QHash<QString, QString> &attributes = {},
+                               const QString &body = QString())
+        : QHTMLTypedNode(QStringLiteral("q-script-action"), name, attributes),
+          m_body(body.trimmed())
+    {
+        setQHTMLType(QStringLiteral("QHTMLScriptAction"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("script-action"));
+        m_startedSignal = appendBuiltInSignal(QStringLiteral("started"));
+        m_finishedSignal = appendBuiltInSignal(QStringLiteral("finished"));
+    }
+
+    QString body() const { return m_body; }
+    std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body) { m_body = body; }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
+
+    QHTMLSignal *startedSignal() const { return m_startedSignal; }
+    QHTMLSignal *startedSignalJs() const { return m_startedSignal; }
+    QHTMLSignal *finishedSignal() const { return m_finishedSignal; }
+    QHTMLSignal *finishedSignalJs() const { return m_finishedSignal; }
+
+    void setSignalBus(QHTMLSignalBus *bus)
+    {
+        for (QHTMLSignal *signal : { m_startedSignal, m_finishedSignal }) {
+            if (signal) {
+                signal->setSignalBus(bus);
+            }
+        }
+    }
+
+    void run()
+    {
+        if (m_startedSignal) {
+            m_startedSignal->emitSignal(QStringList(), this);
+        }
+        if (m_finishedSignal) {
+            m_finishedSignal->emitSignal(QStringList(), this);
+        }
+    }
+
+    void runJs() { run(); }
+
+    QHTMLScriptAction *cloneScriptAction() const
+    {
+        QHTMLScriptAction *cloned = new QHTMLScriptAction(qhtmlName(), attributes(), m_body);
+        for (QHTMLNode *child : children()) {
+            if (!child || child == m_startedSignal || child == m_finishedSignal) {
+                continue;
+            }
+            if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child)) {
+                cloned->appendChild(handler->cloneEventHandler());
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                cloned->appendChild(assignment->cloneAssignment());
+            }
+        }
+        return cloned;
+    }
+
+    QString renderHtml() const override { return QString(); }
+
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QString header = QStringLiteral("q-script-action");
+        if (!qhtmlName().trimmed().isEmpty()) {
+            header += QLatin1Char(' ') + qhtmlName().trimmed();
+        }
+        return sourceBlock(header, m_body, indentLevel);
+    }
+
+private:
+    QHTMLSignal *appendBuiltInSignal(const QString &name)
+    {
+        QHTMLSignal *signal = new QHTMLSignal(name);
+        appendChild(signal);
+        return signal;
+    }
+
+    QString m_body;
+    QHTMLSignal *m_startedSignal = nullptr;
+    QHTMLSignal *m_finishedSignal = nullptr;
+};
+
+class QHTMLAnimationGroup : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLAnimationGroup(const QString &keyword,
+                                 const QString &type,
+                                 const QString &kind,
+                                 const QString &name = QString(),
+                                 const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(keyword, name, attributes)
+    {
+        setQHTMLType(type);
+        setProperty(QStringLiteral("kind"), kind);
+        m_startedSignal = appendBuiltInSignal(QStringLiteral("started"));
+        m_stoppedSignal = appendBuiltInSignal(QStringLiteral("stopped"));
+        m_finishedSignal = appendBuiltInSignal(QStringLiteral("finished"));
+    }
+
+    bool running() const { return m_running; }
+    void setRunning(bool running)
+    {
+        if (running) {
+            start();
+        } else {
+            stop();
+        }
+    }
+    void setRunningJs(bool running) { setRunning(running); }
+
+    QHTMLSignal *startedSignal() const { return m_startedSignal; }
+    QHTMLSignal *startedSignalJs() const { return m_startedSignal; }
+    QHTMLSignal *stoppedSignal() const { return m_stoppedSignal; }
+    QHTMLSignal *stoppedSignalJs() const { return m_stoppedSignal; }
+    QHTMLSignal *finishedSignal() const { return m_finishedSignal; }
+    QHTMLSignal *finishedSignalJs() const { return m_finishedSignal; }
+
+    void setSignalBus(QHTMLSignalBus *bus)
+    {
+        for (QHTMLSignal *signal : { m_startedSignal, m_stoppedSignal, m_finishedSignal }) {
+            if (signal) {
+                signal->setSignalBus(bus);
+            }
+        }
+        for (QHTMLNode *child : children()) {
+            if (QHTMLPropertyAnimation *animation = dynamic_cast<QHTMLPropertyAnimation *>(child)) {
+                animation->setSignalBus(bus);
+            } else if (QHTMLAnimationGroup *group = dynamic_cast<QHTMLAnimationGroup *>(child)) {
+                group->setSignalBus(bus);
+            } else if (QHTMLScriptAction *action = dynamic_cast<QHTMLScriptAction *>(child)) {
+                action->setSignalBus(bus);
+            }
+        }
+    }
+
+    void start()
+    {
+        m_running = true;
+        if (m_startedSignal) {
+            m_startedSignal->emitSignal(QStringList(), this);
+        }
+    }
+
+    void stop()
+    {
+        const bool wasRunning = m_running;
+        m_running = false;
+        if (wasRunning && m_stoppedSignal) {
+            m_stoppedSignal->emitSignal(QStringList(), this);
+        }
+    }
+
+    void finish()
+    {
+        m_running = false;
+        if (m_finishedSignal) {
+            m_finishedSignal->emitSignal(QStringList(), this);
+        }
+    }
+
+    QHTMLAnimationGroup *cloneAnimationGroup() const
+    {
+        QHTMLAnimationGroup *cloned = cloneEmptyGroup();
+        cloned->m_running = m_running;
+        for (QHTMLNode *child : children()) {
+            if (!child ||
+                child == m_startedSignal ||
+                child == m_stoppedSignal ||
+                child == m_finishedSignal) {
+                continue;
+            }
+            if (QHTMLPropertyAnimation *animation = dynamic_cast<QHTMLPropertyAnimation *>(child)) {
+                cloned->appendChild(animation->cloneAnimation());
+            } else if (QHTMLAnimationGroup *group = dynamic_cast<QHTMLAnimationGroup *>(child)) {
+                cloned->appendChild(group->cloneAnimationGroup());
+            } else if (QHTMLScriptAction *action = dynamic_cast<QHTMLScriptAction *>(child)) {
+                cloned->appendChild(action->cloneScriptAction());
+            } else if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child)) {
+                cloned->appendChild(handler->cloneEventHandler());
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                cloned->appendChild(assignment->cloneAssignment());
+            }
+        }
+        return cloned;
+    }
+
+    QString renderHtml() const override { return QString(); }
+
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QStringList lines;
+        for (QHTMLNode *child : children()) {
+            if (!child ||
+                child == m_startedSignal ||
+                child == m_stoppedSignal ||
+                child == m_finishedSignal) {
+                continue;
+            }
+            lines.append(child->sourceQHTML(0));
+        }
+        QString header = keyword();
+        if (!qhtmlName().trimmed().isEmpty()) {
+            header += QLatin1Char(' ') + qhtmlName().trimmed();
+        }
+        return sourceBlock(header, lines.join(QLatin1Char('\n')), indentLevel);
+    }
+
+protected:
+    virtual QHTMLAnimationGroup *cloneEmptyGroup() const = 0;
+
+private:
+    QHTMLSignal *appendBuiltInSignal(const QString &name)
+    {
+        QHTMLSignal *signal = new QHTMLSignal(name);
+        appendChild(signal);
+        return signal;
+    }
+
+    bool m_running = false;
+    QHTMLSignal *m_startedSignal = nullptr;
+    QHTMLSignal *m_stoppedSignal = nullptr;
+    QHTMLSignal *m_finishedSignal = nullptr;
+};
+
+class QHTMLSequentialAnimation final : public QHTMLAnimationGroup
+{
+public:
+    explicit QHTMLSequentialAnimation(const QString &name = QString(),
+                                      const QHash<QString, QString> &attributes = {})
+        : QHTMLAnimationGroup(QStringLiteral("q-sequential-animation"),
+                              QStringLiteral("QHTMLSequentialAnimation"),
+                              QStringLiteral("sequential-animation"),
+                              name,
+                              attributes)
+    {
+    }
+
+protected:
+    QHTMLAnimationGroup *cloneEmptyGroup() const override
+    {
+        return new QHTMLSequentialAnimation(qhtmlName(), attributes());
+    }
+};
+
+class QHTMLParallelAnimation final : public QHTMLAnimationGroup
+{
+public:
+    explicit QHTMLParallelAnimation(const QString &name = QString(),
+                                    const QHash<QString, QString> &attributes = {})
+        : QHTMLAnimationGroup(QStringLiteral("q-parallel-animation"),
+                              QStringLiteral("QHTMLParallelAnimation"),
+                              QStringLiteral("parallel-animation"),
+                              name,
+                              attributes)
+    {
+    }
+
+protected:
+    QHTMLAnimationGroup *cloneEmptyGroup() const override
+    {
+        return new QHTMLParallelAnimation(qhtmlName(), attributes());
+    }
+};
+
+class QHTMLBehavior final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLBehavior(const QString &propertyName = QString(),
+                           const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(QStringLiteral("behavior"), propertyName, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLBehavior"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("behavior"));
+        setProperty(QStringLiteral("property"), propertyName);
+    }
+
+    QString propertyName() const { return qhtmlName(); }
+    std::string propertyNameJs() const { return propertyName().toStdString(); }
+
+    QHTMLBehavior *cloneBehavior() const
+    {
+        QHTMLBehavior *cloned = new QHTMLBehavior(qhtmlName(), attributes());
+        for (QHTMLNode *child : children()) {
+            if (QHTMLPropertyAnimation *animation = dynamic_cast<QHTMLPropertyAnimation *>(child)) {
+                cloned->appendChild(animation->cloneAnimation());
+            } else if (QHTMLAnimationGroup *group = dynamic_cast<QHTMLAnimationGroup *>(child)) {
+                cloned->appendChild(group->cloneAnimationGroup());
+            } else if (QHTMLScriptAction *action = dynamic_cast<QHTMLScriptAction *>(child)) {
+                cloned->appendChild(action->cloneScriptAction());
+            } else if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(child)) {
+                cloned->appendChild(handler->cloneEventHandler());
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                cloned->appendChild(assignment->cloneAssignment());
+            }
+        }
+        return cloned;
+    }
+
+    QString renderHtml() const override { return QString(); }
+
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QStringList lines;
+        for (QHTMLNode *child : children()) {
+            if (child) {
+                lines.append(child->sourceQHTML(0));
+            }
+        }
+        return sourceBlock(QStringLiteral("behavior on ") + qhtmlName(), lines.join(QLatin1Char('\n')), indentLevel);
+    }
 };
 
 class QHTMLStyle final : public QHTMLTypedNode
@@ -6546,3 +7526,92 @@ private:
     QHTMLNode *themeApplicationFrom(QHTMLDomElement *node, QHTMLTheme *theme) const;
     static void moveChildren(QHTMLNode *from, QHTMLNode *to);
 };
+
+inline QJsonObject QHTMLNode::toJsonObject() const
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("type"), qhtmlType());
+    object.insert(QStringLiteral("name"), qhtmlName());
+    object.insert(QStringLiteral("uuid"), qhtmlUUID());
+
+    QJsonObject properties;
+    for (auto it = qhtmlProperties.constBegin(); it != qhtmlProperties.constEnd(); ++it) {
+        properties.insert(it.key(), it.value());
+    }
+    object.insert(QStringLiteral("properties"), properties);
+
+    if (const QHTMLDomElement *element = dynamic_cast<const QHTMLDomElement *>(this)) {
+        object.insert(QStringLiteral("tagName"), element->tagName());
+        QJsonObject attributes;
+        const QHash<QString, QString> localAttributes = element->attributes();
+        for (auto it = localAttributes.constBegin(); it != localAttributes.constEnd(); ++it) {
+            attributes.insert(it.key(), it.value());
+        }
+        object.insert(QStringLiteral("attributes"), attributes);
+    }
+    if (const QHTMLTypedNode *typed = dynamic_cast<const QHTMLTypedNode *>(this)) {
+        object.insert(QStringLiteral("keyword"), typed->keyword());
+        QJsonObject attributes;
+        const QHash<QString, QString> localAttributes = typed->attributes();
+        for (auto it = localAttributes.constBegin(); it != localAttributes.constEnd(); ++it) {
+            attributes.insert(it.key(), it.value());
+        }
+        object.insert(QStringLiteral("attributes"), attributes);
+    }
+    if (const QHTMLTextFragment *text = dynamic_cast<const QHTMLTextFragment *>(this)) {
+        object.insert(QStringLiteral("value"), text->value());
+    } else if (const QHTMLHTMLFragment *html = dynamic_cast<const QHTMLHTMLFragment *>(this)) {
+        object.insert(QStringLiteral("value"), html->value());
+    } else if (const QHTMLUnknownFragment *unknown = dynamic_cast<const QHTMLUnknownFragment *>(this)) {
+        object.insert(QStringLiteral("value"), unknown->value());
+    } else if (const QHTMLProperty *propertyNode = dynamic_cast<const QHTMLProperty *>(this)) {
+        object.insert(QStringLiteral("value"), propertyNode->value());
+    } else if (const QHTMLPropertyAssignment *assignment = dynamic_cast<const QHTMLPropertyAssignment *>(this)) {
+        object.insert(QStringLiteral("value"), assignment->value());
+    } else if (const QHTMLFunction *functionNode = dynamic_cast<const QHTMLFunction *>(this)) {
+        object.insert(QStringLiteral("body"), functionNode->body());
+        object.insert(QStringLiteral("parameters"), functionNode->parameterList());
+    } else if (const QHTMLEventHandler *handler = dynamic_cast<const QHTMLEventHandler *>(this)) {
+        object.insert(QStringLiteral("body"), handler->body());
+    } else if (const QHTMLScript *script = dynamic_cast<const QHTMLScript *>(this)) {
+        object.insert(QStringLiteral("body"), script->body());
+    } else if (const QHTMLStyle *style = dynamic_cast<const QHTMLStyle *>(this)) {
+        object.insert(QStringLiteral("body"), style->body());
+        object.insert(QStringLiteral("cssText"), style->cssText());
+    } else if (const QHTMLTheme *theme = dynamic_cast<const QHTMLTheme *>(this)) {
+        object.insert(QStringLiteral("body"), theme->body());
+    } else if (const QHTMLImportNode *importNode = dynamic_cast<const QHTMLImportNode *>(this)) {
+        object.insert(QStringLiteral("path"), importNode->path());
+        object.insert(QStringLiteral("importKind"), importNode->importKind());
+    } else if (const QHTMLComponentDefinition *definition = dynamic_cast<const QHTMLComponentDefinition *>(this)) {
+        object.insert(QStringLiteral("componentName"), definition->qhtmlName());
+        object.insert(QStringLiteral("extends"), definition->extendsList().join(QStringLiteral(" ")));
+    } else if (const QHTMLComponentInstance *instance = dynamic_cast<const QHTMLComponentInstance *>(this)) {
+        object.insert(QStringLiteral("componentDefinitionUUID"), instance->componentDefinitionUUID());
+        object.insert(QStringLiteral("componentName"), instance->definition() ? instance->definition()->qhtmlName() : QString());
+    }
+
+    object.insert(QStringLiteral("source"), sourceQHTML(0));
+    object.insert(QStringLiteral("html"), renderHtml());
+
+    QJsonArray childrenArray;
+    for (QHTMLNode *child : children()) {
+        if (child) {
+            childrenArray.append(child->toJsonObject());
+        }
+    }
+    object.insert(QStringLiteral("children"), childrenArray);
+    return object;
+}
+
+inline QString QHTMLNode::toJSONText() const
+{
+    QHTMLJsonDocument document{QJsonDocument(toJsonObject())};
+    return document.toJson();
+}
+
+inline emscripten::val QHTMLNode::toJSONJs() const
+{
+    const std::string json = toJSONText().toStdString();
+    return emscripten::val::global("JSON").call<emscripten::val>("parse", json);
+}

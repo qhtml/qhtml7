@@ -1,0 +1,153 @@
+q-component page-builder-file-dialog {
+  dialog.pb-file-dialog {
+    id: "pb-file-dialog"
+    div.pb-file-card {
+      header.pb-file-head {
+        div {
+          h2 { text { Site Files } }
+          p { id: "pb-file-dialog-subtitle"; text { Select a file to load, or organize pages into folders. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close files"
+          onclick { window.QPageBuilder.closeFileDialog(); }
+          html { &times; }
+        }
+      }
+
+      div.pb-file-toolbar {
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.newFileFolder(); }
+          text { New folder }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.newFile(); }
+          text { New file }
+        }
+      }
+
+      div.pb-file-body {
+        q-tree-view {
+          id: "pb-file-tree"
+        }
+      }
+
+      footer.pb-file-actions {
+        div.pb-file-selected {
+          id: "pb-file-selected"
+          text { / }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.closeFileDialog(); }
+          text { Close }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-file-manager {
+  dialog.pb-file-dialog {
+    id: "pb-file-manager"
+    div.pb-file-card {
+      header.pb-file-head {
+        div {
+          h2 { text { File Manager } }
+          p { id: "pb-file-manager-subtitle"; text { Select a file to rename, delete, or move. } }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close file manager"
+          onclick { window.QPageBuilder.closeFileManager(); }
+          html { &times; }
+        }
+      }
+
+      div.pb-file-body {
+        q-tree-view {
+          id: "pb-file-manager-tree"
+        }
+      }
+
+      footer.pb-file-actions {
+        div.pb-file-selected {
+          id: "pb-file-manager-selected"
+          text { / }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.renameManagedFile(); }
+          text { Rename }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.moveManagedFile(); }
+          text { Move }
+        }
+        button.pb-action.danger {
+          type: "button"
+          onclick { window.QPageBuilder.deleteManagedFile(); }
+          text { Delete }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.closeFileManager(); }
+          text { Close }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-folder-picker {
+  dialog.pb-file-dialog {
+    id: "pb-folder-picker"
+    div.pb-file-card {
+      header.pb-file-head {
+        div {
+          h2 {
+            id: "pb-folder-picker-title"
+            text { Select Folder }
+          }
+          p {
+            id: "pb-folder-picker-subtitle"
+            text { Choose a destination folder. }
+          }
+        }
+        button.pb-icon-button {
+          type: "button"
+          aria-label: "Close folder picker"
+          onclick { window.QPageBuilder.closeFolderPicker(); }
+          html { &times; }
+        }
+      }
+
+      div.pb-file-body {
+        q-tree-view {
+          id: "pb-folder-tree"
+          foldersOnly: true
+        }
+      }
+
+      footer.pb-file-actions {
+        div.pb-file-selected {
+          id: "pb-folder-selected"
+          text { / }
+        }
+        button.pb-action.secondary {
+          type: "button"
+          onclick { window.QPageBuilder.closeFolderPicker(); }
+          text { Cancel }
+        }
+        button.pb-action.primary {
+          type: "button"
+          onclick { window.QPageBuilder.confirmFolderPicker(); }
+          text { Choose Folder }
+        }
+      }
+    }
+  }
+}

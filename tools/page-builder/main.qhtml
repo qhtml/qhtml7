@@ -1,0 +1,458 @@
+q-import { ./palette.qhtml }
+q-import { ./canvas.qhtml }
+q-import { ./filemanager.qhtml }
+q-import { ./proxy.qhtml }
+q-import { ./q-tree-view.qhtml }
+q-import { ./q-popup-menu.qhtml }
+q-import { ./q-animation-tool.qhtml }
+
+q-component page-builder-toolbar {
+  function exportLayout() {
+    window.QPageBuilder.exportToPanel();
+  }
+
+  function clearLayout() {
+    window.QPageBuilder.clearCanvas();
+  }
+
+  function newFile() {
+    window.QPageBuilder.newLayoutFile();
+  }
+
+  function saveLayout() {
+    window.QPageBuilder.saveLayout();
+  }
+
+  function loadLayout() {
+    window.QPageBuilder.loadLayout();
+  }
+
+  function fileManager() {
+    window.QPageBuilder.openFileManager();
+  }
+
+  function importQHtml() {
+    window.QPageBuilder.importQHtmlFile();
+  }
+
+  function loadPalette() {
+    window.QPageBuilder.loadPalette();
+  }
+
+  function savePalette() {
+    window.QPageBuilder.savePalette();
+  }
+
+  function importPaletteItem() {
+    window.QPageBuilder.importPaletteItem();
+  }
+
+  function pageInfo() {
+    window.QPageBuilder.editPageInfo();
+  }
+
+  header.pb-toolbar {
+    div.pb-brand {
+      div.pb-logo { text { Q } }
+      div {
+        h1 { text { QHTML7 Page Builder } }
+        p { text { Drag palette items into the canvas. Export emits clean QHTML layout source. } }
+      }
+    }
+    q-layout.pb-action-groups {
+      columns: 4;
+      cols: 4;
+      gap: "10px";
+      q-row {
+        q-col.pb-action-group {
+          width: "auto";
+          button.pb-action.secondary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").loadLayout(); }
+            text { Load File }
+          }
+          button.pb-action.primary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").saveLayout(); }
+            text { Save File }
+          }
+        }
+        q-col.pb-action-group {
+          width: "auto";
+          button.pb-action.secondary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").loadPalette(); }
+            text { Load Palette }
+          }
+          button.pb-action.primary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").savePalette(); }
+            text { Save Palette }
+          }
+          button.pb-action.secondary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").importPaletteItem(); }
+            text { Import Palette Item }
+          }
+        }
+        q-col.pb-action-group {
+          width: "auto";
+          button.pb-action.secondary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").pageInfo(); }
+            text { Page Info }
+          }
+          button.pb-action.secondary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").importQHtml(); }
+            text { Import QHTML }
+          }
+        }
+        q-col.pb-action-group {
+          width: "auto";
+          button.pb-action.danger {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").clearLayout(); }
+            text { Clear }
+          }
+          button.pb-action.primary {
+            type: "button"
+            onclick { this.closest("page-builder-toolbar").exportLayout(); }
+            text { Export QHTML }
+          }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-app {
+  q-style pageBuilderAppStyle {
+    minHeight: 100vh;
+    display: grid;
+    gridTemplateRows: auto minmax(0,1fr);
+    background: rgba(15,23,42,.92);
+    color: #172033;
+    fontFamily: "Aptos, Segoe UI, sans-serif";
+  }
+
+  q-style pageBuilderToolbarStyle {
+    height: 78px;
+    display: flex;
+    alignItems: center;
+    justifyContent: space-between;
+    padding: 0 24px;
+    background: rgba(255,255,255,.86);
+    backdropFilter: blur(18px);
+    borderBottom: 1px solid rgba(148,163,184,.38);
+    boxShadow: 0 14px 48px rgba(15,23,42,.08);
+    position: sticky;
+    top: 0;
+    zIndex: 50;
+  }
+
+  q-style pageBuilderBrandStyle {
+    display: flex;
+    alignItems: center;
+    gap: 14px;
+  }
+
+  q-style pageBuilderLogoStyle {
+    width: 44px;
+    height: 44px;
+    borderRadius: 16px;
+    display: grid;
+    placeItems: center;
+    background: linear-gradient(135deg,#0f172a,#2563eb);
+    color: white;
+    fontWeight: 950;
+    fontSize: 22px;
+    boxShadow: 0 12px 28px rgba(37,99,235,.28);
+  }
+
+  q-style pageBuilderTitleStyle {
+    fontSize: 22px;
+    lineHeight: 1;
+    margin: 0;
+    letterSpacing: -.04em;
+  }
+
+  q-style pageBuilderCopyStyle {
+    margin: .35rem 0 0;
+    color: #607089;
+    fontSize: 13px;
+    lineHeight: 1.4;
+  }
+
+  q-style pageBuilderActionRowStyle {
+    display: flex;
+    gap: 10px;
+    flexWrap: wrap;
+  }
+
+  q-style pageBuilderActionStyle {
+    border: 0;
+    borderRadius: 999px;
+    padding: 10px 15px;
+    fontWeight: 800;
+    cursor: pointer;
+    boxShadow: 0 8px 22px rgba(15,23,42,.08);
+  }
+
+  q-style pageBuilderPrimaryActionStyle {
+    background: #0f172a;
+    color: white;
+  }
+
+  q-style pageBuilderSecondaryActionStyle {
+    background: white;
+    color: #1d4ed8;
+    border: 1px solid #c7d2fe;
+  }
+
+  q-style pageBuilderDangerActionStyle {
+    background: #fff1f2;
+    color: #be123c;
+    border: 1px solid #fecdd3;
+  }
+
+  q-style pageBuilderWorkspaceStyle {
+    minHeight: 0;
+    display: grid;
+    gridTemplateColumns: 300px minmax(0,1fr);
+    gap: 18px;
+    padding: 18px;
+  }
+
+  q-style pageBuilderMainStyle {
+    minWidth: 0;
+    display: grid;
+    gridTemplateRows: minmax(0,1fr) 260px;
+    gap: 18px;
+  }
+
+  q-style pageBuilderSidebarStyle {
+    minHeight: 0;
+    background: rgba(15,23,42,.92);
+    border: 1px solid rgba(148,163,184,.24);
+    borderRadius: 26px;
+    boxShadow: 0 28px 80px rgba(15,23,42,.22);
+    overflow: hidden;
+    color: white;
+  }
+
+  q-style pageBuilderSidebarHeadStyle {
+    padding: 22px 22px 10px;
+  }
+
+  q-style pageBuilderPanelStyle {
+    background: rgba(255,255,255,.78);
+    border: 1px solid rgba(148,163,184,.42);
+    borderRadius: 26px;
+    boxShadow: 0 22px 70px rgba(15,23,42,.12);
+    overflow: hidden;
+  }
+
+  q-style pageBuilderPanelHeadStyle {
+    display: flex;
+    justifyContent: space-between;
+    alignItems: center;
+    padding: 18px 20px;
+    borderBottom: 1px solid rgba(148,163,184,.28);
+    background: rgba(248,250,252,.82);
+  }
+
+  q-style pageBuilderSectionTitleStyle {
+    margin: 0;
+    fontSize: 18px;
+    letterSpacing: -.03em;
+  }
+
+  q-style pageBuilderStageStyle {
+    height: 100vh;
+    padding: 18px;
+    overflow: auto;
+  }
+
+  q-style pageBuilderStatusStyle {
+    fontSize: 12px;
+    fontWeight: 900;
+    textTransform: uppercase;
+    letterSpacing: .08em;
+    color: #1d4ed8;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    borderRadius: 999px;
+    padding: 8px 11px;
+  }
+
+  q-style pageBuilderPaletteBodyStyle {
+    display: grid;
+    gap: 10px;
+    border: 0;
+    borderRadius: 0;
+    background: transparent;
+    boxShadow: none;
+    padding: 10px 16px 18px;
+  }
+
+  q-style pageBuilderPaletteButtonStyle {
+    display: block;
+    position: relative;
+    minHeight: 76px;
+    padding: 0;
+    borderRadius: 18px;
+    background: white;
+    border: 1px solid rgba(148,163,184,.3);
+    boxShadow: 0 12px 26px rgba(0,0,0,.18);
+    cursor: grab;
+    overflow: hidden;
+  }
+
+  q-style pageBuilderPalettePreviewStyle {
+    minHeight: 76px;
+    padding: 14px;
+    background: linear-gradient(135deg,#ffffff,#eef6ff);
+    borderLeft: 5px solid #2563eb;
+  }
+
+  q-style pageBuilderDialogStyle {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    borderRadius: 24px;
+  }
+
+  q-style pageBuilderDialogCardStyle {
+    background: #f8fafc;
+    border: 1px solid rgba(148,163,184,.45);
+    borderRadius: 24px;
+    boxShadow: 0 36px 120px rgba(15,23,42,.38);
+    overflow: hidden;
+  }
+
+  q-style pageBuilderDialogHeadStyle {
+    display: flex;
+    justifyContent: space-between;
+    gap: 18px;
+    alignItems: flex-start;
+    padding: 18px 22px;
+    background: white;
+    borderBottom: 1px solid #dbe4f0;
+  }
+
+  q-style pageBuilderIconButtonStyle {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    borderRadius: 999px;
+    background: #eef2ff;
+    color: #1e293b;
+    fontSize: 23px;
+    lineHeight: 1;
+    cursor: pointer;
+  }
+
+  q-style pageBuilderFileBodyStyle {
+    padding: 14px 18px 18px;
+    minHeight: 360px;
+  }
+
+  q-style pageBuilderFileActionsStyle {
+    display: flex;
+    alignItems: center;
+    justifyContent: flex-end;
+    gap: 10px;
+    padding: 14px 22px 18px;
+    borderTop: 1px solid #dbe4f0;
+    background: #fff;
+  }
+
+  q-default-theme pageBuilderTheme {
+    .pb-app { pageBuilderAppStyle }
+    .pb-toolbar { pageBuilderToolbarStyle }
+    .pb-brand { pageBuilderBrandStyle }
+    .pb-logo { pageBuilderLogoStyle }
+    .pb-brand h1 { pageBuilderTitleStyle }
+    .pb-brand p { pageBuilderCopyStyle }
+    .pb-actions { pageBuilderActionRowStyle }
+    .pb-action { pageBuilderActionStyle }
+    .pb-action.primary { pageBuilderPrimaryActionStyle }
+    .pb-action.secondary { pageBuilderSecondaryActionStyle }
+    .pb-action.danger { pageBuilderDangerActionStyle }
+    .pb-workspace { pageBuilderWorkspaceStyle }
+    .pb-main { pageBuilderMainStyle }
+    .pb-sidebar { pageBuilderSidebarStyle }
+    .pb-sidebar-head { pageBuilderSidebarHeadStyle }
+    .pb-sidebar h2 { pageBuilderSectionTitleStyle }
+    .pb-sidebar p { pageBuilderCopyStyle }
+    .pb-canvas-shell { pageBuilderPanelStyle }
+    .pb-export-panel { pageBuilderPanelStyle }
+    .pb-canvas-meta { pageBuilderPanelHeadStyle }
+    .pb-export-head { pageBuilderPanelHeadStyle }
+    .pb-canvas-meta h2 { pageBuilderSectionTitleStyle }
+    .pb-export-head h2 { pageBuilderSectionTitleStyle }
+    .pb-canvas-meta p { pageBuilderCopyStyle }
+    .pb-export-head p { pageBuilderCopyStyle }
+    .pb-stage { pageBuilderStageStyle }
+    .pb-status { pageBuilderStatusStyle }
+    .q-palette-body { pageBuilderPaletteBodyStyle }
+    q-palette-toolbox-button { pageBuilderPaletteButtonStyle }
+    .pb-palette-preview { pageBuilderPalettePreviewStyle }
+    .pb-palette-preview h3 { pageBuilderSectionTitleStyle }
+    .pb-palette-preview p { pageBuilderCopyStyle }
+    .pb-palette-editor { pageBuilderDialogStyle }
+    .pb-component-builder { pageBuilderDialogStyle }
+    .pb-instance-editor { pageBuilderDialogStyle }
+    .pb-file-dialog { pageBuilderDialogStyle }
+    .pb-palette-editor-card { pageBuilderDialogCardStyle }
+    .pb-component-builder-card { pageBuilderDialogCardStyle }
+    .pb-instance-editor-card { pageBuilderDialogCardStyle }
+    .pb-file-card { pageBuilderDialogCardStyle }
+    .pb-palette-editor-head { pageBuilderDialogHeadStyle }
+    .pb-component-builder-head { pageBuilderDialogHeadStyle }
+    .pb-instance-editor-head { pageBuilderDialogHeadStyle }
+    .pb-file-head { pageBuilderDialogHeadStyle }
+    .pb-icon-button { pageBuilderIconButtonStyle }
+    .pb-file-body { pageBuilderFileBodyStyle }
+    .pb-file-actions { pageBuilderFileActionsStyle }
+  }
+
+  div.pb-app {
+    page-builder-toolbar { }
+    main.pb-workspace {
+      page-builder-palette { }
+      div.pb-main {
+        PageBuilderCanvas mybuilder {
+          canvasWidth: 72vw;
+          canvasHeight: 150vh;
+          width: 72vw;
+          height: 150vh;
+        }
+        page-builder-export-panel { }
+      }
+    }
+    page-builder-palette-editor { }
+    page-builder-component-builder { }
+    page-builder-instance-editor { }
+    page-builder-file-dialog { }
+    page-builder-file-manager { }
+    page-builder-folder-picker { }
+    q-popup-menu {
+      id: "pb-file-context-menu"
+      popup-contents {
+        div.pb-file-context-menu {
+          id: "pb-file-context-menu-contents"
+        }
+      }
+    }
+    q-popup-menu {
+      id: "pb-canvas-context-menu"
+      popup-contents {
+        div.pb-canvas-context-menu {
+          id: "pb-canvas-context-menu-contents"
+        }
+      }
+    }
+  }
+}

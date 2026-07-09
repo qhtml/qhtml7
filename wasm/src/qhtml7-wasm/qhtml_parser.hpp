@@ -149,10 +149,14 @@ protected:
             QStringLiteral("q-model"),
             QStringLiteral("q-template"),
             QStringLiteral("q-script"),
+            QStringLiteral("behavior"),
             QStringLiteral("q-model-view"),
             QStringLiteral("q-factory"),
             QStringLiteral("q-timer"),
             QStringLiteral("q-property-animation"),
+            QStringLiteral("q-sequential-animation"),
+            QStringLiteral("q-parallel-animation"),
+            QStringLiteral("q-script-action"),
             QStringLiteral("q-painter"),
             QStringLiteral("q-canvas"),
             QStringLiteral("q-video"),
@@ -331,6 +335,7 @@ private:
                keyword == QStringLiteral("q-connect") ||
                keyword == QStringLiteral("q-class") ||
                keyword == QStringLiteral("q-script") ||
+               keyword == QStringLiteral("q-script-action") ||
                keyword == QStringLiteral("script");
     }
 
@@ -378,6 +383,9 @@ private:
         if (qhtmlKeyword == QStringLiteral("q-script") || qhtmlKeyword == QStringLiteral("script")) {
             return new QHTMLScript(qhtmlName, m_attributes, qhtmlContent);
         }
+        if (qhtmlKeyword == QStringLiteral("behavior")) {
+            return new QHTMLBehavior(qhtmlName, m_attributes);
+        }
         if (qhtmlKeyword == QStringLiteral("q-model-view")) {
             return new QHTMLModelView(qhtmlName, m_attributes);
         }
@@ -389,6 +397,15 @@ private:
         }
         if (qhtmlKeyword == QStringLiteral("q-property-animation")) {
             return new QHTMLPropertyAnimation(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-sequential-animation")) {
+            return new QHTMLSequentialAnimation(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-parallel-animation")) {
+            return new QHTMLParallelAnimation(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-script-action")) {
+            return new QHTMLScriptAction(qhtmlName, m_attributes, qhtmlContent);
         }
         if (qhtmlKeyword == QStringLiteral("q-painter")) {
             return new QHTMLPainter(qhtmlName, m_attributes, qhtmlContent);
@@ -1304,14 +1321,17 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
     }
 
     static const QRegularExpression eventHandlerRx(
-        QStringLiteral("^\\s*on([A-Za-z_][A-Za-z0-9_+\\-]*)(?:\\s*\\((.*?)\\))?\\s*$"),
+        QStringLiteral("^\\s*(?:(propagate|propogate)\\s+)?on([A-Za-z_][A-Za-z0-9_+\\-]*)(?:\\s*\\((.*?)\\))?\\s*$"),
         QRegularExpression::CaseInsensitiveOption);
     const QRegularExpressionMatch eventHandlerMatch = eventHandlerRx.match(trimmedHeader);
     if (eventHandlerMatch.hasMatch()) {
         QHash<QString, QString> attributes;
-        attributes.insert(QStringLiteral("parameters"), eventHandlerMatch.captured(2).trimmed());
+        attributes.insert(QStringLiteral("parameters"), eventHandlerMatch.captured(3).trimmed());
+        if (!eventHandlerMatch.captured(1).trimmed().isEmpty()) {
+            attributes.insert(QStringLiteral("propagate"), QStringLiteral("true"));
+        }
         return new QHTMLAstNamedTypeNode(QStringLiteral("q-event-handler"),
-                                        eventHandlerMatch.captured(1).trimmed().toLower(),
+                                        eventHandlerMatch.captured(2).trimmed().toLower(),
                                         attributes,
                                         content);
     }
@@ -1335,6 +1355,17 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
                                         content);
     }
 
+    static const QRegularExpression behaviorRx(
+        QStringLiteral("^\\s*behavior\\s+on\\s+([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch behaviorMatch = behaviorRx.match(trimmedHeader);
+    if (behaviorMatch.hasMatch()) {
+        return new QHTMLAstNamedTypeNode(QStringLiteral("behavior"),
+                                        behaviorMatch.captured(1).trimmed(),
+                                        {},
+                                        content);
+    }
+
     if (trimmedHeader == QStringLiteral("q-import") || trimmedHeader == QStringLiteral("q-require")) {
         return new QHTMLAstNamedTypeNode(trimmedHeader,
                                         QString(),
@@ -1349,7 +1380,11 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
         trimmedHeader == QStringLiteral("q-row") ||
         trimmedHeader == QStringLiteral("q-col") ||
         trimmedHeader == QStringLiteral("q-column") ||
-        trimmedHeader == QStringLiteral("q-canvas")) {
+        trimmedHeader == QStringLiteral("q-canvas") ||
+        trimmedHeader == QStringLiteral("q-property-animation") ||
+        trimmedHeader == QStringLiteral("q-sequential-animation") ||
+        trimmedHeader == QStringLiteral("q-parallel-animation") ||
+        trimmedHeader == QStringLiteral("q-script-action")) {
         return new QHTMLAstNamedTypeNode(trimmedHeader,
                                         QString(),
                                         {},
@@ -1942,6 +1977,9 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
                 dynamic_cast<QHTMLConnect *>(typed) ||
                 dynamic_cast<QHTMLTimer *>(typed) ||
                 dynamic_cast<QHTMLPropertyAnimation *>(typed) ||
+                dynamic_cast<QHTMLAnimationGroup *>(typed) ||
+                dynamic_cast<QHTMLScriptAction *>(typed) ||
+                dynamic_cast<QHTMLBehavior *>(typed) ||
                 dynamic_cast<QHTMLForNode *>(typed) ||
                 dynamic_cast<QHTMLImportNode *>(typed) ||
                 dynamic_cast<QHTMLStyle *>(typed) ||
@@ -2045,6 +2083,12 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
         if (QHTMLPropertyAnimation *animation = dynamic_cast<QHTMLPropertyAnimation *>(child)) {
             animation->setSignalBus(qhtmlSignalBus);
         }
+        if (QHTMLAnimationGroup *animationGroup = dynamic_cast<QHTMLAnimationGroup *>(child)) {
+            animationGroup->setSignalBus(qhtmlSignalBus);
+        }
+        if (QHTMLScriptAction *scriptAction = dynamic_cast<QHTMLScriptAction *>(child)) {
+            scriptAction->setSignalBus(qhtmlSignalBus);
+        }
 
         if (dynamic_cast<QHTMLFunction *>(child) ||
             dynamic_cast<QHTMLSignal *>(child) ||
@@ -2061,6 +2105,8 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
             dynamic_cast<QHTMLPropertyAssignment *>(child) ||
             dynamic_cast<QHTMLTimer *>(child) ||
             dynamic_cast<QHTMLPropertyAnimation *>(child) ||
+            dynamic_cast<QHTMLAnimationGroup *>(child) ||
+            dynamic_cast<QHTMLScriptAction *>(child) ||
             dynamic_cast<QHTMLImportNode *>(child) ||
             dynamic_cast<QHTMLStyle *>(child) ||
             dynamic_cast<QHTMLTheme *>(child) ||
@@ -2130,6 +2176,11 @@ inline void QHTMLDomTree::cloneDefinitionMembers(QHTMLComponentInstance *instanc
             continue;
         }
 
+        if (QHTMLBehavior *behavior = dynamic_cast<QHTMLBehavior *>(definitionChild)) {
+            instance->appendChild(behavior->cloneBehavior());
+            continue;
+        }
+
         if (hasLocalReference(instance, definitionChild->qhtmlName())) {
             continue;
         }
@@ -2148,6 +2199,14 @@ inline void QHTMLDomTree::cloneDefinitionMembers(QHTMLComponentInstance *instanc
             QHTMLPropertyAnimation *clonedAnimation = animation->cloneAnimation();
             clonedAnimation->setSignalBus(qhtmlSignalBus);
             instance->appendChild(clonedAnimation);
+        } else if (QHTMLAnimationGroup *animationGroup = dynamic_cast<QHTMLAnimationGroup *>(definitionChild)) {
+            QHTMLAnimationGroup *clonedAnimationGroup = animationGroup->cloneAnimationGroup();
+            clonedAnimationGroup->setSignalBus(qhtmlSignalBus);
+            instance->appendChild(clonedAnimationGroup);
+        } else if (QHTMLScriptAction *scriptAction = dynamic_cast<QHTMLScriptAction *>(definitionChild)) {
+            QHTMLScriptAction *clonedScriptAction = scriptAction->cloneScriptAction();
+            clonedScriptAction->setSignalBus(qhtmlSignalBus);
+            instance->appendChild(clonedScriptAction);
         } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(definitionChild)) {
             instance->appendChild(style->cloneStyle());
         } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(definitionChild)) {
@@ -2331,7 +2390,9 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("evaluateExpression", &QHTMLNode::evaluateExpressionJs)
         .function("runtime", &QHTMLNode::runtime)
         .function("renderHtml", &QHTMLNode::renderHtmlJs)
-        .function("sourceQHTML", &QHTMLNode::sourceQHTMLJs);
+        .function("sourceQHTML", &QHTMLNode::sourceQHTMLJs)
+        .function("toJSON", &QHTMLNode::toJSONJs)
+        .function("toJSONText", &QHTMLNode::toJSONTextJs);
 
     class_<QHTMLDomNode, base<QHTMLNode>>("QHTMLDomNode");
     class_<QHTMLDomElement, base<QHTMLDomNode>>("QHTMLDomElement")
@@ -2472,6 +2533,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     class_<QHTMLEventHandler, base<QHTMLTypedNode>>("QHTMLEventHandler")
         .function("eventName", &QHTMLEventHandler::eventNameJs)
         .function("parameters", &QHTMLEventHandler::parameterListJs)
+        .function("propagate", &QHTMLEventHandler::propagate)
         .function("body", &QHTMLEventHandler::bodyJs);
     class_<QHTMLConnect, base<QHTMLTypedNode>>("QHTMLConnect")
         .function("body", &QHTMLConnect::bodyJs)
@@ -2518,8 +2580,37 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("steppedSignal", &QHTMLPropertyAnimation::steppedSignalJs, allow_raw_pointers())
         .function("endedSignal", &QHTMLPropertyAnimation::endedSignalJs, allow_raw_pointers())
         .function("finishedSignal", &QHTMLPropertyAnimation::finishedSignalJs, allow_raw_pointers());
+    class_<QHTMLScriptAction, base<QHTMLTypedNode>>("QHTMLScriptAction")
+        .function("body", &QHTMLScriptAction::bodyJs)
+        .function("setBody", &QHTMLScriptAction::setBodyJs)
+        .function("run", &QHTMLScriptAction::runJs)
+        .function("startedSignal", &QHTMLScriptAction::startedSignalJs, allow_raw_pointers())
+        .function("finishedSignal", &QHTMLScriptAction::finishedSignalJs, allow_raw_pointers());
+    class_<QHTMLAnimationGroup, base<QHTMLTypedNode>>("QHTMLAnimationGroup")
+        .function("running", &QHTMLAnimationGroup::running)
+        .function("setRunning", &QHTMLAnimationGroup::setRunningJs)
+        .function("start", &QHTMLAnimationGroup::start)
+        .function("stop", &QHTMLAnimationGroup::stop)
+        .function("finish", &QHTMLAnimationGroup::finish)
+        .function("startedSignal", &QHTMLAnimationGroup::startedSignalJs, allow_raw_pointers())
+        .function("stoppedSignal", &QHTMLAnimationGroup::stoppedSignalJs, allow_raw_pointers())
+        .function("finishedSignal", &QHTMLAnimationGroup::finishedSignalJs, allow_raw_pointers());
+    class_<QHTMLSequentialAnimation, base<QHTMLAnimationGroup>>("QHTMLSequentialAnimation");
+    class_<QHTMLParallelAnimation, base<QHTMLAnimationGroup>>("QHTMLParallelAnimation");
+    class_<QHTMLBehavior, base<QHTMLTypedNode>>("QHTMLBehavior")
+        .function("propertyName", &QHTMLBehavior::propertyNameJs);
     class_<QHTMLLayout, base<QHTMLTypedNode>>("QHTMLLayout")
-        .function("direction", &QHTMLLayout::directionJs);
+        .function("direction", &QHTMLLayout::directionJs)
+        .function("addRow", &QHTMLLayout::addRowJs, allow_raw_pointers())
+        .function("addCol", &QHTMLLayout::addColJs, allow_raw_pointers())
+        .function("addLayout", &QHTMLLayout::addLayoutJs, allow_raw_pointers())
+        .function("insertRow", &QHTMLLayout::insertRowJs, allow_raw_pointers())
+        .function("insertCol", &QHTMLLayout::insertColJs, allow_raw_pointers())
+        .function("rows", &QHTMLLayout::rowsJs)
+        .function("cols", &QHTMLLayout::colsJs)
+        .function("children", &QHTMLLayout::layoutChildrenJs)
+        .function("layoutChildCount", &QHTMLLayout::layoutChildCountJs)
+        .function("layoutChildAt", &QHTMLLayout::layoutChildAtJs, allow_raw_pointers());
     class_<QHTMLRowLayout, base<QHTMLLayout>>("QHTMLRowLayout");
     class_<QHTMLColumnLayout, base<QHTMLLayout>>("QHTMLColumnLayout");
     class_<QHTMLPainter, base<QHTMLTypedNode>>("QHTMLPainter")
@@ -2607,9 +2698,17 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("renderTemplateHtml", &QHTMLComponentDefinition::renderTemplateHtmlJs)
         .function("extendsList", &QHTMLComponentDefinition::extendsListJs)
         .function("hasExtends", &QHTMLComponentDefinition::hasExtends);
+    class_<QHTMLComponentInstanceSlot, base<QHTMLTypedNode>>("QHTMLComponentInstanceSlot")
+        .function("owner", &QHTMLComponentInstanceSlot::ownerJs, allow_raw_pointers())
+        .function("definitionSlot", &QHTMLComponentInstanceSlot::definitionSlotJs, allow_raw_pointers())
+        .function("append", &QHTMLComponentInstanceSlot::appendJs, allow_raw_pointers())
+        .function("remove", &QHTMLComponentInstanceSlot::removeJs, allow_raw_pointers())
+        .function("children", &QHTMLComponentInstanceSlot::childrenJs);
     class_<QHTMLComponentInstance, base<QHTMLTypedNode>>("QHTMLComponentInstance")
+        .function("component", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
         .function("componentDefinition", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
         .function("componentDefinitionUUID", &QHTMLComponentInstance::componentDefinitionUUIDJs)
+        .function("slots", &QHTMLComponentInstance::slotsJs)
         .function("slotCount", &QHTMLComponentInstance::slotCount)
         .function("slotAt", &QHTMLComponentInstance::slotAt, allow_raw_pointers())
         .function("slot", &QHTMLComponentInstance::slotJs, allow_raw_pointers())

@@ -624,18 +624,46 @@ tabs-demo-theme {
 q-import { ../dist/q-components/q-tabs.qhtml }
 
 q-component dynamicTabWidget {
-  q-property tabs: [
-    { name: "Tab 1", content: "hello world" },
-    { name: "Tab 2", content: "test 123" }
-  ]
-
-  q-tabs {
-    for (tabObject in this.tabs) {
-      q-tab {
-        name { div { text { ${tabObject.name} } } }
-        body { div { text { ${tabObject.content} } } }
+  div.w3-margin-bottom {
+    button.w3-button.w3-small.w3-border.w3-round {
+      text { Add runtime tab }
+      onclick {
+        var index = dynamicTabs.querySelectorAll(".q-tab-button").length + 1;
+        dynamicTabs.addTab({
+          name: "Runtime Tab " + String(index),
+          body: "This tab was appended through dynamicTabs.addTab(tabObject)."
+        });
       }
     }
+    button.w3-button.w3-small.w3-border.w3-round.w3-margin-left {
+      text { Remove runtime tab }
+      onclick {
+        dynamicTabs.removeTab();
+      }
+    }
+  }
+
+  q-tabs dynamicTabs {
+    id: "dynamic-tabs"
+    q-tab {
+      name { text { Tab 1 } }
+      body { div { text { hello world } } }
+    }
+    q-tab {
+      name { text { Tab 2 } }
+      body { div { text { test 123 } } }
+    }
+  }
+
+  onready {
+    setTimeout(function() {
+      if (dynamicTabs && typeof dynamicTabs.addTab === "function" && !dynamicTabs.querySelector("[tabName='Ready Tab']")) {
+        dynamicTabs.addTab({
+          name: "Ready Tab",
+          body: "This tab was added from dynamicTabWidget.onready."
+        });
+      }
+    }, 0);
   }
 }
 

@@ -1,0 +1,162 @@
+q-style q-popup-root-style {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  display: none;
+  z-index: 999999;
+  pointer-events: none;
+}
+
+q-style q-popup-visible-style {
+  display: block;
+}
+
+q-style q-popup-container-style {
+  position: fixed;
+  min-width: 160px;
+  max-width: min(320px, calc(100vw - 16px));
+  background-color: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+q-theme q-popup-theme {
+  q-popup-floating-div { q-popup-root-style }
+  q-popup-floating-div.visible { q-popup-root-style q-popup-visible-style }
+  q-popup-menu { q-popup-root-style }
+  q-popup-menu.visible { q-popup-root-style q-popup-visible-style }
+  .q-popup-container { q-popup-container-style }
+}
+
+q-component q-popup-floating-div {
+  q-popup-theme {
+    div.q-popup-container {
+      slot { popup-contents }
+    }
+  }
+}
+
+q-component q-popup-menu {
+  q-property x: "0px"
+  q-property y: "0px"
+
+  function uuidv4() {
+    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, function(c) {
+      return (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16);
+    });
+  }
+
+  function cssLength(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.round(value) + "px";
+    }
+    var text = String(value == null ? "0" : value).trim();
+    if (/^-?\d+(?:\.\d+)?$/.test(text)) {
+      return text + "px";
+    }
+    return text || "0px";
+  }
+
+  function popupContainer() {
+    return this.querySelector(".q-popup-container");
+  }
+
+  function setPosition(x, y) {
+    this.x = this.cssLength(x);
+    this.y = this.cssLength(y);
+    var container = this.popupContainer();
+    if (!container) {
+      return;
+    }
+    container.style.left = this.x;
+    container.style.top = this.y;
+
+    requestAnimationFrame(function() {
+      var rect = container.getBoundingClientRect();
+      var margin = 8;
+      var nextLeft = rect.left;
+      var nextTop = rect.top;
+      if (rect.right > window.innerWidth - margin) {
+        nextLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+      }
+      if (rect.bottom > window.innerHeight - margin) {
+        nextTop = Math.max(margin, window.innerHeight - rect.height - margin);
+      }
+      if (nextLeft !== rect.left) {
+        container.style.left = Math.round(nextLeft) + "px";
+      }
+      if (nextTop !== rect.top) {
+        container.style.top = Math.round(nextTop) + "px";
+      }
+    });
+  }
+
+  function show(x, y, event) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (event && typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+    if (!String(this.getAttribute("id") || "").trim()) {
+      this.setAttribute("id", this.uuidv4());
+    }
+
+    this.style.display = "block";
+    this.classList.add("visible");
+    this.classList.add("q-popup-menu-open");
+    this.setPosition(x, y);
+
+    var popup = this;
+    setTimeout(function() {
+      document.addEventListener("click", function closePopup(clickEvent) {
+        if (!popup.contains(clickEvent.target)) {
+          popup.hide();
+        }
+      }, { once: true });
+      document.addEventListener("contextmenu", function closePopupContextMenu(contextEvent) {
+        if (!popup.contains(contextEvent.target)) {
+          popup.hide();
+        }
+      }, { once: true });
+    }, 0);
+  }
+
+  function hide() {
+    this.style.display = "none";
+    this.classList.remove("visible");
+    this.classList.remove("q-popup-menu-open");
+  }
+
+  q-popup-theme {
+    div.q-popup-container {
+      slot { popup-contents }
+    }
+  }
+}
+
+/* usage:
+q-popup-menu myMenu {
+  id: "my-menu"
+  popup-contents {
+    ul {
+      li { text { hello world } }
+      li { text { duplicate } }
+      hr { }
+      li { text { delete } }
+    }
+  }
+}
+
+div {
+  oncontextmenu {
+    myMenu.show(event.clientX, event.clientY, event);
+  }
+}
+*/

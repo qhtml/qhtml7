@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML7 Behavior Animation Loop Test</title>
+  <script src="../dist/qhtml-wasm.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f8fb;
+      color: #172033;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    main {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .intro {
+      margin: 0 0 20px;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    section {
+      padding: 16px;
+      border: 1px solid #d8e0eb;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    q-html {
+      display: block;
+      min-height: 180px;
+    }
+
+    .behavior-loop-shell {
+      padding: 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .behavior-loop-track {
+      width: 100%;
+      height: 34px;
+      padding: 4px;
+      border: 1px solid #d8e0eb;
+      border-radius: 8px;
+      background: #ffffff;
+      box-sizing: border-box;
+    }
+
+    .behavior-loop-fill {
+      width: 1vh;
+      height: 24px;
+      border-radius: 6px;
+      background-color: #22c55e;
+    }
+
+    .behavior-loop-readout {
+      margin-top: 10px;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>QHTML7 Behavior Animation Loop Test</h1>
+    <p class="intro">This page loops a property animation from 1vh to 100vh and back using behavior on and q-script-action.</p>
+
+    <section>
+      <q-html>
+q-component behavior-loop-bar {
+  q-property barWidth: 1
+  q-property nextBarWidth: 100
+
+  behavior on barWidth {
+    q-sequential-animation {
+      q-property-animation {
+        duration: 1400
+        steps: 80
+
+        onstepped(stepNum, value) {
+          this.ownerElement.querySelector(".behavior-loop-fill").style.width = String(value) + "vh";
+          this.ownerElement.querySelector(".behavior-loop-readout").textContent = "step " + String(stepNum) + ": " + String(Math.round(value)) + "vh";
+        }
+      }
+
+      q-script-action {
+        this.nextBarWidth = this.barWidth == 100 ? 1 : 100;
+        setTimeout(function() {
+          this.barWidth = this.nextBarWidth;
+        }.bind(this), 0);
+      }
+    }
+  }
+
+  q-style testShellStyle {
+    padding: 16px;
+    borderWidth: 1px;
+    borderColor: #cbd5e1;
+    borderRadius: 8px;
+    backgroundColor: #f8fafc;
+  }
+
+  q-style testTrackStyle {
+    width: 100%;
+    height: 34px;
+    padding: 4px;
+    borderWidth: 1px;
+    borderColor: #d8e0eb;
+    borderRadius: 8px;
+    backgroundColor: #ffffff;
+  }
+
+  q-style testBarStyle {
+    width: 1vh;
+    height: 24px;
+    borderRadius: 6px;
+    backgroundColor: #22c55e;
+  }
+
+  q-style testReadoutStyle {
+    marginTop: 10px;
+    color: #475569;
+    fontSize: 13px;
+    fontWeight: 700;
+  }
+
+  q-default-theme behaviorLoopTheme {
+    .behavior-loop-shell { testShellStyle }
+    .behavior-loop-track { testTrackStyle }
+    .behavior-loop-fill { testBarStyle }
+    .behavior-loop-readout { testReadoutStyle }
+  }
+
+  onready {
+    this.querySelector(".behavior-loop-fill").style.width = String(this.barWidth) + "vh";
+    this.querySelector(".behavior-loop-readout").textContent = "width: " + String(this.barWidth) + "vh";
+    this.barWidth = 100;
+  }
+
+  onbarWidthchanged(value) {
+    this.querySelector(".behavior-loop-fill").style.width = String(value) + "vh";
+    this.querySelector(".behavior-loop-readout").textContent = "width: " + String(value) + "vh";
+  }
+
+  div.behavior-loop-shell {
+    div.behavior-loop-track {
+      div.behavior-loop-fill { }
+    }
+    div.behavior-loop-readout {
+      text { width: 1vh }
+    }
+  }
+}
+
+behavior-loop-bar loopDemo { }
+      </q-html>
+    </section>
+  </main>
+</body>
+</html>

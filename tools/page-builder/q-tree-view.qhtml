@@ -1,0 +1,272 @@
+q-component q-tree-view {
+  q-property model: ""
+  q-property treeModel: ""
+  q-property selectedPath: ""
+  q-property foldersOnly: false
+
+  q-signal nodeSelected(path, label, type)
+  q-signal nodeActivated(path, label, type)
+  q-signal nodeContextMenu(path, label, type)
+
+  function _normalizeModel(input) {
+    if (input && typeof input === "object") {
+      return input;
+    }
+    if (typeof input === "string") {
+      var text = String(input || "").trim();
+      if (!text) {
+        return {};
+      }
+      return JSON.parse(text);
+    }
+    return {};
+  }
+
+  function setModel(nextModel) {
+    this.__treeModel = this._normalizeModel(nextModel);
+    this.refresh();
+    return this.__treeModel;
+  }
+
+  function _effectiveModel() {
+    if (this.__treeModel && typeof this.__treeModel === "object") {
+      return this.__treeModel;
+    }
+    var value = this.treeModel;
+    if (value === null || typeof value === "undefined" || value === "") { value = this.model; }
+    if (value === null || typeof value === "undefined" || value === "") { value = this.getAttribute("treeModel"); }
+    if (value === null || typeof value === "undefined" || value === "") { value = this.getAttribute("model"); }
+    return this._normalizeModel(value);
+  }
+
+  function _foldersOnly() {
+    var value = this.foldersOnly;
+    if (value === null || typeof value === "undefined" || value === "") {
+      value = this.getAttribute("foldersOnly");
+    }
+    value = String(value || "").toLowerCase();
+    return value === "1" || value === "true" || value === "yes";
+  }
+
+  function _entryType(value) {
+    if (Array.isArray(value)) {
+      return "folder";
+    }
+    if (value && typeof value === "object") {
+      if (value.type) {
+        return String(value.type);
+      }
+      return "folder";
+    }
+    return String(value || "file");
+  }
+
+  function _entryChildren(value) {
+    if (Array.isArray(value)) {
+      var out = {};
+      value.forEach(function(child) {
+        if (typeof child === "string" || typeof child === "number" || typeof child === "boolean") {
+          out[String(child)] = "file";
+          return;
+        }
+        if (child && typeof child === "object") {
+          if (child.type || child.children || child.label || child.name) {
+            out[child.id || child.name || child.label || "item"] = child;
+            return;
+          }
+          Object.keys(child).forEach(function(key) {
+            out[key] = child[key];
+          });
+        }
+      });
+      return out;
+    }
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    if (Array.isArray(value.children)) {
+      return this._entryChildren(value.children);
+    }
+    if (value.children && typeof value.children === "object") {
+      return value.children;
+    }
+    if (value.type || value.label || value.name) {
+      return null;
+    }
+    return value;
+  }
+
+  function _entryLabel(key, value) {
+    if (value && typeof value === "object") {
+      return String(value.label || value.name || key);
+    }
+    if (/^\d+$/.test(String(key || ""))) {
+      return String(value);
+    }
+    return String(key);
+  }
+
+  function _emitTreeEvent(name, detail, originalEvent) {
+    if (name === "q-tree-context") {
+      detail.clientX = originalEvent ? originalEvent.clientX : 0;
+      detail.clientY = originalEvent ? originalEvent.clientY : 0;
+    }
+    this.dispatchEvent(new CustomEvent(name, { bubbles: true, detail: detail }));
+    if (name === "q-tree-select") {
+      this.selectedPath = detail.path;
+      this.nodeSelected(detail.path, detail.label, detail.type);
+    } else if (name === "q-tree-activate") {
+      this.nodeActivated(detail.path, detail.label, detail.type);
+    } else if (name === "q-tree-context") {
+      this.nodeContextMenu(detail.path, detail.label, detail.type);
+    }
+  }
+
+  function _makeButton(entry) {
+    var button = document.createElement("button");
+    var marker = document.createElement("span");
+    var label = document.createElement("span");
+    button.type = "button";
+    button.className = "q-tree-item " + (entry.type === "folder" ? "q-tree-branch-item" : "q-tree-leaf-item");
+    if (entry.path === this.selectedPath || entry.path === this.getAttribute("selectedPath")) {
+      button.className += " selected";
+    }
+    button.dataset.path = entry.path;
+    button.dataset.type = entry.type;
+    if (entry.id) {
+      button.dataset.id = entry.id;
+    }
+    marker.className = entry.type === "folder" ? "q-tree-marker q-tree-marker-open" : "q-tree-leaf-connector";
+    marker.textContent = entry.type === "folder" ? "-" : "";
+    label.className = entry.type === "folder" ? "q-tree-label" : "q-tree-leaf-label";
+    label.textContent = entry.label;
+    button.appendChild(marker);
+    button.appendChild(label);
+    return button;
+  }
+
+  function _renderEntries(parent, entries, parentPath, depth) {
+    var component = this;
+    var keys = Object.keys(entries || {});
+    keys.forEach(function(key) {
+      var value = entries[key];
+      var type = component._entryType(value);
+      var children = component._entryChildren(value);
+      var label = component._entryLabel(key, value);
+      var path = parentPath ? (parentPath === "/" ? "/" + label : parentPath + "/" + label) : label;
+      var entry = {
+        id: value && typeof value === "object" ? String(value.id || "") : "",
+        label: label,
+        path: path,
+        type: type,
+        depth: depth
+      };
+      var item;
+      var button;
+      var list;
+      if (component._foldersOnly() && type !== "folder") {
+        return;
+      }
+      item = document.createElement("li");
+      item.className = type === "folder" ? "q-tree-branch" : "q-tree-leaf";
+      item.dataset.path = path;
+      item.dataset.type = type;
+      button = component._makeButton(entry);
+      button.style.paddingLeft = String(10 + depth * 18) + "px";
+      button.addEventListener("click", function(event) {
+        event.stopPropagation();
+        component._emitTreeEvent("q-tree-select", entry, event);
+        if (type === "folder") {
+          item.classList.toggle("collapsed");
+          var collapsed = item.classList.contains("collapsed");
+          var marker = button.querySelector(".q-tree-marker");
+          if (marker) {
+            marker.className = "q-tree-marker " + (collapsed ? "q-tree-marker-closed" : "q-tree-marker-open");
+            marker.textContent = collapsed ? "+" : "-";
+          }
+        }
+      });
+      button.addEventListener("dblclick", function(event) {
+        event.stopPropagation();
+        component._emitTreeEvent("q-tree-activate", entry, event);
+      });
+      button.addEventListener("contextmenu", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        component._emitTreeEvent("q-tree-context", entry, event);
+      });
+      item.appendChild(button);
+      if (children && type === "folder") {
+        list = document.createElement("ul");
+        list.className = "q-tree-children";
+        component._renderEntries(list, children, path, depth + 1);
+        item.appendChild(list);
+      }
+      parent.appendChild(item);
+    });
+  }
+
+  function refresh() {
+    var root = this.querySelector(".q-tree-list");
+    var model = this._effectiveModel();
+    if (!root) {
+      root = document.createElement("ul");
+      root.className = "q-tree q-tree-list";
+      root.setAttribute("q-tree-root", "1");
+      this.appendChild(root);
+    }
+    root.innerHTML = "";
+    this._renderEntries(root, model, "", 0);
+  }
+
+  onready { this.refresh(); }
+
+  onmodelchanged { this.refresh(); }
+
+  ontreemodelchanged { this.refresh(); }
+
+  onselectedpathchanged { this.refresh(); }
+
+  onfoldersonlychanged { this.refresh(); }
+
+  q-style qTreeListStyle {
+    listStyle: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  q-style qTreeItemStyle {
+    width: 100%;
+    display: flex;
+    alignItems: center;
+    gap: 8px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    textAlign: left;
+    borderRadius: 8px;
+    padding: 7px 9px;
+    cursor: pointer;
+  }
+
+  q-style qTreeChildrenStyle {
+    listStyle: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  q-style qTreeSelectedStyle {
+    backgroundColor: #dbeafe;
+    color: #1d4ed8;
+    fontWeight: 800;
+  }
+
+  q-default-theme qTreeTheme {
+    .q-tree-list { qTreeListStyle }
+    .q-tree-children { qTreeChildrenStyle }
+    .q-tree-item { qTreeItemStyle }
+    .selected { qTreeSelectedStyle }
+  }
+
+  ul.q-tree.q-tree-list { }
+}

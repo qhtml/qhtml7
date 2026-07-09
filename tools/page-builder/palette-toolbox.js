@@ -19,6 +19,11 @@
     all: "q-layout,q-row,q-col,[qhtml-layout='q-layout'],[qhtml-layout='q-row'],[qhtml-layout='q-col']"
   };
 
+  var ComponentRegistry = {
+    byName: Object.create(null),
+    byElement: typeof WeakMap === "function" ? new WeakMap() : null
+  };
+
   function arr(x) {
     return Array.prototype.slice.call(x || []);
   }
@@ -59,6 +64,71 @@
   function rawAttr(el, name) {
     var value = el && el.getAttribute ? el.getAttribute(name) : null;
     return value === null || value === undefined ? "" : String(value);
+  }
+
+  function qhtmlNodeType(node) {
+    return node && typeof node.qhtmlType === "function" ? node.qhtmlType() : "";
+  }
+
+  function qhtmlNodeName(node) {
+    return node && typeof node.qhtmlName === "function" ? node.qhtmlName() : "";
+  }
+
+  function qhtmlLiteralValue(value) {
+    var text = String(value == null ? "" : value).trim();
+    var first = text.charAt(0);
+    var last = text.charAt(text.length - 1);
+    if (text.length >= 2 && ((first === "\"" && last === "\"") || (first === "'" && last === "'"))) {
+      if (first === "\"") {
+        try {
+          return JSON.parse(text);
+        } catch (error) {
+          return text.slice(1, -1).replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+        }
+      }
+      return text.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+    }
+    return text;
+  }
+
+  function qhtmlAssignmentValue(el, name) {
+    var node = qdomOf(el);
+    var wanted = String(name || "").toLowerCase();
+    var count = node && typeof node.childCount === "function" ? node.childCount() : 0;
+    var i;
+    var child;
+    for (i = 0; i < count; i += 1) {
+      child = node.childAt(i);
+      if ((qhtmlNodeType(child) === "QHTMLPropertyAssignment" || qhtmlNodeType(child) === "QHTMLProperty") &&
+          qhtmlNodeName(child).toLowerCase() === wanted &&
+          typeof child.value === "function") {
+        return qhtmlLiteralValue(child.value());
+      }
+    }
+    return "";
+  }
+
+  function hydratePaletteButtonAttributes(button) {
+    var changed = false;
+    [
+      "name",
+      "component",
+      "qhtml",
+      "instance",
+      "support",
+      "data-pb-create-component"
+    ].forEach(function (name) {
+      var value;
+      if (button.hasAttribute(name)) {
+        return;
+      }
+      value = qhtmlAssignmentValue(button, name);
+      if (value !== "") {
+        button.setAttribute(name, value);
+        changed = true;
+      }
+    });
+    return changed;
   }
 
   function clamp(v, a, b) {
@@ -103,6 +173,10 @@
 
   function rootOf(el) {
     return isLayoutKind(el, Q.layout) ? el : closestLayoutKind(el, Q.layout);
+  }
+
+  function layoutApi(el) {
+    return isLayoutKind(el, Q.layout) || isLayoutKind(el, Q.row) || isLayoutKind(el, Q.col) ? installApi(el) : el;
   }
 
   function axisOf(el) {
@@ -323,17 +397,18 @@
       ".pb-toolbar{height:78px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(255,255,255,.86);backdrop-filter:blur(18px);border-bottom:1px solid rgba(148,163,184,.38);box-shadow:0 14px 48px rgba(15,23,42,.08);position:sticky;top:0;z-index:50}",
       ".pb-brand{display:flex;align-items:center;gap:14px}.pb-logo{width:44px;height:44px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#0f172a,#2563eb);color:white;font-weight:950;font-size:22px;box-shadow:0 12px 28px rgba(37,99,235,.28)}",
       ".pb-brand h1{font-size:22px;line-height:1;margin:0;letter-spacing:-.04em}.pb-brand p{margin:.35rem 0 0;color:var(--pb-muted);font-size:13px}",
-      ".pb-actions{display:flex;gap:10px;flex-wrap:wrap}.pb-action{border:0;border-radius:999px;padding:10px 15px;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(15,23,42,.08)}.pb-action.primary{background:#0f172a;color:white}.pb-action.secondary{background:white;color:#1d4ed8;border:1px solid #c7d2fe}.pb-action.danger{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}",
+      ".pb-actions,.pb-action-groups{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.pb-action-group{display:flex!important;flex-direction:row!important;gap:8px;align-items:center;background:rgba(248,250,252,.72)!important;border:1px solid rgba(148,163,184,.28)!important;border-radius:999px!important;padding:6px!important;box-shadow:none!important}.pb-action{border:0;border-radius:999px;padding:10px 15px;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(15,23,42,.08)}.pb-action.primary{background:#0f172a;color:white}.pb-action.secondary{background:white;color:#1d4ed8;border:1px solid #c7d2fe}.pb-action.danger{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}",
       ".pb-workspace{min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;padding:18px}.pb-main{min-width:0;display:grid;grid-template-rows:minmax(0,1fr) 260px;gap:18px}.pb-sidebar{min-height:0;background:rgba(15,23,42,.92);border:1px solid rgba(148,163,184,.24);border-radius:26px;box-shadow:0 28px 80px rgba(15,23,42,.22);overflow:hidden;color:white}.pb-sidebar-head{padding:22px 22px 10px}.pb-sidebar h2,.pb-canvas-meta h2,.pb-export-head h2{margin:0;font-size:18px;letter-spacing:-.03em}.pb-sidebar p,.pb-canvas-meta p,.pb-export-head p{margin:.45rem 0 0;color:#93a4bc;font-size:13px;line-height:1.4}",
       "q-layout,q-row,q-col,[qhtml-layout],q-palette-toolbox,q-palette-toolbox-button,q-builder-item{box-sizing:border-box;min-width:0;min-height:0}",
       "q-layout,[qhtml-layout='q-layout']{gap:12px;background:transparent;border:0;border-radius:0;padding:0;overflow:visible;color:#0f172a;position:relative}",
       "q-row,[qhtml-layout='q-row']{gap:12px;overflow:visible;border:0;border-radius:0;padding:0;background:transparent}",
       "q-col,[qhtml-layout='q-col']{overflow:visible;background:rgba(255,255,255,.92);border:1px solid #d8e0ec;border-radius:18px;padding:14px;color:#0f172a;box-shadow:0 12px 28px rgba(15,23,42,.08);position:relative;transition:border-color .14s ease,box-shadow .14s ease,background .14s ease}",
       "q-col.q-col-empty,[qhtml-layout='q-col'].q-col-empty{min-height:96px;border-style:dashed;background:rgba(248,250,252,.62);box-shadow:none}",
-      ".pb-canvas-shell,.pb-export-panel{background:rgba(255,255,255,.78);border:1px solid rgba(148,163,184,.42);border-radius:26px;box-shadow:0 22px 70px rgba(15,23,42,.12);overflow:hidden}.pb-canvas-meta,.pb-export-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(148,163,184,.28);background:rgba(248,250,252,.82)}.pb-status{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#1d4ed8;background:#dbeafe;border:1px solid #bfdbfe;border-radius:999px;padding:8px 11px}.pb-stage{padding:18px;overflow:auto}.pb-stage>#pb-builder-layout,.pb-stage>[qhtml-layout='q-layout']{min-height:280px;padding:12px;border:1px dashed rgba(37,99,235,.25);border-radius:20px;background:rgba(248,250,252,.42)}",
+      ".pb-canvas-shell,.pb-export-panel{background:rgba(255,255,255,.78);border:1px solid rgba(148,163,184,.42);border-radius:26px;box-shadow:0 22px 70px rgba(15,23,42,.12);overflow:hidden}.pb-canvas-meta,.pb-export-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(148,163,184,.28);background:rgba(248,250,252,.82)}.pb-status{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#1d4ed8;background:#dbeafe;border:1px solid #bfdbfe;border-radius:999px;padding:8px 11px}.pb-stage{height:100vh;padding:18px;overflow:auto}.pb-stage>#pb-builder-layout,.pb-stage>[qhtml-layout='q-layout']{min-height:280px;padding:12px;border:1px dashed rgba(37,99,235,.25);border-radius:20px;background:rgba(248,250,252,.42)}",
       "q-palette-toolbox{display:block;color:#0f172a}q-palette-toolbox:not([docked='true']){position:fixed;left:24px;top:24px;z-index:5000;width:250px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.35);overflow:hidden;user-select:none}.q-palette-titlebar{cursor:move;padding:13px 15px;background:#0f172a;color:white;font-weight:950;letter-spacing:-.035em}.q-palette-body{display:grid;gap:10px;border:0;border-radius:0;background:transparent;box-shadow:none;padding:10px 16px 18px}",
       "q-palette-toolbox-button{display:block;position:relative;min-height:76px;padding:0;border-radius:18px;background:white;border:1px solid rgba(148,163,184,.3);box-shadow:0 12px 26px rgba(0,0,0,.18);cursor:grab;overflow:hidden}q-palette-toolbox-button:active{cursor:grabbing}.pb-palette-preview{min-height:76px;padding:14px;background:linear-gradient(135deg,#ffffff,#eef6ff);border-left:5px solid #2563eb}.pb-palette-preview h3{margin:0;font-size:14px}.pb-palette-preview p{margin:4px 0 0;font-size:12px;color:#64748b}.pb-palette-preview.hero{border-color:#06b6d4}.pb-palette-preview.card{border-color:#6366f1}.pb-palette-preview.columns{border-color:#14b8a6}.pb-palette-preview.callout{border-color:#f59e0b}.pb-palette-preview.buttons{border-color:#ec4899}.pb-palette-preview.layout{border-color:#10b981}.pb-palette-preview.heading{border-color:#8b5cf6}.pb-palette-preview.price{border-color:#0ea5e9}.pb-palette-preview.edited{border-color:#2563eb}.pb-palette-edit-button{position:absolute;top:8px;right:8px;z-index:4;width:30px;height:30px;display:grid;place-items:center;border:1px solid rgba(37,99,235,.22);border-radius:999px;background:rgba(255,255,255,.92);color:#1d4ed8;box-shadow:0 8px 20px rgba(15,23,42,.16);cursor:pointer}.pb-palette-edit-button:hover{background:#eff6ff;color:#0f172a}.pb-palette-edit-button svg{width:15px;height:15px;display:block}",
       "q-builder-item{display:block;position:relative;margin:0;border-radius:18px;border:1px solid rgba(37,99,235,.28);background:white;box-shadow:0 14px 34px rgba(15,23,42,.1);overflow:hidden;cursor:grab}q-builder-item:active{cursor:grabbing}q-builder-item.pb-selected{outline:3px solid rgba(37,99,235,.32)}.q-builder-item-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;background:#eff6ff;border-bottom:1px solid #bfdbfe;color:#1d4ed8;font-size:11px;font-weight:950;letter-spacing:.04em;text-transform:uppercase}.q-builder-item-preview{padding:14px}",
+      "pb-proxy{display:none!important}",
       ".q-builder-instance-edit{position:absolute;top:10px;right:10px;z-index:30;width:34px;height:34px;display:grid;place-items:center;border:1px solid rgba(37,99,235,.28);border-radius:999px;background:rgba(255,255,255,.97);color:#1d4ed8;box-shadow:0 10px 24px rgba(15,23,42,.2);cursor:pointer;opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,color .14s ease,background .14s ease}q-builder-item:hover>.q-builder-instance-edit,q-builder-item.pb-selected>.q-builder-instance-edit,q-builder-item:focus-within>.q-builder-instance-edit{opacity:1;pointer-events:auto;transform:translateY(0)}.q-builder-instance-edit:hover{background:#eff6ff;color:#0f172a}.q-builder-instance-edit svg{width:15px;height:15px;display:block}",
       ".pb-rendered-component-editable{position:relative}.pb-rendered-instance-edit{position:absolute;top:6px;right:6px;z-index:28;width:28px;height:28px;display:grid;place-items:center;border:1px solid rgba(37,99,235,.3);border-radius:999px;background:rgba(255,255,255,.95);color:#1d4ed8;box-shadow:0 8px 20px rgba(15,23,42,.18);cursor:pointer;opacity:0;pointer-events:none;transform:translateY(-3px);transition:opacity .14s ease,transform .14s ease}.pb-rendered-component-editable:hover>.pb-rendered-instance-edit,.pb-rendered-component-editable:focus-within>.pb-rendered-instance-edit{opacity:1;pointer-events:auto;transform:translateY(0)}.pb-rendered-instance-edit:hover{background:#eff6ff;color:#0f172a}.pb-rendered-instance-edit svg{width:13px;height:13px;display:block}",
       ".pb-hero-block{padding:32px;border-radius:20px;background:linear-gradient(135deg,#0f172a,#1d4ed8);color:white}.pb-hero-block h1{margin:0;font-size:38px;letter-spacing:-.06em}.pb-hero-block p{max-width:560px;color:#dbeafe}.pb-demo-button{border:0;border-radius:999px;background:#22d3ee;color:#0f172a;font-weight:900;padding:10px 16px}.pb-demo-button.ghost{background:white;color:#1d4ed8;border:1px solid #bfdbfe}.pb-feature-card{padding:22px;border-radius:18px;background:#f8fafc;border:1px solid #dbe4f0}.pb-feature-card h3,.pb-two-column-copy h3{margin-top:0}.pb-two-column-copy{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.pb-two-column-copy>div{padding:18px;border-radius:16px;background:#f8fafc;border:1px solid #dbe4f0}.pb-callout{padding:18px;border-radius:18px;background:#fffbeb;border:1px solid #fde68a;color:#78350f}.pb-button-row{display:flex;gap:12px;flex-wrap:wrap}",
@@ -342,7 +417,7 @@
       ".pb-palette-editor{border:0;padding:0;background:transparent;max-width:min(980px,calc(100vw - 34px));width:980px}.pb-palette-editor::backdrop{background:rgba(15,23,42,.55);backdrop-filter:blur(5px)}.pb-palette-editor-card{background:#f8fafc;border:1px solid rgba(148,163,184,.45);border-radius:24px;box-shadow:0 36px 120px rgba(15,23,42,.38);overflow:hidden}.pb-palette-editor-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:20px 22px;background:white;border-bottom:1px solid #dbe4f0}.pb-palette-editor-head h2{margin:0;font-size:20px;letter-spacing:-.04em}.pb-palette-editor-head p{margin:6px 0 0;color:#64748b;font-size:13px}.pb-icon-button{width:34px;height:34px;border:0;border-radius:999px;background:#eef2ff;color:#1e293b;font-size:23px;line-height:1;cursor:pointer}.pb-editor-label{display:block;padding:16px 22px 8px;color:#334155;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.08em}.pb-palette-editor q-editor{display:block;margin:0 22px 14px}.pb-palette-editor q-editor .qe{border-color:#cbd5e1;border-radius:16px}.pb-palette-editor q-editor .qe-editor-wrap,.pb-palette-editor q-editor .qe-highlight,.pb-palette-editor q-editor .qe-input,.pb-palette-editor q-editor .qe-code,.pb-palette-editor q-editor .qe-preview,.pb-palette-editor q-editor .qe-cm-host,.pb-palette-editor q-editor .qe-cm-host .cm-editor{min-height:340px}.pb-palette-editor-error{min-height:20px;margin:0 22px 10px;color:#be123c;font-size:13px;font-weight:800}.pb-palette-editor-actions{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px 20px;border-top:1px solid #dbe4f0;background:#fff}",
       ".pb-palette-preview.new-component{border-color:#111827;background:linear-gradient(135deg,#ffffff,#e0f2fe)}q-palette-toolbox-button[data-pb-create-component='true']{cursor:pointer}.pb-component-builder{border:0;padding:0;background:transparent;width:min(1120px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto}.pb-component-builder::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(5px)}.pb-component-builder-card{background:#f8fafc;border:1px solid rgba(148,163,184,.45);border-radius:24px;box-shadow:0 36px 120px rgba(15,23,42,.38);overflow:hidden}.pb-component-builder-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 22px;background:white;border-bottom:1px solid #dbe4f0}.pb-component-builder-head h2{margin:0;font-size:20px;letter-spacing:-.04em}.pb-component-builder-head p{margin:6px 0 0;color:#64748b;font-size:13px}.pb-component-builder-tabs{display:flex;gap:8px;flex-wrap:wrap;padding:12px 22px;background:#f1f5f9;border-bottom:1px solid #dbe4f0}.pb-component-builder-tabs button{border:1px solid #cbd5e1;background:white;color:#334155;border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer}.pb-component-builder-tabs button.active{background:#0f172a;border-color:#0f172a;color:white}.pb-component-builder-panel{padding:16px 22px}.pb-component-builder-panel[hidden]{display:none!important}.pb-component-general-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.pb-component-general-grid label{display:grid;gap:7px;color:#334155;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.08em}.pb-component-general-grid input{min-width:0;border:1px solid #cbd5e1;border-radius:12px;background:white;color:#0f172a;padding:11px 12px;font-size:14px}.pb-component-builder-workbench{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px;align-items:start}.pb-component-builder-tools{display:grid;gap:8px;max-height:60vh;overflow:auto}.pb-component-builder-tools button{border:1px solid #cbd5e1;border-radius:12px;background:white;color:#1d4ed8;font-weight:900;text-align:left;padding:9px 10px;cursor:pointer}.pb-component-builder-tools button:hover{background:#eff6ff;color:#0f172a}.pb-component-animation-panel{display:grid;gap:14px;align-items:start}.pb-component-animation-panel p{margin:0;color:#475569;line-height:1.5}.pb-component-animation-panel>.pb-action{width:max-content}.pb-component-builder q-editor{display:block;min-height:58vh}.pb-component-builder q-editor .qe{min-height:58vh;border-color:#cbd5e1;border-radius:16px}.pb-component-builder q-editor .qe-editor-wrap,.pb-component-builder q-editor .qe-highlight,.pb-component-builder q-editor .qe-input,.pb-component-builder q-editor .qe-code,.pb-component-builder q-editor .qe-preview,.pb-component-builder q-editor .qe-cm-host,.pb-component-builder q-editor .qe-cm-host .cm-editor{min-height:58vh}.pb-component-builder-error{min-height:20px;padding:0 22px 8px;color:#be123c;font-size:13px;font-weight:800}.pb-component-builder-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 18px;border-top:1px solid #dbe4f0;background:#fff}.pb-mini-dialog{border:0;border-radius:18px;padding:0;background:white;box-shadow:0 28px 90px rgba(15,23,42,.38);width:min(420px,calc(100vw - 32px))}.pb-mini-dialog::backdrop{background:rgba(15,23,42,.45)}.pb-mini-card{display:grid;gap:14px;padding:18px}.pb-mini-card h3{margin:0;font-size:16px}.pb-mini-card select{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px;background:white}.pb-mini-actions{display:flex;justify-content:flex-end;gap:9px}",
       ".pb-instance-editor{border:0;padding:0;background:transparent;width:min(90vw,1180px);max-width:90vw;max-height:calc(100vh - 32px);overflow-y:auto}.pb-instance-editor::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(5px)}.pb-instance-editor-card{background:#f8fafc;border:1px solid rgba(148,163,184,.45);border-radius:24px;box-shadow:0 36px 120px rgba(15,23,42,.38);overflow:hidden}.pb-instance-editor-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 22px;background:white;border-bottom:1px solid #dbe4f0}.pb-instance-editor-head h2{margin:0;font-size:20px;letter-spacing:-.04em}.pb-instance-editor-head p{margin:6px 0 0;color:#64748b;font-size:13px}.pb-instance-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px 22px;background:#f1f5f9;border-bottom:1px solid #dbe4f0}.pb-instance-controls label{display:grid;gap:6px;color:#334155;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.08em}.pb-instance-controls select{min-width:0;border:1px solid #cbd5e1;border-radius:12px;background:white;color:#0f172a;padding:10px;font-size:14px}.pb-instance-editor-body{padding:16px 22px}.pb-instance-editor q-editor{display:block;min-height:60vh}.pb-instance-editor q-editor .qe{min-height:60vh;border-color:#cbd5e1;border-radius:16px}.pb-instance-editor q-editor .qe-editor-wrap,.pb-instance-editor q-editor .qe-highlight,.pb-instance-editor q-editor .qe-input,.pb-instance-editor q-editor .qe-code,.pb-instance-editor q-editor .qe-preview,.pb-instance-editor q-editor .qe-cm-host,.pb-instance-editor q-editor .qe-cm-host .cm-editor{min-height:60vh}.pb-instance-editor-error{min-height:20px;padding:0 22px 8px;color:#be123c;font-size:13px;font-weight:800}.pb-instance-editor-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 18px;border-top:1px solid #dbe4f0;background:#fff}.pb-instance-editor-actions .primary{background:#0f172a;color:white}",
-      ".pb-file-dialog{border:0;padding:0;background:transparent;width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto}.pb-file-dialog::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(5px)}.pb-file-card{background:#f8fafc;border:1px solid rgba(148,163,184,.45);border-radius:24px;box-shadow:0 36px 120px rgba(15,23,42,.38);overflow:hidden}.pb-file-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 22px;background:white;border-bottom:1px solid #dbe4f0}.pb-file-head h2{margin:0;font-size:20px;letter-spacing:-.04em}.pb-file-head p{margin:6px 0 0;color:#64748b;font-size:13px}.pb-file-toolbar{display:flex;gap:10px;flex-wrap:wrap;padding:14px 22px;background:#f1f5f9;border-bottom:1px solid #dbe4f0}.pb-file-body{padding:14px 18px 18px;min-height:360px}.pb-file-body q-tree-view,.pb-file-tree{display:block;min-height:340px;max-height:54vh;overflow:auto;border:1px solid #dbe4f0;border-radius:16px;background:white;padding:8px}.pb-file-body q-tree-view button,.pb-file-node{font:inherit}.pb-file-list{list-style:none;margin:0;padding:0}.pb-file-node{width:100%;display:flex;align-items:center;gap:8px;border:0;background:transparent;color:#0f172a;text-align:left;border-radius:10px;padding:8px 10px;font-size:14px;cursor:pointer}.pb-file-node:hover{background:#eff6ff}.pb-file-node.selected{background:#dbeafe;color:#1d4ed8;font-weight:900}.pb-file-node.folder{font-weight:850}.pb-file-glyph{width:18px;color:#64748b}.pb-file-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 22px 18px;border-top:1px solid #dbe4f0;background:#fff}.pb-file-selected{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475569;font-size:13px;font-weight:800}.pb-file-context-menu{min-width:150px;background:white;border:1px solid #cbd5e1;border-radius:14px;box-shadow:0 22px 70px rgba(15,23,42,.24);padding:6px}.pb-file-context-menu button{display:block;width:100%;border:0;background:transparent;text-align:left;border-radius:10px;padding:9px 10px;color:#0f172a;font-weight:800;cursor:pointer}.pb-file-context-menu button:hover{background:#eff6ff;color:#1d4ed8}#pb-file-context-menu{display:none;width:auto!important;height:auto!important;z-index:7000}#pb-file-context-menu .q-popup-container{width:auto;height:auto}",
+      ".pb-file-dialog{border:0;padding:0;background:transparent;width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto}.pb-file-dialog::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(5px)}.pb-file-card{background:#f8fafc;border:1px solid rgba(148,163,184,.45);border-radius:24px;box-shadow:0 36px 120px rgba(15,23,42,.38);overflow:hidden}.pb-file-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 22px;background:white;border-bottom:1px solid #dbe4f0}.pb-file-head h2{margin:0;font-size:20px;letter-spacing:-.04em}.pb-file-head p{margin:6px 0 0;color:#64748b;font-size:13px}.pb-file-toolbar{display:flex;gap:10px;flex-wrap:wrap;padding:14px 22px;background:#f1f5f9;border-bottom:1px solid #dbe4f0}.pb-file-body{padding:14px 18px 18px;min-height:360px}.pb-file-body q-tree-view,.pb-file-tree{display:block;min-height:340px;max-height:54vh;overflow:auto;border:1px solid #dbe4f0;border-radius:16px;background:white;padding:8px}.pb-file-body q-tree-view button,.pb-file-node{font:inherit}.pb-file-list{list-style:none;margin:0;padding:0}.pb-file-node{width:100%;display:flex;align-items:center;gap:8px;border:0;background:transparent;color:#0f172a;text-align:left;border-radius:10px;padding:8px 10px;font-size:14px;cursor:pointer}.pb-file-node:hover{background:#eff6ff}.pb-file-node.selected{background:#dbeafe;color:#1d4ed8;font-weight:900}.pb-file-node.folder{font-weight:850}.pb-file-glyph{width:18px;color:#64748b}.pb-file-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 22px 18px;border-top:1px solid #dbe4f0;background:#fff}.pb-file-selected{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475569;font-size:13px;font-weight:800}.pb-file-context-menu,.pb-canvas-context-menu{min-width:150px;background:white;border:1px solid #cbd5e1;border-radius:14px;box-shadow:0 22px 70px rgba(15,23,42,.24);padding:6px}.pb-file-context-menu button,.pb-canvas-context-menu button{display:block;width:100%;border:0;background:transparent;text-align:left;border-radius:10px;padding:9px 10px;color:#0f172a;font-weight:800;cursor:pointer}.pb-file-context-menu button:hover,.pb-canvas-context-menu button:hover{background:#eff6ff;color:#1d4ed8}#pb-file-context-menu,#pb-canvas-context-menu{display:none;width:auto!important;height:auto!important;z-index:7000}#pb-file-context-menu .q-popup-container,#pb-canvas-context-menu .q-popup-container{width:auto;height:auto}",
       "@media (max-width:980px){.pb-workspace{grid-template-columns:1fr}.pb-main{grid-template-rows:auto auto}.pb-toolbar{height:auto;align-items:flex-start;gap:14px;flex-direction:column;padding:16px}.pb-actions{width:100%}.pb-workspace{padding:12px}.pb-two-column-copy{grid-template-columns:1fr}}"
     ].join("\n");
 
@@ -354,6 +429,21 @@
   }
 
   function qhtmlDefinitionSource(el) {
+    var registered = componentRegistryRecord(el);
+    var structural = structuralComponentDefinition(el);
+    var data;
+    if (structural && typeof structural.toJSON === "function") {
+      data = structural.toJSON();
+      if (data && data.source) {
+        return componentDefinitionBodyFromSource(data.source, data.componentName || data.name || componentName(el));
+      }
+    }
+    if (structural && typeof structural.sourceQHTML === "function") {
+      return componentDefinitionBodyFromSource(structural.sourceQHTML(), componentName(el));
+    }
+    if (registered && registered.source) {
+      return componentDefinitionBodyFromSource(registered.source, registered.name || componentName(el));
+    }
     return rawAttr(el, "qhtml");
   }
 
@@ -399,9 +489,11 @@
     var lines = [
       "q-builder-item {",
       "  name: " + qhtmlStringLiteral(name || "Item"),
-      "  component: " + qhtmlStringLiteral(component || "pb-item"),
-      "  qhtml: " + qhtmlStringLiteral(definition)
+      "  component: " + qhtmlStringLiteral(component || "pb-item")
     ];
+    if (definition && !definitionMatchesRegistry(component, definition)) {
+      lines.push("  qhtml: " + qhtmlStringLiteral(definition));
+    }
     if (support) {
       lines.push("  support: " + qhtmlStringLiteral(support));
     }
@@ -440,6 +532,23 @@
     return "q-component " + name + " {\n" + indentBlock(body, 1) + "\n}";
   }
 
+  function componentDefinitionBodyFromSource(source, component) {
+    var block = scanTopLevelDefinitionBlocks(String(source || ""), ["q-component"]).filter(function (item) {
+      return !component || String(item.name || "").toLowerCase() === String(component || "").toLowerCase();
+    })[0] || scanTopLevelDefinitionBlocks(String(source || ""), ["q-component"])[0] || null;
+    return block ? String(block.body || "").trim() : String(source || "").trim();
+  }
+
+  function registryRecordByName(component) {
+    return ComponentRegistry.byName[String(component || "").toLowerCase()] || null;
+  }
+
+  function definitionMatchesRegistry(component, definition) {
+    var record = registryRecordByName(component);
+    var source = record && record.source ? componentDefinitionBodyFromSource(record.source, component) : "";
+    return !!source && source === String(definition || "").trim();
+  }
+
   function collectPaletteDefinitions(primaryComponent, primaryDefinition, primarySupport) {
     var map = Object.create(null);
     var support = [];
@@ -476,6 +585,11 @@
     if (el.qhtmlNode) {
       return el.qhtmlNode;
     }
+    if (typeof el.insertRow === "function" ||
+        typeof el.insertCol === "function" ||
+        typeof el.appendQHTMLSource === "function") {
+      return el;
+    }
     if (typeof el.qdom === "function") {
       try {
         return el.qdom();
@@ -484,6 +598,159 @@
       }
     }
     return null;
+  }
+
+  function qhtmlNodeChildren(node) {
+    var out = [];
+    var count = node && typeof node.childCount === "function" ? node.childCount() : 0;
+    var i;
+    for (i = 0; i < count; i += 1) {
+      out.push(node.childAt(i));
+    }
+    return out;
+  }
+
+  function qhtmlSlotChildren(slot) {
+    var result = [];
+    var value;
+    var count;
+    var i;
+    if (!slot || typeof slot.children !== "function") {
+      return result;
+    }
+    value = slot.children();
+    if (Array.isArray(value)) {
+      return value;
+    }
+    count = value && typeof value.size === "function" ? value.size() : 0;
+    for (i = 0; i < count; i += 1) {
+      if (typeof value.get === "function") {
+        result.push(value.get(i));
+      }
+    }
+    return result;
+  }
+
+  function qhtmlSlotNamed(node, name) {
+    var slots;
+    var count;
+    var i;
+    var slot;
+    if (!node || typeof node.slots !== "function") {
+      return null;
+    }
+    slots = node.slots();
+    if (Array.isArray(slots)) {
+      for (i = 0; i < slots.length; i += 1) {
+        slot = slots[i];
+        if (slot && qhtmlNodeName(slot).toLowerCase() === String(name || "").toLowerCase()) {
+          return slot;
+        }
+      }
+      return null;
+    }
+    count = slots && typeof slots.size === "function" ? slots.size() : 0;
+    for (i = 0; i < count; i += 1) {
+      slot = typeof slots.get === "function" ? slots.get(i) : null;
+      if (slot && qhtmlNodeName(slot).toLowerCase() === String(name || "").toLowerCase()) {
+        return slot;
+      }
+    }
+    return null;
+  }
+
+  function findComponentDefinitionNode(node, wantedName) {
+    var wanted = String(wantedName || "").toLowerCase();
+    var children;
+    var i;
+    var found;
+    if (!node) {
+      return null;
+    }
+    if (qhtmlNodeType(node) === "QHTMLComponentDefinition" &&
+        (!wanted || qhtmlNodeName(node).toLowerCase() === wanted)) {
+      return node;
+    }
+    children = qhtmlNodeChildren(node);
+    for (i = 0; i < children.length; i += 1) {
+      found = findComponentDefinitionNode(children[i], wanted);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  function componentRegistryRecord(el) {
+    var name;
+    if (!el) {
+      return null;
+    }
+    if (ComponentRegistry.byElement) {
+      try {
+        if (ComponentRegistry.byElement.get(el)) {
+          return ComponentRegistry.byElement.get(el);
+        }
+      } catch (error) {
+        return null;
+      }
+    }
+    name = el && typeof el.getAttribute === "function" ? el.getAttribute("component") || el.getAttribute("definitionName") : "";
+    return name ? ComponentRegistry.byName[String(name).toLowerCase()] || null : null;
+  }
+
+  function structuralComponentDefinition(el) {
+    var record = componentRegistryRecord(el);
+    var node = qdomOf(el);
+    var name = componentName(el);
+    var slot;
+    var children;
+    var i;
+    var found;
+    if (record && record.definition) {
+      return record.definition;
+    }
+    found = findComponentDefinitionNode(node, name);
+    if (found) {
+      return found;
+    }
+    slot = qhtmlSlotNamed(node, "definition");
+    children = qhtmlSlotChildren(slot);
+    for (i = 0; i < children.length; i += 1) {
+      found = findComponentDefinitionNode(children[i], "");
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  function registerProxy(element) {
+    var node = qdomOf(element);
+    var definition = structuralComponentDefinition(element);
+    var data = definition && typeof definition.toJSON === "function" ? definition.toJSON() : null;
+    var name = String((data && (data.componentName || data.name)) || qhtmlNodeName(definition) || componentName(element));
+    var source = data && data.source ? data.source : definition && typeof definition.sourceQHTML === "function" ? definition.sourceQHTML() : "";
+    var record = {
+      element: element,
+      node: node,
+      name: name,
+      definition: definition,
+      data: data,
+      source: source,
+      instance: qhtmlAssignmentValue(element, "instance") || (name + " { }")
+    };
+    ComponentRegistry.byName[name.toLowerCase()] = record;
+    if (ComponentRegistry.byElement) {
+      ComponentRegistry.byElement.set(element, record);
+    }
+    element.setAttribute("component", name);
+    element.setAttribute("definitionName", name);
+    element.setAttribute("instance", record.instance);
+    if (node && typeof node.setProperty === "function") {
+      node.setProperty("definitionName", name);
+    }
+    return record;
   }
 
   function builderLayout() {
@@ -500,6 +767,87 @@
   function rootQDom() {
     var host = document.getElementById("page-builder-host");
     return qdomOf(host);
+  }
+
+  function rootLayoutQDomFrom(node) {
+    var current = node || null;
+    var lastLayout = null;
+    var type;
+    var name;
+    while (current) {
+      type = qhtmlNodeType(current);
+      if (type === "QHTMLLayout" || type === "QHTMLRowLayout" || type === "QHTMLColumnLayout") {
+        lastLayout = current;
+      }
+      name = qhtmlNodeName(current);
+      if (type === "QHTMLLayout" && name === "pb-builder-layout") {
+        return current;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return lastLayout;
+  }
+
+  function rebindQDomTree() {
+    var host = document.getElementById("page-builder-host");
+    var root = rootQDom();
+    if (host && root && window.QHTML7 && typeof window.QHTML7.bindTree === "function") {
+      window.QHTML7.bindTree(host, root);
+    }
+  }
+
+  function refreshCanvasFromQDom(node) {
+    var layoutNode = rootLayoutQDomFrom(node);
+    var layout = builderLayout();
+    var template;
+    var nextLayout;
+    if (!layoutNode || !layout || typeof layoutNode.renderHtml !== "function") {
+      return false;
+    }
+    template = document.createElement("template");
+    template.innerHTML = String(layoutNode.renderHtml() || "").trim();
+    nextLayout = template.content.firstElementChild;
+    if (!nextLayout) {
+      return false;
+    }
+    if (!nextLayout.id) {
+      nextLayout.id = "pb-builder-layout";
+    }
+    layout.replaceWith(nextLayout);
+    rebindQDomTree();
+    arr(document.querySelectorAll(QLive.all)).forEach(installApi);
+    arr(document.querySelectorAll(QLive.layout)).forEach(relayout);
+    return true;
+  }
+
+  function scrubQHtmlDomBindings(root) {
+    var nodes = root ? [root].concat(arr(root.querySelectorAll("*"))) : [];
+    nodes.forEach(function (node) {
+      node.qhtmlNode = null;
+      node.qhtmlDomTree = null;
+      node.__qhtmlRegistry = null;
+      node.__qhtmlConnections = null;
+      node.__qhtmlProperties = null;
+      node.__qhtmlEventSignals = null;
+      node.__qhtmlBoundDomEvents = null;
+    });
+  }
+
+  function clearLayoutState(layout) {
+    var qdom = qdomOf(layout);
+    if (qdom && typeof qdom.clearChildren === "function") {
+      scrubQHtmlDomBindings(layout);
+      qdom.clearChildren();
+      if (refreshCanvasFromQDom(qdom)) {
+        return true;
+      }
+    }
+    if (layout) {
+      layout.innerHTML = "";
+      relayout(layout);
+      return true;
+    }
+    return false;
   }
 
   function isEditorPreviewTarget(el) {
@@ -528,12 +876,26 @@
 
   function appendQHtmlToQDom(target, source) {
     var qdom = qdomOf(target);
-    if (isEditorPreviewTarget(target) || !qdom || typeof qdom.appendNode !== "function") {
+    if (isEditorPreviewTarget(target) || !appendQHtmlToNode(qdom, source)) {
       return false;
     }
-    qdom.appendNode(String(source || ""));
     renderLayoutSoon("Canvas updated");
     return true;
+  }
+
+  function appendQHtmlToNode(qdom, source) {
+    if (!qdom) {
+      return false;
+    }
+    if (typeof qdom.appendQHTMLSource === "function") {
+      qdom.appendQHTMLSource(String(source || ""));
+      return true;
+    }
+    if (typeof qdom.appendNode === "function") {
+      qdom.appendNode(String(source || ""));
+      return true;
+    }
+    return false;
   }
 
   function replaceQDomWithQHtml(target, source) {
@@ -549,18 +911,246 @@
 
   function insertQDomRow(container, index, attrs) {
     var qdom = qdomOf(container);
-    if (isEditorPreviewTarget(container) || !qdom || typeof qdom.addRow !== "function") {
+    if (isEditorPreviewTarget(container) || !qdom) {
       return null;
     }
-    return qdom.addRow(index, attrs || { height: "auto" });
+    index = isFinite(index) ? index : 2147483647;
+    if (typeof qdom.insertRow === "function") {
+      return qdom.insertRow(index, attrs || { height: "auto" });
+    }
+    if (typeof qdom.addRow === "function") {
+      return qdom.addRow(index, attrs || { height: "auto" });
+    }
+    return null;
   }
 
   function insertQDomCol(container, index, attrs) {
     var qdom = qdomOf(container);
-    if (isEditorPreviewTarget(container) || !qdom || typeof qdom.addCol !== "function") {
+    if (isEditorPreviewTarget(container) || !qdom) {
       return null;
     }
-    return qdom.addCol(index, attrs || { width: "auto" });
+    index = isFinite(index) ? index : 2147483647;
+    if (typeof qdom.insertCol === "function") {
+      return qdom.insertCol(index, attrs || { width: "auto" });
+    }
+    if (typeof qdom.addCol === "function") {
+      return qdom.addCol(index, attrs || { width: "auto" });
+    }
+    return null;
+  }
+
+  function directIndex(parent, tagName, child) {
+    return direct(parent, tagName).indexOf(child);
+  }
+
+  function qLayoutSource() {
+    return [
+      "q-layout {",
+      "  width: \"100%\";",
+      "  minHeight: 70vh;",
+      "  gap: \"14px\";",
+      "  q-row {",
+      "    height: \"auto\";",
+      "    q-col {",
+      "      width: \"auto\";",
+      "      div.pb-empty-drop { text { Drop palette items here } }",
+      "    }",
+      "  }",
+      "}"
+    ].join("\n");
+  }
+
+  function layoutTargetFromPoint(x, y) {
+    var element = document.elementFromPoint(x, y);
+    var stage = element && element.closest ? element.closest(".pb-stage") : null;
+    var target = element && element.closest ? element.closest(QLive.all) : null;
+    var layout = builderLayout();
+    if (!stage) {
+      return { element: null, stage: null, layout: layout };
+    }
+    if (!target || target.closest(Q.toolbox) || !target.closest(".pb-stage")) {
+      target = layout;
+    }
+    return { element: target, stage: stage, layout: layout };
+  }
+
+  function contextRowForTarget(target) {
+    var row;
+    var layout;
+    if (target && isLayoutKind(target, Q.row)) {
+      return target;
+    }
+    row = target && target.closest ? closestLayoutKind(target, Q.row) : null;
+    if (row && row.closest(".pb-stage")) {
+      return row;
+    }
+    layout = contextLayoutForTarget(target);
+    return layout ? direct(layout, Q.row)[0] || null : null;
+  }
+
+  function contextColForTarget(target) {
+    var col;
+    if (target && isLayoutKind(target, Q.col)) {
+      return target;
+    }
+    col = target && target.closest ? closestLayoutKind(target, Q.col) : null;
+    return col && col.closest(".pb-stage") ? col : null;
+  }
+
+  function contextLayoutForTarget(target) {
+    var layout;
+    if (target && isLayoutKind(target, Q.layout)) {
+      return target;
+    }
+    layout = target && target.closest ? closestLayoutKind(target, Q.layout) : null;
+    return layout && layout.closest(".pb-stage") ? layout : builderLayout();
+  }
+
+  function addRowAtTarget(target) {
+    var layout = contextLayoutForTarget(target);
+    var row = contextRowForTarget(target);
+    var index = row && layout ? directIndex(layout, Q.row, row) + 1 : Infinity;
+    var qrow;
+    var domRow;
+    var domCol;
+    if (!layout) { return; }
+    qrow = insertQDomRow(layout, index, { height: "auto" });
+    if (qrow && insertQDomCol(qrow, Infinity, { width: "auto" })) {
+      refreshCanvasFromQDom(qrow);
+      BuilderStore.saveSoon();
+      renderLayoutSoon("Row added");
+      return;
+    }
+    domRow = layoutApi(layout).addRow(index, { height: "auto" });
+    domCol = domRow.addCol(Infinity, { width: "auto" });
+    domCol.classList.add("q-col-empty");
+    relayout(layout);
+    BuilderStore.saveSoon();
+    setStatus("Row added");
+  }
+
+  function addColumnAtTarget(target) {
+    var row = contextRowForTarget(target);
+    var col = contextColForTarget(target);
+    var layout = contextLayoutForTarget(target);
+    var index = col && row ? directIndex(row, Q.col, col) + 1 : Infinity;
+    var qrow;
+    var qcol;
+    var domCol;
+    if (!row && layout) {
+      qrow = insertQDomRow(layout, Infinity, { height: "auto" });
+      if (qrow) {
+        qcol = insertQDomCol(qrow, Infinity, { width: "auto" });
+        if (qcol) {
+          refreshCanvasFromQDom(qcol);
+          BuilderStore.saveSoon();
+          renderLayoutSoon("Column added");
+          return;
+        }
+      }
+      row = layoutApi(layout).addRow(Infinity, { height: "auto" });
+    }
+    if (!row) { return; }
+    qcol = insertQDomCol(row, index, { width: "auto" });
+    if (qcol) {
+      refreshCanvasFromQDom(qcol);
+      BuilderStore.saveSoon();
+      renderLayoutSoon("Column added");
+      return;
+    }
+    domCol = layoutApi(row).addCol(index, { width: "auto" });
+    domCol.classList.add("q-col-empty");
+    relayout(layout || row);
+    BuilderStore.saveSoon();
+    setStatus("Column added");
+  }
+
+  function addLayoutAtTarget(target) {
+    var col = contextColForTarget(target);
+    var row;
+    var layout;
+    var source = qLayoutSource();
+    if (col) {
+      if (appendQHtmlToQDom(col, source)) {
+        BuilderStore.saveSoon();
+        return;
+      }
+      col.appendChild(make(Q.layout, { width: "100%", minHeight: "70vh", gap: "14px" }));
+      layoutApi(col.lastElementChild).addRow(Infinity, { height: "auto" }).addCol(Infinity, { width: "auto" });
+      relayout(col);
+      BuilderStore.saveSoon();
+      setStatus("Layout added");
+      return;
+    }
+    row = contextRowForTarget(target);
+    if (row) {
+      addColumnAtTarget(row);
+      col = direct(row, Q.col).slice(-1)[0];
+      if (col) {
+        addLayoutAtTarget(col);
+      }
+      return;
+    }
+    layout = contextLayoutForTarget(target);
+    if (layout) {
+      addRowAtTarget(layout);
+      row = direct(layout, Q.row).slice(-1)[0];
+      col = row ? direct(row, Q.col).slice(-1)[0] : null;
+      if (col) {
+        addLayoutAtTarget(col);
+      }
+    }
+  }
+
+  function deleteColumnAtTarget(target) {
+    var col = contextColForTarget(target);
+    var row = col ? closestLayoutKind(col, Q.row) : null;
+    var layout = row ? closestLayoutKind(row, Q.layout) : null;
+    if (!col || col.id === "pb-builder-layout") { return; }
+    col.remove();
+    if (row && direct(row, Q.col).length === 0) {
+      row.remove();
+    }
+    if (layout) {
+      ensureCanvasPlaceholder(layout);
+      relayout(layout);
+    }
+    BuilderStore.saveSoon();
+    setStatus("Column deleted");
+  }
+
+  function deleteRowAtTarget(target) {
+    var row = null;
+    var layout = row ? closestLayoutKind(row, Q.layout) : null;
+    if (target && isLayoutKind(target, Q.row)) {
+      row = target;
+    } else if (target && target.closest && !isLayoutKind(target, Q.layout)) {
+      row = closestLayoutKind(target, Q.row);
+    }
+    layout = row ? closestLayoutKind(row, Q.layout) : null;
+    if (!row || !layout) { return; }
+    row.remove();
+    ensureCanvasPlaceholder(layout);
+    relayout(layout);
+    BuilderStore.saveSoon();
+    setStatus("Row deleted");
+  }
+
+  function deleteLayoutAtTarget(target) {
+    var layout = contextLayoutForTarget(target);
+    var root = builderLayout();
+    var parentLayout;
+    if (!layout || layout === root) {
+      return;
+    }
+    parentLayout = closestLayoutKind(layout.parentElement, Q.layout);
+    layout.remove();
+    if (parentLayout) {
+      ensureCanvasPlaceholder(parentLayout);
+      relayout(parentLayout);
+    }
+    BuilderStore.saveSoon();
+    setStatus("Layout deleted");
   }
 
   function escapeHtmlText(value) {
@@ -1433,10 +2023,50 @@
     return Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
   }
 
+  function intentPointElement(intent) {
+    var point = intent && intent.point ? intent.point : null;
+    if (!point || !document.elementFromPoint) {
+      return null;
+    }
+    return document.elementFromPoint(Number(point.x), Number(point.y));
+  }
+
+  function ownerForRenderedSlotSurface(surface) {
+    var owner = surface && surface.closest ? surface.closest(Q.item) : null;
+    var host;
+    if (owner) {
+      return owner;
+    }
+    host = surface && surface.closest ? surface.closest("[q-component]") : null;
+    return host && host.closest ? host.closest(Q.item) : null;
+  }
+
+  function slotSurfaceFromPoint(intent) {
+    var node = intentPointElement(intent);
+    var surface = node && node.closest ? node.closest("[data-pb-slot]") : null;
+    var point = intent && intent.point ? intent.point : null;
+    var candidates;
+    if (surface && !surface.closest(Q.toolbox)) {
+      return surface;
+    }
+    if (!point) {
+      return null;
+    }
+    candidates = arr(document.querySelectorAll(Q.item + " .q-builder-item-preview [data-pb-slot]")).filter(function (candidate) {
+      var rect = candidate.getBoundingClientRect();
+      return !candidate.closest(Q.toolbox) && pointInRect(point, rect);
+    }).sort(function (a, b) {
+      var ar = a.getBoundingClientRect();
+      var br = b.getBoundingClientRect();
+      return ar.width * ar.height - br.width * br.height;
+    });
+    return candidates[0] || null;
+  }
+
   function closestRenderedSlotSurfaceForIntent(intent) {
     var target = intent && (intent.target || intent.container);
-    var directSurface = target && target.closest ? target.closest("[data-pb-slot]") : null;
-    var owner = target && target.closest ? target.closest(Q.item) : null;
+    var directSurface = slotSurfaceFromPoint(intent) || (target && target.closest ? target.closest("[data-pb-slot]") : null);
+    var owner = ownerForRenderedSlotSurface(directSurface) || (target && target.closest ? target.closest(Q.item) : null);
     var preview = owner && owner.querySelector ? owner.querySelector(":scope > .q-builder-item-preview") : null;
     var point = intent && intent.point ? intent.point : null;
     var lineX = intent && intent.type === "insert-col" ? Number(intent.line) : point ? Number(point.x) : NaN;
@@ -1499,7 +2129,7 @@
 
   function applyPaletteItemToRenderedSlot(intent, source, moving) {
     var surface = closestRenderedSlotSurfaceForIntent(intent);
-    var owner = surface && surface.closest ? surface.closest(Q.item) : null;
+    var owner = ownerForRenderedSlotSurface(surface);
     var componentHost = renderedComponentHostForSlot(surface, owner);
     var slotName = surface ? surface.getAttribute("data-pb-slot") : "";
     var droppedSource = source ? qhtmlInstanceSource(source) : "";
@@ -1532,9 +2162,7 @@
       return false;
     }
     owner.setAttribute("instance", nextInstance);
-    if (typeof owner.refreshSourcePreview === "function") {
-      owner.refreshSourcePreview();
-    }
+    refreshBuilderItemPreview(owner);
     if (moving && source && typeof source.removeItem === "function") {
       source.removeItem();
     }
@@ -1632,7 +2260,7 @@
 
   function directSlotChoiceForIntent(owner, intent) {
     var surface = closestRenderedSlotSurfaceForIntent(intent);
-    var directChoice = surface && owner && surface.closest && surface.closest(Q.item) === owner
+    var directChoice = surface && owner && ownerForRenderedSlotSurface(surface) === owner
       ? closestSlotChoiceForSurface(owner, surface)
       : null;
     return directChoice || slotChoiceForHoveredInstance(owner, intent);
@@ -1740,7 +2368,7 @@
     ok.addEventListener("click", function () {
       var choice = choices[Number(select.value)] || choices[0];
       closeBuilderDialog(dialog);
-      onChoose(Object.assign({}, choice, { mode: "replace" }));
+      onChoose(Object.assign({}, choice, { mode: "append" }));
     });
     dialog.addEventListener("cancel", function (event) {
       event.preventDefault();
@@ -1768,12 +2396,11 @@
       slotTransform(slotSourceForEntry(qhtmlInstanceSource(owner), choice.entry, choice.slotName))
     );
     if (!nextInstance) {
+      setStatus("Unable to update " + choice.slotName);
       return false;
     }
     owner.setAttribute("instance", nextInstance);
-    if (typeof owner.refreshSourcePreview === "function") {
-      owner.refreshSourcePreview();
-    }
+    refreshBuilderItemPreview(owner);
     if (moving && source && typeof source.removeItem === "function") {
       source.removeItem();
     }
@@ -2304,7 +2931,9 @@
     var instance = materializeSlotDefaultsInInstanceSource(component, definition, options.instance || component + " { }");
     item.setAttribute("name", options.name || "Item");
     item.setAttribute("component", component);
-    item.setAttribute("qhtml", definition);
+    if (definition && !definitionMatchesRegistry(component, definition)) {
+      item.setAttribute("qhtml", definition);
+    }
     if (options.support) {
       item.setAttribute("support", options.support);
     }
@@ -3018,20 +3647,25 @@
     connectedCallback() {
       if (this.__ready) { return; }
       this.__ready = true;
+      hydratePaletteButtonAttributes(this);
       PaletteStore.applyToButton(this);
       this.capturePayload();
       this.renderLabel();
-      if (this.isComponentBuilderLauncher()) {
-        this.addEventListener("click", function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (window.QPageBuilder && typeof window.QPageBuilder.openComponentBuilder === "function") {
-            window.QPageBuilder.openComponentBuilder();
+      setTimeout(() => {
+        if (hydratePaletteButtonAttributes(this)) {
+          PaletteStore.applyToButton(this);
+          this.renderLabel();
+          if (this.isComponentBuilderLauncher()) {
+            this.bindLauncherClick();
           }
-        });
+        }
+      }, 0);
+      if (this.isComponentBuilderLauncher()) {
+        this.bindLauncherClick();
         return;
       }
       this.addEventListener("pointerdown", function (event) {
+        if (this.isComponentBuilderLauncher()) { return; }
         if (event.target.closest(".pb-palette-edit-button")) { return; }
         if (event.button !== 0) { return; }
         event.preventDefault();
@@ -3042,6 +3676,18 @@
 
     isComponentBuilderLauncher() {
       return this.getAttribute("data-pb-create-component") === "true";
+    }
+
+    bindLauncherClick() {
+      if (this.__launcherClickBound) { return; }
+      this.__launcherClickBound = true;
+      this.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (window.QPageBuilder && typeof window.QPageBuilder.openComponentBuilder === "function") {
+          window.QPageBuilder.openComponentBuilder();
+        }
+      });
     }
 
     capturePayload() {
@@ -3351,6 +3997,20 @@
     }
   }
 
+  function refreshBuilderItemPreview(owner) {
+    var preview;
+    if (!owner || typeof owner.refreshSourcePreview !== "function") {
+      return;
+    }
+    owner.refreshSourcePreview();
+    preview = owner.querySelector ? owner.querySelector(":scope > .q-builder-item-preview") : null;
+    if (preview) {
+      arr(preview.querySelectorAll(QLive.all)).forEach(installApi);
+      arr(preview.querySelectorAll(QLive.layout)).forEach(relayout);
+    }
+    enhanceRenderedInstanceEditors(owner);
+  }
+
   function cleanupMovedFromCell(cell, root) {
     var row;
     if (!cell || !cell.isConnected || cell.querySelector(Q.item) || direct(cell, Q.layout).length || direct(cell, Q.row).length) {
@@ -3476,15 +4136,20 @@
       }
 
       if (intent.type === "insert-row") {
+        intent.container = layoutApi(intent.container);
         qrow = moving ? null : insertQDomRow(intent.container, intent.index, { height: "auto" });
-        if (qrow && typeof qrow.addCol === "function" && payloadSource) {
-          qcol = qrow.addCol(Infinity, { width: "auto" });
-          if (qcol && typeof qcol.appendNode === "function") {
-            qcol.appendNode(payloadSource);
+        if (qrow && payloadSource) {
+          qcol = insertQDomCol(qrow, Infinity, { width: "auto" });
+          if (qcol && appendQHtmlToNode(qcol, payloadSource)) {
+            refreshCanvasFromQDom(qrow);
             BuilderStore.saveSoon();
             renderLayoutSoon("Canvas updated");
             return;
           }
+        }
+        if (!intent.container || typeof intent.container.addRow !== "function") {
+          setStatus("Drop target is not editable");
+          return;
         }
         row = intent.container.addRow(intent.index, { height: "auto" });
         col = row.addCol(Infinity, { width: "auto" });
@@ -3496,11 +4161,16 @@
       }
 
       if (intent.type === "insert-col") {
+        intent.container = layoutApi(intent.container);
         qcol = moving ? null : insertQDomCol(intent.container, intent.index, { width: "auto" });
-        if (qcol && typeof qcol.appendNode === "function" && payloadSource) {
-          qcol.appendNode(payloadSource);
+        if (qcol && payloadSource && appendQHtmlToNode(qcol, payloadSource)) {
+          refreshCanvasFromQDom(qcol);
           BuilderStore.saveSoon();
           renderLayoutSoon("Canvas updated");
+          return;
+        }
+        if (!intent.container || typeof intent.container.addCol !== "function") {
+          setStatus("Drop target is not editable");
           return;
         }
         col = intent.container.addCol(intent.index, { width: "auto" });
@@ -5110,8 +5780,7 @@
       applyImportedPaletteRecords([]);
       if (layout) {
         BuilderStore.restoring = true;
-        layout.innerHTML = "";
-        relayout(layout);
+        clearLayoutState(layout);
         BuilderStore.restoring = false;
       }
       BuilderStore.dirty = false;
@@ -5570,8 +6239,7 @@
   function clearCanvas() {
     var layout = builderLayout();
     if (!layout) { return; }
-    layout.innerHTML = "";
-    relayout(layout);
+    clearLayoutState(layout);
     BuilderStore.saveSoon();
     setStatus("Canvas cleared");
   }
@@ -5583,8 +6251,8 @@
     var qrow;
     if (!layout) { return; }
     qrow = insertQDomRow(layout, Infinity, { height: "auto" });
-    if (qrow && typeof qrow.addCol === "function") {
-      qrow.addCol(Infinity, { width: "auto" });
+    if (qrow && insertQDomCol(qrow, Infinity, { width: "auto" })) {
+      refreshCanvasFromQDom(qrow);
       BuilderStore.saveSoon();
       renderLayoutSoon("Row added");
       return;
@@ -5606,6 +6274,7 @@
     if (!row) { return; }
     qcol = insertQDomCol(row, Infinity, { width: "auto" });
     if (qcol) {
+      refreshCanvasFromQDom(qcol);
       BuilderStore.saveSoon();
       renderLayoutSoon("Column added");
       return;
@@ -5628,12 +6297,126 @@
     BuilderStore.load();
   }
 
+  function loadPalette() {
+    FileStore.applyCurrentPalette();
+    setStatus("Palette loaded");
+  }
+
+  function savePalette() {
+    var file = FileStore.ensureCurrentFile("index.qhtml");
+    if (!file) {
+      setStatus("Save palette cancelled");
+      return;
+    }
+    FileStore.setCurrentPalette(collectImportedPaletteRecords());
+    setStatus("Palette saved");
+  }
+
+  function importPaletteItem() {
+    ComponentBuilder.open();
+  }
+
+  function editPageInfo() {
+    var key = "qhtml7.pageBuilder.pageInfo.v1";
+    var info;
+    try {
+      info = JSON.parse(localStorage.getItem(key) || "{}");
+    } catch (error) {
+      info = {};
+    }
+    info.name = prompt("Page name", info.name || FileStore.currentLabel() || "Untitled Page") || info.name || "";
+    info.author = prompt("Author", info.author || "") || info.author || "";
+    info.canonicalUrl = prompt("Canonical URL", info.canonicalUrl || "") || info.canonicalUrl || "";
+    try {
+      localStorage.setItem(key, JSON.stringify(info));
+    } catch (error) {
+      setStatus("Page info storage unavailable");
+      return;
+    }
+    setStatus("Page info updated");
+  }
+
   function newLayoutFile() {
     FileStore.startNewFile();
   }
 
   function exportFolder() {
     FileStore.openFolderPicker("export", "");
+  }
+
+  function hideCanvasContextMenu() {
+    var menu = document.getElementById("pb-canvas-context-menu");
+    if (menu && typeof menu.hide === "function") {
+      menu.hide();
+    } else if (menu) {
+      menu.style.display = "none";
+    }
+  }
+
+  function showCanvasContextMenu(x, y, target) {
+    var menu = document.getElementById("pb-canvas-context-menu");
+    var contents = document.getElementById("pb-canvas-context-menu-contents") || (menu ? menu.querySelector(".pb-canvas-context-menu") : null);
+    var contextTarget = target || layoutTargetFromPoint(x, y).element || builderLayout();
+    var actions = [
+      ["row", "Add row"],
+      ["column", "Add column"],
+      ["layout", "Add layout"],
+      ["delete-row", "Delete row"],
+      ["delete-column", "Delete column"],
+      ["delete-layout", "Delete layout"],
+      ["clear", "Clear canvas"]
+    ];
+    if (!contents) {
+      return;
+    }
+    contents.innerHTML = actions.map(function (action) {
+      return "<button type=\"button\" data-action=\"" + action[0] + "\">" + escapeHtmlText(action[1]) + "</button>";
+    }).join("");
+    contents.onclick = function (event) {
+      var button = event.target && event.target.closest ? event.target.closest("button[data-action]") : null;
+      var action = button ? button.getAttribute("data-action") : "";
+      if (!action) { return; }
+      hideCanvasContextMenu();
+      if (action === "row") { addRowAtTarget(contextTarget); }
+      if (action === "column") { addColumnAtTarget(contextTarget); }
+      if (action === "layout") { addLayoutAtTarget(contextTarget); }
+      if (action === "delete-row") { deleteRowAtTarget(contextTarget); }
+      if (action === "delete-column") { deleteColumnAtTarget(contextTarget); }
+      if (action === "delete-layout") { deleteLayoutAtTarget(contextTarget); }
+      if (action === "clear") { clearCanvas(); }
+    };
+    if (menu && typeof menu.show === "function") {
+      menu.show(String(x) + "px", String(y) + "px");
+    } else if (menu) {
+      menu.style.display = "block";
+      menu.style.left = String(x) + "px";
+      menu.style.top = String(y) + "px";
+    }
+  }
+
+  function bindCanvasContextMenu() {
+    if (document.__pbCanvasContextMenuBound) {
+      return;
+    }
+    document.__pbCanvasContextMenuBound = true;
+    document.addEventListener("contextmenu", function (event) {
+      var path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      var target = event.target && event.target.closest ? event.target.closest(".pb-stage," + QLive.all) : null;
+      var stage = target && target.closest ? target.closest(".pb-stage") : null;
+      var context = layoutTargetFromPoint(event.clientX, event.clientY);
+      var i;
+      for (i = 0; !stage && i < path.length; i += 1) {
+        if (path[i] && path[i].classList && path[i].classList.contains("pb-stage")) {
+          stage = path[i];
+        }
+      }
+      if (!stage || stage.closest(Q.toolbox) || stage.closest("dialog") || stage.closest("#pb-file-context-menu")) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      showCanvasContextMenu(event.clientX, event.clientY, context.element);
+    }, true);
   }
 
   function updateExportPanel(focusOutput) {
@@ -5664,6 +6447,7 @@
 	  builderLayout();
 	  arr(document.querySelectorAll(QLive.all)).forEach(installApi);
 	  arr(document.querySelectorAll(QLive.layout)).forEach(relayout);
+	  bindCanvasContextMenu();
 	  BuilderStore.restoreSoon();
 	  updateExportPanel(false);
 
@@ -5675,6 +6459,10 @@
     clearCanvas: clearCanvas,
     saveLayout: saveLayout,
     loadLayout: loadLayout,
+    loadPalette: loadPalette,
+    savePalette: savePalette,
+    importPaletteItem: importPaletteItem,
+    editPageInfo: editPageInfo,
     importQHtmlFile: importQHtmlFile,
     importQHtmlSource: importQHtmlSource,
     closeFileDialog: function () { FileStore.closeDialog(); },
@@ -5708,6 +6496,10 @@
     saveInstanceEdit: function () { InstanceEditor.apply(); },
     selectInstanceEditTarget: function (path) { InstanceEditor.selectInstance(path); },
     selectInstanceEditSlot: function (slot) { InstanceEditor.selectSlot(slot); },
+    registerProxy: registerProxy,
+    componentRegistry: ComponentRegistry,
+    showCanvasContextMenu: showCanvasContextMenu,
+    hideCanvasContextMenu: hideCanvasContextMenu,
     relayout: relayout
   };
 
