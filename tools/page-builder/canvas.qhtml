@@ -1,6 +1,6 @@
 q-component PageBuilderCanvas {
   q-property canvasWidth: 72vw
-  q-property canvasHeight: 150vh
+  q-property canvasHeight: 100%
 
   section.pb-canvas-shell {
     width: object.canvasWidth;
@@ -8,28 +8,18 @@ q-component PageBuilderCanvas {
     div.pb-canvas-meta {
       div {
         h2 { text { Layout Canvas } }
-        p { text { Drop blocks where they belong. Red indicators show insert position. } }
+        p { text { Drop palette items here. Layout and component edits mutate the canvas JSON tree first. } }
       }
       div.pb-status { id: "pb-builder-status"; text { Ready } }
     }
 
     div.pb-stage {
+      id: "pb-builder-stage";
       slot canvas {
-        q-layout {
-          id: "pb-builder-layout";
+        div.pb-render-host {
+          id: "pb-canvas-render";
           data-pb-slot: "canvas";
-          width: "100%";
-          minHeight: 70vh;
-          gap: "14px";
-          q-row {
-            height: "auto";
-            q-col {
-              width: "auto";
-              div.pb-empty-drop {
-                text { Drop palette items here }
-              }
-            }
-          }
+          div.pb-empty-drop { text { Drop palette items here } }
         }
       }
     }
@@ -40,10 +30,8 @@ q-component page-builder-export-panel {
   section.pb-export-panel {
     div.pb-export-head {
       h2 { text { Exported QHTML } }
-      p { text { The export includes q-component definitions for palette items used in the layout, followed by the generated layout tree. } }
+      p { text { Generated with toQHTML() from the current JSON canvas model. } }
     }
-    q-editor {
-      id: "pb-export-output"
-    }
+    q-editor { id: "pb-export-output" }
   }
 }

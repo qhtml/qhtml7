@@ -6,13 +6,36 @@
   <title>QHTML7 Page Builder</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="w3.css" />
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #0f172a; }
+    body { overflow: hidden; }
+    .pb-sidebar-collapsed .pb-workspace { grid-template-columns: 0 minmax(0, 1fr) !important; }
+    .pb-sidebar-collapsed .pb-sidebar { display: none !important; }
+    .pb-palette-edit { position: absolute; top: 8px; right: 8px; z-index: 5; width: 28px; height: 28px; border: 0; border-radius: 999px; background: rgba(15,23,42,.88); color: white; cursor: pointer; opacity: 0; transition: opacity .16s ease; }
+    q-palette-toolbox-button:hover .pb-palette-edit { opacity: 1; }
+    .pb-drop-highlight-before { box-shadow: inset 5px 0 0 #ef4444 !important; }
+    .pb-drop-highlight-after { box-shadow: inset -5px 0 0 #ef4444 !important; }
+    .pb-drop-highlight-top { box-shadow: inset 0 5px 0 #ef4444 !important; }
+    .pb-drop-highlight-bottom { box-shadow: inset 0 -5px 0 #ef4444 !important; }
+    .pb-drop-highlight-center { outline: 3px solid #ef4444 !important; outline-offset: 3px; }
+    .pb-render-host { min-height: 70vh; }
+    .pb-render-host [data-pb-instance-id], .pb-render-host q-layout, .pb-render-host q-row, .pb-render-host q-col { position: relative; }
+    .pb-render-host [data-pb-instance-id]:hover::after { content: "✎"; position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 999px; background: rgba(15,23,42,.82); color: white; font-size: 12px; pointer-events: none; }
+    .pb-context-menu { position: fixed; z-index: 9999; min-width: 220px; background: white; border: 1px solid #cbd5e1; border-radius: 14px; box-shadow: 0 22px 80px rgba(15,23,42,.28); padding: 8px; display: none; }
+    .pb-context-menu button { display: block; width: 100%; border: 0; background: transparent; text-align: left; border-radius: 10px; padding: 9px 10px; cursor: pointer; font-weight: 700; color: #0f172a; }
+    .pb-context-menu button:hover { background: #eef2ff; }
+    .pb-json-panel { width: min(920px, 92vw); max-height: 82vh; }
+    .pb-json-panel textarea, .pb-dialog-textarea { width: 100%; min-height: 260px; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; }
+    dialog::backdrop { background: rgba(15,23,42,.56); backdrop-filter: blur(3px); }
+  </style>
   <script src="q-editor.js"></script>
   <script src="../dist/qhtml-wasm.js?v=7.3.4"></script>
-  <script src="page-builder/palette-toolbox.js?v=6.9.7-page-builder"></script>
+  <script src="page-builder/palette-toolbox.js?v=7.3.4-page-builder"></script>
+  <script src="page-builder/page-builder-runtime.js?v=7.3.4-page-builder"></script>
 </head>
 <body>
   <q-html id="page-builder-host">
-q-import { ./page-builder/main.qhtml?v=6.9.7-page-builder }
+q-import { ./page-builder/main.qhtml?v=7.3.4-page-builder }
 page-builder-app { }
   </q-html>
 </body>

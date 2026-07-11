@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML HTML Roller</title>
+  <script src="../dist/qhtml-wasm.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5f6b7a;
+      --line: #d8e0ea;
+      --accent: #087f8c;
+      --accent-dark: #075f69;
+      --danger: #b42318;
+      --ok: #147a45;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 15px;
+    }
+
+    body {
+      padding: 28px;
+    }
+
+    main {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(23, 32, 42, 0.06);
+    }
+
+    header {
+      padding: 22px 24px;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    h2 {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #edf2f7;
+      color: #26313f;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .panel {
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      min-height: 40px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 0 14px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--accent-dark);
+    }
+
+    button:disabled {
+      border-color: #a8b2bd;
+      background: #a8b2bd;
+      color: #fff;
+      cursor: not-allowed;
+    }
+
+    label {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    input[type="text"] {
+      width: min(360px, 100%);
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 11px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(110px, 1fr));
+      gap: 10px;
+    }
+
+    .status-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+
+    .status-card strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .status-card span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .folder-path {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .log {
+      min-height: 280px;
+      max-height: 54vh;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #eef3f8;
+      color: #344052;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .warn {
+      color: #9a5b00;
+      font-weight: 700;
+    }
+
+    .error {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    @media (max-width: 820px) {
+      body {
+        padding: 14px;
+      }
+
+      .status-grid {
+        grid-template-columns: repeat(2, minmax(110px, 1fr));
+      }
+
+      .toolbar {
+        align-items: stretch;
+      }
+
+      button,
+      input[type="text"],
+      label {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>QHTML HTML Roller</h1>
+      <p>Select a local folder, scan HTML files for <code>&lt;q-html&gt;</code> blocks, replace each block with <code>.toHTML()</code> output, and save the updated files back to disk.</p>
+    </header>
+
+    <section class="panel">
+      <h2>Folder</h2>
+      <div class="toolbar">
+        <button id="browse" type="button">Browse</button>
+        <button id="roll" type="button" disabled>Load and Save</button>
+        <button id="clear" class="secondary" type="button">Clear Log</button>
+        <label>
+          <input id="recursive" type="checkbox" checked>
+          Include subfolders
+        </label>
+        <label>
+          <input id="preview" type="checkbox">
+          Preview only
+        </label>
+        <label>
+          Extensions
+          <input id="extensions" type="text" value="html,htm">
+        </label>
+      </div>
+      <div id="folder" class="folder-path">No folder selected</div>
+      <p>Relative <code>q-import</code> and <code>q-require</code> paths are resolved against the file being rolled. Select the project root or a parent folder that contains imported component files.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Status</h2>
+      <div class="status-grid">
+        <div class="status-card"><strong id="count-files">0</strong><span>Files scanned</span></div>
+        <div class="status-card"><strong id="count-blocks">0</strong><span>QHTML blocks</span></div>
+        <div class="status-card"><strong id="count-changed">0</strong><span>Files changed</span></div>
+        <div class="status-card"><strong id="count-skipped">0</strong><span>Files skipped</span></div>
+        <div class="status-card"><strong id="count-errors">0</strong><span>Errors</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Log</h2>
+      <div class="log">
+        <table>
+          <thead>
+            <tr>
+              <th>State</th>
+              <th>File</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody id="log"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const browseButton = document.getElementById("browse");
+      const rollButton = document.getElementById("roll");
+      const clearButton = document.getElementById("clear");
+      const folderLabel = document.getElementById("folder");
+      const recursiveInput = document.getElementById("recursive");
+      const previewInput = document.getElementById("preview");
+      const extensionsInput = document.getElementById("extensions");
+      const logBody = document.getElementById("log");
+      const counters = {
+        files: document.getElementById("count-files"),
+        blocks: document.getElementById("count-blocks"),
+        changed: document.getElementById("count-changed"),
+        skipped: document.getElementById("count-skipped"),
+        errors: document.getElementById("count-errors")
+      };
+      const state = {
+        rootHandle: null,
+        running: false,
+        stats: { files: 0, blocks: 0, changed: 0, skipped: 0, errors: 0 }
+      };
+
+      function setStat(name, value) {
+        state.stats[name] = value;
+        counters[name].textContent = String(value);
+      }
+
+      function addStat(name, value) {
+        setStat(name, state.stats[name] + value);
+      }
+
+      function resetStats() {
+        Object.keys(state.stats).forEach((name) => setStat(name, 0));
+      }
+
+      function logRow(status, path, detail) {
+        const row = document.createElement("tr");
+        const statusCell = document.createElement("td");
+        const pathCell = document.createElement("td");
+        const detailCell = document.createElement("td");
+        statusCell.textContent = status;
+        statusCell.className = status === "saved" ? "ok" : (status === "error" ? "error" : "warn");
+        pathCell.textContent = path;
+        detailCell.textContent = detail;
+        row.append(statusCell, pathCell, detailCell);
+        logBody.appendChild(row);
+      }
+
+      function extensionSet() {
+        return extensionsInput.value
+          .split(",")
+          .map((item) => item.trim().replace(/^\./, "").toLowerCase())
+          .filter(Boolean);
+      }
+
+      function shouldScanFile(path) {
+        const allowed = extensionSet();
+        if (allowed.length === 0) {
+          return true;
+        }
+        const index = path.lastIndexOf(".");
+        const ext = index >= 0 ? path.slice(index + 1).toLowerCase() : "";
+        return allowed.includes(ext);
+      }
+
+      function normalizePath(path) {
+        const parts = String(path || "").replace(/\\/g, "/").split("/");
+        const out = [];
+        parts.forEach((part) => {
+          if (!part || part === ".") {
+            return;
+          }
+          if (part === "..") {
+            if (out.length === 0) {
+              throw new Error("Import resolves outside the selected folder: " + path);
+            }
+            out.pop();
+            return;
+          }
+          out.push(part);
+        });
+        return out.join("/");
+      }
+
+      function directoryName(path) {
+        const normalized = normalizePath(path);
+        const index = normalized.lastIndexOf("/");
+        return index >= 0 ? normalized.slice(0, index) : "";
+      }
+
+      function resolveImportPath(filePath, importPath) {
+        const raw = String(importPath || "").trim();
+        if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+          return raw;
+        }
+        if (raw.startsWith("/")) {
+          return normalizePath(raw.slice(1));
+        }
+        const base = directoryName(filePath);
+        return normalizePath(base ? base + "/" + raw : raw);
+      }
+
+      async function fileHandleAtPath(path) {
+        const parts = normalizePath(path).split("/").filter(Boolean);
+        let directory = state.rootHandle;
+        for (let index = 0; index < parts.length - 1; index += 1) {
+          directory = await directory.getDirectoryHandle(parts[index]);
+        }
+        return directory.getFileHandle(parts[parts.length - 1]);
+      }
+
+      async function readTextAtPath(path) {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(path)) {
+          const response = await fetch(path);
+          if (!response.ok) {
+            throw new Error("Failed to fetch " + path + ": HTTP " + response.status);
+          }
+          return response.text();
+        }
+        const handle = await fileHandleAtPath(path);
+        const file = await handle.getFile();
+        return file.text();
+      }
+
+      async function* walkDirectory(directoryHandle, prefix) {
+        for await (const entry of directoryHandle.values()) {
+          const path = prefix ? prefix + "/" + entry.name : entry.name;
+          if (entry.kind === "file") {
+            yield { path, handle: entry };
+          } else if (entry.kind === "directory" && recursiveInput.checked) {
+            yield* walkDirectory(entry, path);
+          }
+        }
+      }
+
+      function findMatchingSourceBrace(source, openIndex) {
+        let depth = 0;
+        let quote = "";
+        let escape = false;
+        let blockComment = false;
+        let lineComment = false;
+        for (let index = openIndex; index < source.length; index += 1) {
+          const ch = source[index];
+          const next = source[index + 1] || "";
+          if (lineComment) {
+            if (ch === "\n") {
+              lineComment = false;
+            }
+            continue;
+          }
+          if (blockComment) {
+            if (ch === "*" && next === "/") {
+              blockComment = false;
+              index += 1;
+            }
+            continue;
+          }
+          if (quote) {
+            if (escape) {
+              escape = false;
+            } else if (ch === "\\") {
+              escape = true;
+            } else if (ch === quote) {
+              quote = "";
+            }
+            continue;
+          }
+          if (ch === "/" && next === "/") {
+            lineComment = true;
+            index += 1;
+            continue;
+          }
+          if (ch === "/" && next === "*") {
+            blockComment = true;
+            index += 1;
+            continue;
+          }
+          if (ch === "\"" || ch === "'" || ch === "`") {
+            quote = ch;
+            continue;
+          }
+          if (ch === "{") {
+            depth += 1;
+          } else if (ch === "}") {
+            depth -= 1;
+            if (depth === 0) {
+              return index;
+            }
+          }
+        }
+        return -1;
+      }
+
+      function headerStartForBlock(source, cursor, openIndex) {
+        for (let index = openIndex - 1; index >= cursor; index -= 1) {
+          const ch = source[index];
+          if (ch === "\n" || ch === ";" || ch === "}") {
+            return index + 1;
+          }
+        }
+        return cursor;
+      }
+
+      function firstDirectiveTokenSpan(source, bodyStart, bodyEnd) {
+        let cursor = bodyStart;
+        while (cursor < bodyEnd && /\s/.test(source[cursor])) {
+          cursor += 1;
+        }
+        const start = cursor;
+        const quote = source[cursor];
+        if (quote === "\"" || quote === "'" || quote === "`") {
+          let escape = false;
+          cursor += 1;
+          while (cursor < bodyEnd) {
+            const ch = source[cursor];
+            if (escape) {
+              escape = false;
+            } else if (ch === "\\") {
+              escape = true;
+            } else if (ch === quote) {
+              cursor += 1;
+              break;
+            }
+            cursor += 1;
+          }
+          return { start, end: cursor, token: source.slice(start, cursor) };
+        }
+        while (cursor < bodyEnd && !/\s/.test(source[cursor])) {
+          cursor += 1;
+        }
+        return { start, end: cursor, token: source.slice(start, cursor) };
+      }
+
+      function collectImportDeclarationsFromSource(source, start, end, out) {
+        let cursor = start || 0;
+        const stop = typeof end === "number" ? end : source.length;
+        while (cursor < stop) {
+          const openIndex = source.indexOf("{", cursor);
+          if (openIndex < 0 || openIndex >= stop) {
+            break;
+          }
+          const closeIndex = findMatchingSourceBrace(source, openIndex);
+          if (closeIndex < 0) {
+            break;
+          }
+          const headerStart = headerStartForBlock(source, cursor, openIndex);
+          const header = source.slice(headerStart, openIndex).trim();
+          if (header === "q-import" || header === "q-require") {
+            const bodyStart = openIndex + 1;
+            const bodyEnd = closeIndex;
+            const pathSpan = firstDirectiveTokenSpan(source, bodyStart, bodyEnd);
+            const rawPath = pathSpan ? pathSpan.token : "";
+            const path = rawPath.replace(/^["'`]|["'`]$/g, "");
+            out.push({
+              kind: header,
+              path,
+              start: headerStart,
+              end: closeIndex + 1
+            });
+          } else {
+            collectImportDeclarationsFromSource(source, openIndex + 1, closeIndex, out);
+          }
+          cursor = closeIndex + 1;
+        }
+        return out;
+      }
+
+      async function expandLocalImports(source, filePath, activeImports) {
+        const declarations = collectImportDeclarationsFromSource(String(source || ""), 0, String(source || "").length, []);
+        let expanded = String(source || "");
+        const replacements = [];
+        for (const declaration of declarations) {
+          const importPath = resolveImportPath(filePath, declaration.path);
+          if (activeImports.has(importPath)) {
+            replacements.push({ declaration, source: "" });
+            continue;
+          }
+          activeImports.add(importPath);
+          try {
+            const importedSource = await readTextAtPath(importPath);
+            replacements.push({
+              declaration,
+              source: await expandLocalImports(importedSource, importPath, activeImports)
+            });
+          } finally {
+            activeImports.delete(importPath);
+          }
+        }
+        replacements
+          .sort((a, b) => b.declaration.start - a.declaration.start)
+          .forEach((entry) => {
+            expanded =
+              expanded.slice(0, entry.declaration.start) +
+              "\n" + entry.source + "\n" +
+              expanded.slice(entry.declaration.end);
+          });
+        return expanded;
+      }
+
+      async function convertQhtmlSource(source, filePath) {
+        const qhtml = await expandLocalImports(source, filePath, new Set([filePath]));
+        const runtime = await window.QHTML7Ready;
+        const tree = new runtime.Module.QHTMLDomTree();
+        try {
+          const ok = tree.fromQHTML(qhtml);
+          if (!ok) {
+            throw new Error("QHTMLDomTree.fromQHTML returned failure");
+          }
+          return tree.toHTML();
+        } finally {
+          if (typeof tree.delete === "function") {
+            tree.delete();
+          }
+        }
+      }
+
+      async function replaceQHtmlBlocks(source, filePath) {
+        const pattern = /<q-html\b[^>]*>([\s\S]*?)<\/q-html>/gi;
+        let output = "";
+        let lastIndex = 0;
+        let blocks = 0;
+        let match = pattern.exec(source);
+        while (match) {
+          blocks += 1;
+          output += source.slice(lastIndex, match.index);
+          output += await convertQhtmlSource(match[1], filePath);
+          lastIndex = match.index + match[0].length;
+          match = pattern.exec(source);
+        }
+        output += source.slice(lastIndex);
+        return { output, blocks };
+      }
+
+      async function rollFile(entry) {
+        addStat("files", 1);
+        if (!shouldScanFile(entry.path)) {
+          addStat("skipped", 1);
+          logRow("skipped", entry.path, "Extension filter");
+          return;
+        }
+        const file = await entry.handle.getFile();
+        const source = await file.text();
+        if (!/<q-html\b/i.test(source)) {
+          addStat("skipped", 1);
+          logRow("skipped", entry.path, "No q-html blocks");
+          return;
+        }
+        const result = await replaceQHtmlBlocks(source, entry.path);
+        addStat("blocks", result.blocks);
+        if (result.output === source) {
+          addStat("skipped", 1);
+          logRow("skipped", entry.path, "No changes");
+          return;
+        }
+        if (!previewInput.checked) {
+          const writable = await entry.handle.createWritable();
+          await writable.write(result.output);
+          await writable.close();
+        }
+        addStat("changed", 1);
+        logRow(previewInput.checked ? "preview" : "saved", entry.path, result.blocks + " q-html block(s) rolled");
+      }
+
+      async function rollFolder() {
+        if (!state.rootHandle || state.running) {
+          return;
+        }
+        state.running = true;
+        rollButton.disabled = true;
+        browseButton.disabled = true;
+        resetStats();
+        try {
+          await window.QHTML7Ready;
+          for await (const entry of walkDirectory(state.rootHandle, "")) {
+            try {
+              await rollFile(entry);
+            } catch (error) {
+              addStat("errors", 1);
+              logRow("error", entry.path, error && error.message ? error.message : String(error));
+            }
+          }
+        } finally {
+          state.running = false;
+          rollButton.disabled = false;
+          browseButton.disabled = false;
+        }
+      }
+
+      browseButton.addEventListener("click", async () => {
+        if (!window.showDirectoryPicker) {
+          logRow("error", "browser", "File System Access API is not available in this browser");
+          return;
+        }
+        try {
+          state.rootHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+          folderLabel.textContent = state.rootHandle.name;
+          rollButton.disabled = false;
+        } catch (error) {
+          logRow("skipped", "folder", error && error.message ? error.message : String(error));
+        }
+      });
+
+      rollButton.addEventListener("click", rollFolder);
+      clearButton.addEventListener("click", () => {
+        logBody.innerHTML = "";
+        resetStats();
+      });
+
+      window.QHTMLRoller = {
+        collectImportDeclarationsFromSource,
+        convertQhtmlSource,
+        expandLocalImports,
+        replaceQHtmlBlocks,
+        rollFolder
+      };
+    })();
+  </script>
+</body>
+</html>

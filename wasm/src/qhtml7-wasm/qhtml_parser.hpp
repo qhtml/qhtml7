@@ -2390,9 +2390,14 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("evaluateExpression", &QHTMLNode::evaluateExpressionJs)
         .function("runtime", &QHTMLNode::runtime)
         .function("renderHtml", &QHTMLNode::renderHtmlJs)
+        .function("toHTML", &QHTMLNode::toHTMLJs)
         .function("sourceQHTML", &QHTMLNode::sourceQHTMLJs)
+        .function("toQHTML", &QHTMLNode::toQHTMLJs)
+        .function("fromQHTML", &QHTMLNode::fromQHTMLJs)
         .function("toJSON", &QHTMLNode::toJSONJs)
-        .function("toJSONText", &QHTMLNode::toJSONTextJs);
+        .function("toJSONText", &QHTMLNode::toJSONTextJs)
+        .function("fromJSON", &QHTMLNode::fromJSONJs)
+        .function("fromJSONText", &QHTMLNode::fromJSONTextJs);
 
     class_<QHTMLDomNode, base<QHTMLNode>>("QHTMLDomNode");
     class_<QHTMLDomElement, base<QHTMLDomNode>>("QHTMLDomElement")
@@ -2405,6 +2410,9 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("value", &QHTMLHTMLFragment::valueJs);
     class_<QHTMLUnknownFragment, base<QHTMLDomNode>>("QHTMLUnknownFragment")
         .function("value", &QHTMLUnknownFragment::valueJs);
+    class_<QHTMLJavaScriptBlock, base<QHTMLDomNode>>("QHTMLJavaScriptBlock")
+        .function("contents", &QHTMLJavaScriptBlock::contentsJs)
+        .function("setContents", &QHTMLJavaScriptBlock::setContentsJs);
     class_<QHTMLTypedNode, base<QHTMLDomNode>>("QHTMLTypedNode")
         .function("keyword", &QHTMLTypedNode::keywordJs);
     class_<QHTMLWorker, base<QHTMLTypedNode>>("QHTMLWorker");
@@ -2724,7 +2732,14 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("quickJSAvailable", &QHTMLDomTree::quickJSAvailableJs)
         .function("compileJavaScript", &QHTMLDomTree::compileJavaScriptJs)
         .function("renderHtml", &QHTMLDomTree::renderHtmlJs)
-        .function("sourceQHTML", &QHTMLDomTree::sourceQHTMLJs);
+        .function("toHTML", &QHTMLDomTree::toHTMLJs)
+        .function("sourceQHTML", &QHTMLDomTree::sourceQHTMLJs)
+        .function("toQHTML", &QHTMLDomTree::toQHTMLJs)
+        .function("fromQHTML", &QHTMLDomTree::fromQHTMLJs)
+        .function("toJSON", &QHTMLDomTree::toJSONJs)
+        .function("toJSONText", &QHTMLDomTree::toJSONTextJs)
+        .function("fromJSON", &QHTMLDomTree::fromJSONJs)
+        .function("fromJSONText", &QHTMLDomTree::fromJSONTextJs);
 
     class_<QHTMLAstNode>("QHTMLAstNode")
         .function("astType", &QHTMLAstNode::astTypeJs)

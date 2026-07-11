@@ -2,7 +2,7 @@ q-component page-builder-palette {
   aside.pb-sidebar {
     div.pb-sidebar-head {
       h2 { text { Palette } }
-      p { text { Drag blocks onto the canvas. Items can be moved after they are dropped. } }
+      p { text { Drag definitions into the canvas. Pencil edits the component definition. } }
     }
 
     q-palette-toolbox {
@@ -10,8 +10,8 @@ q-component page-builder-palette {
       title: "Blocks"
 
       q-palette-toolbox-button {
-        name: "New"
-        component: "pb-new-component"
+        name: "New Component"
+        component: "pbCustomBlock"
         data-pb-create-component: "true"
         div.pb-palette-preview.new-component {
           h3 { text { New } }
@@ -20,35 +20,10 @@ q-component page-builder-palette {
       }
 
       q-palette-toolbox-button {
-        name: "Heading"
-        component: "pb-heading-block"
-        pb-proxy {
-          instance: "pb-heading-block { }"
-          definition {
-            q-component pb-heading-block {
-            q-style pbHeadingBlockHeaderStyle { padding: 20px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbHeadingBlockTitleStyle { margin: 0; fontSize: 30px; letterSpacing: -.04em; color: #0f172a } q-style pbHeadingBlockSubtitleStyle { marginTop: 8px; color: #64748b; lineHeight: 1.5 } q-theme pbHeadingBlockTheme { header { pbHeadingBlockHeaderStyle } h2 { pbHeadingBlockTitleStyle } p { pbHeadingBlockSubtitleStyle } } pbHeadingBlockTheme { header { h2 { q-layout { data-pb-slot: "headingTitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { headingTitle } } } } } p { q-layout { data-pb-slot: "headingSubtitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { headingSubtitle } } } } } q-layout { data-pb-slot: "headingContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { headingContent } } } } } } q-slot-default headingTitle { text { Your heading here } } q-slot-default headingSubtitle { text { Add a short supporting subtitle for this section. } } q-slot-default headingContent { text { Add supporting content or nested blocks here. } }
-            }
-          }
-        }
-        instance: "pb-heading-block { }"
-        div.pb-palette-preview.heading {
-          h3 { text { Heading } }
-          p { text { Title and subtitle } }
-        }
-      }
-
-      q-palette-toolbox-button {
         name: "Hero"
-        component: "pb-hero-block"
-        pb-proxy {
-          instance: "pb-hero-block { }"
-          definition {
-            q-component pb-hero-block {
-            q-style pbHeroBlockSectionStyle { padding: 32px; borderRadius: 20px; background: linear-gradient(135deg,#0f172a,#1d4ed8); color: white } q-style pbHeroBlockTitleStyle { margin: 0; fontSize: 38px; letterSpacing: -.06em } q-style pbHeroBlockCopyStyle { maxWidth: 560px; color: #dbeafe; lineHeight: 1.5 } q-style pbHeroBlockButtonStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-theme pbHeroBlockTheme { section.pb-hero-block { pbHeroBlockSectionStyle } h1 { pbHeroBlockTitleStyle } p { pbHeroBlockCopyStyle } button { pbHeroBlockButtonStyle } } pbHeroBlockTheme { section.pb-hero-block { h1 { q-layout { data-pb-slot: "heroTitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { heroTitle } } } } } p { q-layout { data-pb-slot: "heroSubtitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { heroSubtitle } } } } } button { class: "pb-demo-button" q-layout { data-pb-slot: "heroButtonText"; width: "100%"; gap: "8px"; q-row { q-col { slot { heroButtonText } } } } } q-layout { data-pb-slot: "heroContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { heroContent } } } } } } q-slot-default heroTitle { text { Launch Faster } } q-slot-default heroSubtitle { text { Compose a clean landing page visually, then export declarative QHTML. } } q-slot-default heroButtonText { text { Start Building } } q-slot-default heroContent { text { Add hero details or nested blocks here. } }
-            }
-          }
-        }
-        instance: "pb-hero-block { }"
+        component: "pbHeroBlock"
+        qhtml: "q-component pbHeroBlock { section.pb-hero-block { h1 { slot heroTitle { text { Launch Faster } } } p { slot heroSubtitle { text { Compose visually and export QHTML. } } } button.pb-demo-button { slot heroButtonText { text { Start Building } } } q-layout { data-pb-slot: heroContent; width: 100%; q-row { q-col { slot heroContent { text { Add hero content here. } } } } } } }"
+        instance-qhtml: "pbHeroBlock heroBlock { heroTitle { text { Your title here } } heroSubtitle { text { Lorem ipsum dolor sit amet. } } heroButtonText { text { Get Started } } heroContent { text { Hero details or nested blocks. } } }"
         div.pb-palette-preview.hero {
           h3 { text { Hero } }
           p { text { Headline, copy, CTA } }
@@ -56,35 +31,32 @@ q-component page-builder-palette {
       }
 
       q-palette-toolbox-button {
-        name: "Card"
-        component: "pb-card-block"
-        pb-proxy {
-          instance: "pb-card-block { }"
-          definition {
-            q-component pb-card-block {
-            q-style pbCardBlockArticleStyle { padding: 22px; borderRadius: 18px; background: #f8fafc; border: 1px solid #dbe4f0; color: #0f172a; boxShadow: 0 12px 28px rgba(15,23,42,.08) } q-style pbCardBlockTitleStyle { marginTop: 0; marginBottom: 8px; color: #0f172a } q-style pbCardBlockBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbCardBlockTheme { article.pb-feature-card { pbCardBlockArticleStyle } h3 { pbCardBlockTitleStyle } p { pbCardBlockBodyStyle } } pbCardBlockTheme { article.pb-feature-card { h3 { q-layout { data-pb-slot: "cardTitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { cardTitle } } } } } p { q-layout { data-pb-slot: "cardBody"; width: "100%"; gap: "8px"; q-row { q-col { slot { cardBody } } } } } q-layout { data-pb-slot: "cardContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { cardContent } } } } } } q-slot-default cardTitle { text { Card title } } q-slot-default cardBody { text { Use this card for compact page content or feature summaries. } } q-slot-default cardContent { text { Add card details or nested blocks here. } }
-            }
-          }
-        }
-        instance: "pb-card-block { }"
+        name: "Feature Card"
+        component: "pbFeatureCard"
+        qhtml: "q-component pbFeatureCard { article.pb-feature-card { h3 { slot featureCardTitle { text { Feature title } } } p { slot featureCardBody { text { Short feature description. } } } q-layout { data-pb-slot: featureCardContent; width: 100%; q-row { q-col { slot featureCardContent { text { Additional card content. } } } } } } }"
+        instance-qhtml: "pbFeatureCard featureCard { featureCardTitle { text { Your feature } } featureCardBody { text { Describe the benefit here. } } featureCardContent { text { Add nested content. } } }"
         div.pb-palette-preview.card {
-          h3 { text { Card } }
-          p { text { Title and body } }
+          h3 { text { Feature } }
+          p { text { Card block } }
+        }
+      }
+
+      q-palette-toolbox-button {
+        name: "Two Column Copy"
+        component: "pbTwoColumnCopy"
+        qhtml: "q-component pbTwoColumnCopy { section.pb-two-column { q-layout { data-pb-slot: twoColumnLayout; width: 100%; cols: 2; q-row { q-col { h3 { slot leftTitle { text { Left heading } } } p { slot leftBody { text { Left body copy. } } } } q-col { h3 { slot rightTitle { text { Right heading } } } p { slot rightBody { text { Right body copy. } } } } } } } }"
+        instance-qhtml: "pbTwoColumnCopy twoColumnCopy { leftTitle { text { Left heading } } leftBody { text { Lorem ipsum dolor sit amet. } } rightTitle { text { Right heading } } rightBody { text { Sed do eiusmod tempor. } } }"
+        div.pb-palette-preview.columns {
+          h3 { text { Columns } }
+          p { text { Two content areas } }
         }
       }
 
       q-palette-toolbox-button {
         name: "Callout"
-        component: "pb-callout"
-        pb-proxy {
-          instance: "pb-callout { }"
-          definition {
-            q-component pb-callout {
-            q-style pbCalloutAsideStyle { padding: 18px; borderRadius: 18px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f } q-style pbCalloutStrongStyle { display: block; marginBottom: 6px; fontWeight: 900 } q-style pbCalloutBodyStyle { margin: 0; color: #78350f; lineHeight: 1.5 } q-theme pbCalloutTheme { aside.pb-callout { pbCalloutAsideStyle } strong { pbCalloutStrongStyle } p { pbCalloutBodyStyle } } pbCalloutTheme { aside.pb-callout { strong { q-layout { data-pb-slot: "calloutLabel"; width: "100%"; gap: "8px"; q-row { q-col { slot { calloutLabel } } } } } p { q-layout { data-pb-slot: "calloutBody"; width: "100%"; gap: "8px"; q-row { q-col { slot { calloutBody } } } } } q-layout { data-pb-slot: "calloutContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { calloutContent } } } } } } q-slot-default calloutLabel { text { Note } } q-slot-default calloutBody { text { Use callouts for announcements, warnings, or highlighted copy. } } q-slot-default calloutContent { text { Add supporting details here. } }
-            }
-          }
-        }
-        instance: "pb-callout { }"
+        component: "pbCallout"
+        qhtml: "q-component pbCallout { aside.pb-callout { strong { slot calloutLabel { text { Note } } } p { slot calloutBody { text { Highlighted information. } } } q-layout { data-pb-slot: calloutContent; width: 100%; q-row { q-col { slot calloutContent { text { Add supporting details here. } } } } } } }"
+        instance-qhtml: "pbCallout callout { calloutLabel { text { Note } } calloutBody { text { Important details go here. } } calloutContent { text { Add nested callout content. } } }"
         div.pb-palette-preview.callout {
           h3 { text { Callout } }
           p { text { Highlight panel } }
@@ -92,125 +64,10 @@ q-component page-builder-palette {
       }
 
       q-palette-toolbox-button {
-        name: "Price Box"
-        component: "pb-price-box"
-        pb-proxy {
-          instance: "pb-price-box { }"
-          definition {
-            q-component pb-price-box {
-            q-style pbPriceBoxSectionStyle { padding: 24px; borderRadius: 20px; background: #f0f9ff; border: 1px solid #bae6fd; color: #0f172a; boxShadow: 0 12px 28px rgba(14,165,233,.14) } q-style pbPriceBoxTitleStyle { marginTop: 0; marginBottom: 8px; color: #075985 } q-style pbPriceBoxAmountStyle { fontSize: 28px; fontWeight: 950; color: #0f172a; margin: 6px 0 14px } q-style pbPriceBoxListStyle { paddingLeft: 20px; color: #334155; lineHeight: 1.6 } q-style pbPriceBoxButtonStyle { border: 0; borderRadius: 999px; background: #0ea5e9; color: white; fontWeight: 900; padding: 10px 16px } q-theme pbPriceBoxTheme { section { pbPriceBoxSectionStyle } h3 { pbPriceBoxTitleStyle } p { pbPriceBoxAmountStyle } ul { pbPriceBoxListStyle } button { pbPriceBoxButtonStyle } } pbPriceBoxTheme { section { h3 { q-layout { data-pb-slot: "priceTitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { priceTitle } } } } } p { q-layout { data-pb-slot: "priceAmount"; width: "100%"; gap: "8px"; q-row { q-col { slot { priceAmount } } } } } ul { q-layout { data-pb-slot: "priceFeatures"; width: "100%"; gap: "8px"; q-row { q-col { slot { priceFeatures } } } } } button { class: "pb-demo-button" q-layout { data-pb-slot: "priceButtonText"; width: "100%"; gap: "8px"; q-row { q-col { slot { priceButtonText } } } } } q-layout { data-pb-slot: "priceContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { priceContent } } } } } } q-slot-default priceTitle { text { Starter } } q-slot-default priceAmount { text { $29 / month } } q-slot-default priceFeatures { li { text { Core features } } li { text { Email support } } li { text { Simple onboarding } } } q-slot-default priceButtonText { text { Choose plan } } q-slot-default priceContent { text { Add plan details here. } }
-            }
-          }
-        }
-        instance: "pb-price-box { }"
-        div.pb-palette-preview.price {
-          h3 { text { Price Box } }
-          p { text { Plan card } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Aside Box"
-        component: "pb-aside-box"
-        pb-proxy {
-          instance: "pb-aside-box { }"
-          definition {
-            q-component pb-aside-box {
-            q-style pbAsideBoxStyle { padding: 18px; borderRadius: 18px; background: #f8fafc; border: 1px solid #cbd5e1; color: #334155 } q-style pbAsideTitleStyle { marginTop: 0; color: #0f172a } q-style pbAsideBodyStyle { color: #475569; lineHeight: 1.5 } q-theme pbAsideBoxTheme { aside { pbAsideBoxStyle } h4 { pbAsideTitleStyle } p { pbAsideBodyStyle } } pbAsideBoxTheme { aside { h4 { q-layout { data-pb-slot: "asideTitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { asideTitle } } } } } p { q-layout { data-pb-slot: "asideBody"; width: "100%"; gap: "8px"; q-row { q-col { slot { asideBody } } } } } q-layout { data-pb-slot: "asideContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { asideContent } } } } } } q-slot-default asideTitle { text { Related } } q-slot-default asideBody { text { Add secondary context, links, or supporting notes here. } } q-slot-default asideContent { text { Add links or nested content here. } }
-            }
-          }
-        }
-        instance: "pb-aside-box { }"
-        div.pb-palette-preview.callout {
-          h3 { text { Aside } }
-          p { text { Sidebar content } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Container"
-        component: "pb-container-block"
-        pb-proxy {
-          instance: "pb-container-block { }"
-          definition {
-            q-component pb-container-block {
-            q-style pbContainerSectionStyle { padding: 24px; borderRadius: 22px; background: #ffffff; border: 1px solid #dbe4f0; color: #0f172a } q-style pbContainerHeaderStyle { marginBottom: 14px } q-style pbContainerTitleStyle { marginTop: 0; marginBottom: 8px } q-style pbContainerBodyStyle { color: #64748b; lineHeight: 1.5 } q-theme pbContainerBlockTheme { section { pbContainerSectionStyle } div { pbContainerHeaderStyle } h3 { pbContainerTitleStyle } p { pbContainerBodyStyle } } pbContainerBlockTheme { section { div { h3 { q-layout { data-pb-slot: "containerTitle"; width: "100%"; gap: "8px"; q-row { q-col { slot { containerTitle } } } } } p { q-layout { data-pb-slot: "containerBody"; width: "100%"; gap: "8px"; q-row { q-col { slot { containerBody } } } } } } q-layout { data-pb-slot: "containerContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { containerContent } } } } } } q-slot-default containerTitle { text { Container } } q-slot-default containerBody { text { Place grouped content inside this general purpose section. } } q-slot-default containerContent { text { Add grouped content or nested blocks here. } }
-            }
-          }
-        }
-        instance: "pb-container-block { }"
-        div.pb-palette-preview.card {
-          h3 { text { Container } }
-          p { text { Generic wrapper } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Text Block"
-        component: "pb-text-block"
-        pb-proxy {
-          instance: "pb-text-block { }"
-          definition {
-            q-component pb-text-block {
-            q-style pbTextBlockStyle { padding: 18px; borderRadius: 16px; background: #ffffff; color: #334155; lineHeight: 1.65 } q-style pbTextBlockParagraphStyle { marginTop: 0; marginBottom: 8px } q-theme pbTextBlockTheme { div { pbTextBlockStyle } p { pbTextBlockParagraphStyle } } pbTextBlockTheme { div { p { q-layout { data-pb-slot: "textBody"; width: "100%"; gap: "8px"; q-row { q-col { slot { textBody } } } } } q-layout { data-pb-slot: "textContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { textContent } } } } } } q-slot-default textBody { text { Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante. } } q-slot-default textContent { text { Add additional copy or nested blocks here. } }
-            }
-          }
-        }
-        instance: "pb-text-block { }"
-        div.pb-palette-preview.card {
-          h3 { text { Text } }
-          p { text { Paragraph copy } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Image Placeholder"
-        component: "pb-image-placeholder"
-        pb-proxy {
-          instance: "pb-image-placeholder { }"
-          definition {
-            q-component pb-image-placeholder {
-            q-style pbImageFigureStyle { margin: 0; padding: 18px; borderRadius: 18px; background: #ffffff; border: 1px solid #dbe4f0; color: #475569 } q-style pbImageBoxStyle { minHeight: 140px; display: grid; placeItems: center; background: #e2e8f0; borderRadius: 16px; color: #475569 } q-style pbImageCaptionStyle { marginTop: 8px; color: #64748b; fontSize: 14px } q-theme pbImagePlaceholderTheme { figure { pbImageFigureStyle } div { pbImageBoxStyle } figcaption { pbImageCaptionStyle } } pbImagePlaceholderTheme { figure { div { q-layout { data-pb-slot: "imageLabel"; width: "100%"; gap: "8px"; q-row { q-col { slot { imageLabel } } } } } figcaption { q-layout { data-pb-slot: "imageCaption"; width: "100%"; gap: "8px"; q-row { q-col { slot { imageCaption } } } } } q-layout { data-pb-slot: "imageContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { imageContent } } } } } } q-slot-default imageLabel { text { Image } } q-slot-default imageCaption { text { Optional caption } } q-slot-default imageContent { text { Add image-adjacent content here. } }
-            }
-          }
-        }
-        instance: "pb-image-placeholder { }"
-        div.pb-palette-preview.card {
-          h3 { text { Image } }
-          p { text { Figure block } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Quote"
-        component: "pb-quote-block"
-        pb-proxy {
-          instance: "pb-quote-block { }"
-          definition {
-            q-component pb-quote-block {
-            q-style pbQuoteBlockStyle { margin: 0; padding: 22px; borderRadius: 20px; background: #f8fafc; borderLeft: 5px solid #f59e0b; color: #1f2937 } q-style pbQuoteTextStyle { marginTop: 0; fontSize: 20px; lineHeight: 1.45 } q-style pbQuoteCiteStyle { display: block; marginTop: 10px; color: #64748b; fontStyle: normal; fontWeight: 800 } q-theme pbQuoteBlockTheme { blockquote { pbQuoteBlockStyle } p { pbQuoteTextStyle } cite { pbQuoteCiteStyle } } pbQuoteBlockTheme { blockquote { p { q-layout { data-pb-slot: "quoteText"; width: "100%"; gap: "8px"; q-row { q-col { slot { quoteText } } } } } cite { q-layout { data-pb-slot: "quoteCite"; width: "100%"; gap: "8px"; q-row { q-col { slot { quoteCite } } } } } q-layout { data-pb-slot: "quoteContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { quoteContent } } } } } } q-slot-default quoteText { text { A concise testimonial or pull quote can go here. } } q-slot-default quoteCite { text { Customer Name } } q-slot-default quoteContent { text { Add quote context here. } }
-            }
-          }
-        }
-        instance: "pb-quote-block { }"
-        div.pb-palette-preview.callout {
-          h3 { text { Quote } }
-          p { text { Pull quote } }
-        }
-      }
-
-      q-palette-toolbox-button {
         name: "Button Row"
-        component: "pb-button-row"
-        pb-proxy {
-          instance: "pb-button-row { }"
-          definition {
-            q-component pb-button-row {
-            q-style pbButtonRowStyle { display: flex; gap: 12px; flexWrap: wrap; alignItems: center } q-style pbButtonPrimaryStyle { border: 0; borderRadius: 999px; background: #22d3ee; color: #0f172a; fontWeight: 900; padding: 10px 16px } q-style pbButtonGhostStyle { border: 1px solid #bfdbfe; borderRadius: 999px; background: white; color: #1d4ed8; fontWeight: 900; padding: 10px 16px } q-theme pbButtonRowTheme { div.pb-button-row { pbButtonRowStyle } button { pbButtonPrimaryStyle } .ghost { pbButtonGhostStyle } } pbButtonRowTheme { div.pb-button-row { button { class: "pb-demo-button" q-layout { data-pb-slot: "primaryButtonText"; width: "100%"; gap: "8px"; q-row { q-col { slot { primaryButtonText } } } } } button { class: "pb-demo-button ghost" q-layout { data-pb-slot: "secondaryButtonText"; width: "100%"; gap: "8px"; q-row { q-col { slot { secondaryButtonText } } } } } q-layout { data-pb-slot: "buttonRowContent"; width: "100%"; gap: "8px"; q-row { q-col { slot { buttonRowContent } } } } } } q-slot-default primaryButtonText { text { Primary } } q-slot-default secondaryButtonText { text { Secondary } } q-slot-default buttonRowContent { text { Optional helper text } }
-            }
-          }
-        }
-        instance: "pb-button-row { }"
+        component: "pbButtonRow"
+        qhtml: "q-component pbButtonRow { div.pb-button-row { q-layout { data-pb-slot: buttonRowActions; width: 100%; q-row { q-col { slot buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } } } } } p { slot buttonRowContent { text { Optional helper text. } } } } }"
+        instance-qhtml: "pbButtonRow buttonRow { buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } } buttonRowContent { text { Optional helper text. } } }"
         div.pb-palette-preview.buttons {
           h3 { text { Buttons } }
           p { text { CTA pair } }
@@ -218,92 +75,46 @@ q-component page-builder-palette {
       }
 
       q-palette-toolbox-button {
-        name: "Layout: 1 Column"
-        component: "pb-layout-one-col"
-        pb-proxy {
-          instance: "pb-layout-one-col { }"
-          definition {
-            q-component pb-layout-one-col {
-            q-layout { width: "100%"; gap: "14px"; q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "onecolumncontent"; width: "100%"; gap: "8px"; q-row { q-col { slot { onecolumncontent } } } } } } } q-slot-default onecolumncontent { text { Add one-column layout content here. } }
-            }
-          }
-        }
-        instance: "pb-layout-one-col { }"
-        div.pb-palette-preview.layout {
-          h3 { text { 1 Column } }
-          p { text { One row, one column } }
+        name: "Section"
+        component: "pbBuilderSection"
+        qhtml: "q-component pbBuilderSection { section.pb-builder-section { p { slot sectionEyebrow { text { Section label } } } h2 { slot sectionTitle { text { Section title } } } p { slot sectionSubtitle { text { Section subtitle. } } } q-layout { data-pb-slot: sectionContent; width: 100%; q-row { q-col { slot sectionContent { text { Add section content here. } } } } } } }"
+        instance-qhtml: "pbBuilderSection builderSection { sectionEyebrow { text { Section label } } sectionTitle { text { Your section title } } sectionSubtitle { text { Lorem ipsum dolor sit amet. } } sectionContent { text { Add nested page content. } } }"
+        div.pb-palette-preview.callout {
+          h3 { text { Section } }
+          p { text { Heading wrapper } }
         }
       }
 
       q-palette-toolbox-button {
-        name: "Layout: 2 Columns"
-        component: "pb-layout-two-col"
-        pb-proxy {
-          instance: "pb-layout-two-col { }"
-          definition {
-            q-component pb-layout-two-col {
-            q-layout { width: "100%"; gap: "14px"; q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "leftcolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { leftcolumn } } } } } q-col { width: "1fr"; q-layout { data-pb-slot: "rightcolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }
-            }
-          }
-        }
-        instance: "pb-layout-two-col { }"
-        div.pb-palette-preview.layout {
-          h3 { text { 2 Columns } }
-          p { text { Equal columns } }
+        name: "Sidebar Layout"
+        component: "pbSidebarLayout"
+        qhtml: "q-component pbSidebarLayout { section.pb-sidebar-layout { q-layout { data-pb-slot: sidebarLayout; width: 100%; cols: 2; q-row { q-col { aside { h3 { slot sidebarLayoutSidebarTitle { text { Sidebar } } } p { slot sidebarLayoutSidebarBody { text { Sidebar body. } } } } } q-col { main { h3 { slot sidebarLayoutMainTitle { text { Main Content } } } p { slot sidebarLayoutMainBody { text { Main body. } } } q-layout { data-pb-slot: sidebarLayoutContent; width: 100%; q-row { q-col { slot sidebarLayoutContent { text { Nested content area. } } } } } } } } } } }"
+        instance-qhtml: "pbSidebarLayout sidebarLayout { sidebarLayoutSidebarTitle { text { Sidebar } } sidebarLayoutSidebarBody { text { Links or metadata. } } sidebarLayoutMainTitle { text { Main Content } } sidebarLayoutMainBody { text { Lorem ipsum dolor sit amet. } } sidebarLayoutContent { text { Nested page content area. } } }"
+        div.pb-palette-preview.columns {
+          h3 { text { Sidebar } }
+          p { text { Sidebar + main } }
         }
       }
 
       q-palette-toolbox-button {
-        name: "Layout: 3 Columns"
-        component: "pb-layout-three-col"
-        pb-proxy {
-          instance: "pb-layout-three-col { }"
-          definition {
-            q-component pb-layout-three-col {
-            q-layout { width: "100%"; gap: "14px"; q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "leftcolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { leftcolumn } } } } } q-col { width: "1fr"; q-layout { data-pb-slot: "middlecolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { middlecolumn } } } } } q-col { width: "1fr"; q-layout { data-pb-slot: "rightcolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default leftcolumn { text { Add left column content here. } } q-slot-default middlecolumn { text { Add middle column content here. } } q-slot-default rightcolumn { text { Add right column content here. } }
-            }
-          }
-        }
-        instance: "pb-layout-three-col { }"
-        div.pb-palette-preview.layout {
-          h3 { text { 3 Columns } }
-          p { text { Equal thirds } }
+        name: "HTML Block"
+        component: "pbHtmlBlock"
+        qhtml: "q-component pbHtmlBlock { section.pb-html-block { h4 { slot htmlBlockLabel { text { HTML Block } } } div { slot htmlBlockContent { html { <p>Raw HTML area</p> } } } q-layout { data-pb-slot: htmlBlockFooter; width: 100%; q-row { q-col { slot htmlBlockFooter { text { Footer text. } } } } } } }"
+        instance-qhtml: "pbHtmlBlock htmlBlock { htmlBlockLabel { text { HTML Block } } htmlBlockContent { html { <p>Lorem ipsum dolor sit amet.</p> } } htmlBlockFooter { text { Additional content below HTML. } } }"
+        div.pb-palette-preview.card {
+          h3 { text { HTML Block } }
+          p { text { Raw embed area } }
         }
       }
 
       q-palette-toolbox-button {
-        name: "Layout: 2 Rows"
-        component: "pb-layout-two-row"
-        pb-proxy {
-          instance: "pb-layout-two-row { }"
-          definition {
-            q-component pb-layout-two-row {
-            q-layout { width: "100%"; gap: "14px"; q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "toprow"; width: "100%"; gap: "8px"; q-row { q-col { slot { toprow } } } } } } q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "bottomrow"; width: "100%"; gap: "8px"; q-row { q-col { slot { bottomrow } } } } } } } q-slot-default toprow { text { Add top row content here. } } q-slot-default bottomrow { text { Add bottom row content here. } }
-            }
-          }
-        }
-        instance: "pb-layout-two-row { }"
-        div.pb-palette-preview.layout {
-          h3 { text { 2 Rows } }
-          p { text { Vertical sections } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Layout: Nested 1+2"
-        component: "pb-layout-nested-one-two"
-        pb-proxy {
-          instance: "pb-layout-nested-one-two { }"
-          definition {
-            q-component pb-layout-nested-one-two {
-            q-layout { width: "100%"; gap: "14px"; q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "topcontent"; width: "100%"; gap: "8px"; q-row { q-col { slot { topcontent } } } } } } q-row { height: "auto"; q-col { width: "1fr"; q-layout { data-pb-slot: "leftcolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { leftcolumn } } } } } q-col { width: "1fr"; q-layout { data-pb-slot: "rightcolumn"; width: "100%"; gap: "8px"; q-row { q-col { slot { rightcolumn } } } } } } } q-slot-default topcontent { text { Add full-width top content here. } } q-slot-default leftcolumn { text { Add lower left content here. } } q-slot-default rightcolumn { text { Add lower right content here. } }
-            }
-          }
-        }
-        instance: "pb-layout-nested-one-two { }"
-        div.pb-palette-preview.layout {
-          h3 { text { 1 + 2 } }
-          p { text { Header plus split row } }
+        name: "Form Block"
+        component: "pbFormBlock"
+        qhtml: "q-component pbFormBlock { form.pb-form-block { action: '#'; method: 'post'; q-layout { data-pb-slot: formContents; width: 100%; q-row { q-col { slot formContents { div.form-field { label { text { Name } } input { type: 'text'; name: 'name'; placeholder: 'Your name' } } div.form-field { label { text { Email } } input { type: 'email'; name: 'email'; placeholder: 'you@example.com' } } div.form-actions { button { type: 'submit'; text { Send Message } } } } } } } } }"
+        instance-qhtml: "pbFormBlock formBlock { formContents { div.form-field { label { text { Name } } input { type: 'text'; name: 'name'; placeholder: 'Your name' } } div.form-field { label { text { Email } } input { type: 'email'; name: 'email'; placeholder: 'you@example.com' } } div.form-actions { button { type: 'submit'; text { Send Message } } } } }"
+        div.pb-palette-preview.card {
+          h3 { text { Form Block } }
+          p { text { Input + submit } }
         }
       }
     }

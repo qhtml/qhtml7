@@ -4798,6 +4798,100 @@
       return this.qhtmlDomTree;
     }
 
+    __qhtmlSetTree(tree) {
+      if (!tree) {
+        return null;
+      }
+      this.qhtmlDomTree = tree;
+      this.qhtmlDom = tree;
+      this.qhtmlSource = typeof tree.toQHTML === "function"
+        ? tree.toQHTML()
+        : (typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "");
+      this.qhtmlResolvedSource = this.qhtmlSource;
+      this.qhtmlError = null;
+      if (typeof tree.runtime === "function") {
+        tree.runtime();
+      }
+      this.innerHTML = typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
+      bindComponentDomRuntime(this, tree);
+      this.setAttribute("ready", "1");
+      this.__qhtml7Mounted = true;
+      this.dispatchEvent(new CustomEvent("QHTMLReady", {
+        bubbles: true,
+        detail: { source: this.qhtmlSource, qhtmlDom: tree }
+      }));
+      return tree;
+    }
+
+    toJSON() {
+      const tree = this.qhtmlDomTree;
+      if (!tree) {
+        return [];
+      }
+      if (typeof tree.toJSON === "function") {
+        return tree.toJSON();
+      }
+      if (typeof tree.toJSONText === "function") {
+        return JSON.parse(tree.toJSONText());
+      }
+      return [];
+    }
+
+    toJSONText() {
+      const tree = this.qhtmlDomTree;
+      if (!tree) {
+        return "[]";
+      }
+      if (typeof tree.toJSONText === "function") {
+        return tree.toJSONText();
+      }
+      return JSON.stringify(this.toJSON());
+    }
+
+    fromJSON(value) {
+      const qtModule = globalScope.QHTML7.Module;
+      if (typeof qtModule.QHTMLDomTree !== "function") {
+        throw new Error("QHTML7 WASM module must export QHTMLDomTree");
+      }
+      const tree = this.qhtmlDomTree || new qtModule.QHTMLDomTree();
+      let ok = false;
+      if (typeof tree.fromJSON === "function") {
+        ok = tree.fromJSON(value);
+      } else if (typeof tree.fromJSONText === "function") {
+        ok = tree.fromJSONText(typeof value === "string" ? value : JSON.stringify(value));
+      } else {
+        throw new Error("QHTMLDomTree does not expose fromJSON/fromJSONText");
+      }
+      if (!ok) {
+        throw new Error("QHTML fromJSON failed: invalid JSON payload");
+      }
+      return this.__qhtmlSetTree(tree);
+    }
+
+    toQHTML() {
+      const tree = this.qhtmlDomTree;
+      if (!tree) {
+        return this.qhtmlSource || "";
+      }
+      return typeof tree.toQHTML === "function"
+        ? tree.toQHTML()
+        : (typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "");
+    }
+
+    fromQHTML(source) {
+      return this.setQHTMLSource(source);
+    }
+
+    toHTML() {
+      const tree = this.qhtmlDomTree;
+      if (!tree) {
+        return "";
+      }
+      return typeof tree.toHTML === "function"
+        ? tree.toHTML()
+        : (typeof tree.renderHtml === "function" ? tree.renderHtml() : "");
+    }
+
     setQHTMLSource(source, baseUrl) {
       const nextSource = String(source || "");
       const nextBaseUrl = String(baseUrl || document.baseURI || globalScope.location.href || "");
@@ -4861,10 +4955,20 @@
     },
     renderSource(source) {
       const tree = instantiateParserTree(source).tree;
-      return tree && typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
+      if (!tree) {
+        return "";
+      }
+      return typeof tree.toHTML === "function"
+        ? tree.toHTML()
+        : (typeof tree.renderHtml === "function" ? tree.renderHtml() : "");
     },
     sourceFromTree(tree) {
-      return tree && typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "";
+      if (!tree) {
+        return "";
+      }
+      return typeof tree.toQHTML === "function"
+        ? tree.toQHTML()
+        : (typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "");
     },
     bindTree(element, tree) {
       if (!element || !tree) {
@@ -4879,7 +4983,9 @@
       }
       element.qhtmlDomTree = tree;
       element.qhtmlDom = tree;
-      element.qhtmlSource = typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "";
+      element.qhtmlSource = typeof tree.toQHTML === "function"
+        ? tree.toQHTML()
+        : (typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "");
       element.qhtmlResolvedSource = element.qhtmlSource;
       if (typeof tree.runtime === "function") {
         tree.runtime();

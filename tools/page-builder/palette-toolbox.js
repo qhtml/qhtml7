@@ -4201,6 +4201,18 @@
       Drag.update();
     },
     end: function () {
+      var point = Drag.center();
+      var source = Drag.state ? Drag.state.source : null;
+      var component = source && source.getAttribute ? source.getAttribute("component") : "";
+      if (!Drag.state.moving &&
+          component &&
+          point &&
+          window.QPageBuilder &&
+          typeof window.QPageBuilder.dropPaletteComponentAtPoint === "function" &&
+          window.QPageBuilder.dropPaletteComponentAtPoint(component, point.x, point.y)) {
+        Drag.cleanup();
+        return;
+      }
       if (Drag.state && Drag.state.intent) {
         Applier.apply(Drag.state.intent, Drag.state.source, Drag.state.moving);
       }

@@ -782,3 +782,145 @@ button { onclick { mymachine.state = mymachine.state1; } text { toggle state 1 }
 ```
 
 It is possible to setup a state outside of a state machine as long as it can be resolved (ie is in the QHTML Context where the expression is called from.  CHanging a state will effectively update the QHTML that is rendered both in the DOM and to runtime, so it requires update whenever the state changes along with re-parsing of the state's current contents and then rendering them into the DOM. There are optimizations possible here, but do not need to be done as of yet unless they are super simple to implement, which they probably are not.
+
+------------------
+
+24. q-layout, q-row, and q-col -- q-layout is a special kind of object, created as a QHTMLLayout element, it inherits all context objects from the parent 's QHTML Context. QLayout also inherits the context all child .qhtmlChildren that are top level typed names inside of this particular q-layout or in a child q-row or child q-col.  It also can access child q-row and q-col children of children and so on. It does not gain access to typed names inside of QHTMLComponentInstance or QHTMLComponentDefinition or other typed named objects, only the ones that are top-level names that are affected by the layout.
+
+QHTMLLayout is partially a base class that provides some functionality, but it is also a DOM element when rendered. QHTMLLayout has a few classes that  inherit it in C++ -- QHTMLLayoutRow and QHTMLLayoutCol. QHTMLLayout provides the .addRow(QHTMLLayoutRow* row), .addCol(QHTMLLayoutCol* col) and .addLayout(QHTMLLayout* layout) functions. Since QHTMLLayoutRow and QHTMLLayoutCol inherit the class definition from QHTMLLayout, then can also add rows, columns, and layouts to themselves as well by calling .addRow or .addCol or .addLayout.  QHTMLLayout also has the following hard coded properties:  rows, cols as integers to specify the number of rows or columns in a particular layout area. Also supported is the width: and height: properties which accept bound properties via dot walking as values, CSS values with units attached (24vw), plain integers and float values.  QHTMLLayout and friends (row and col) also must support .children() which  will provide  all of the non-layout child objects from .qhtmlChidlren added to a particular layout, row, or column. QHTMLLayout also supports setting the x and y properties just like all the other QHTMLNodes can as well as the full set of CSS properties that are already available like .backgroundColor, .paddingLeft, etc so that these layouts can be styled easily.
+
+The QHTML is like this:
+
+```
+/* make a 3x2 grid of the word "hello world" with blue background, 3 rows by 2 columns 250 pixels wide by 24vh tall. */
+q-layout {
+width: 250px;
+height: 24vh;
+rows: 3;
+cols: 2;
+backgroundColor: blue;
+div { span { text { hello world }}}
+div { span { text { hello world }}}
+div { span { text { hello world }}}
+div { span { text { hello world }}}
+div { span { text { hello world }}}
+div { span { text { hello world }}}
+}
+
+/* make a 2x2 layout with a column of 1x3 items on the left and just a single div on the right */
+q-layout {
+  width: 100%;
+  height: 100%;
+  rows: 1;
+  cols: 2;
+  q-col col1 {
+    /* left side */
+    div,text { item 1}
+    div,text { item 2}
+    div,text { item 3}
+  }
+  div,text { right side }
+}
+
+```
+
+layouts can be either named types or anonymous.  Making them anonymous objects will render them in the DOM, but they wqill not be accessible to the QHTML runtime by name, only through the DOM via querySelector().
+
+-------------------------
+25. tools/page-builder.html -- functional overview.  This is the dynamic page builder tool for QHTML7. It features the following separate modules:  palette.qhtml, canvas.qhtml, filemanager.qhtml proxy.qhtml and main.qhtml.
+
+main.qhtml -- the main qhtml file that contains import statements for palette.qhtml, filemanager.qhtml and canvas.html.  Also included are q-editor.qhtml and the q-animation-tool.qhtml from the tools directory. main.qhtml handles the general user interface structure. It will have a scrollable sidebar for the palette that can be hidden via button (use q-components/q-sidebar.qhtml if desired but copy it into a file stored under tools/page-builder/ and imported from there. )  Avoid improt any qhtml files from ../* to minimize dependencies from cross-directory folders. The one exception would be ../dist/qhtml-wasm.js which can be loaded as a script from ../dist/ . Anyways, there should be a top area at the top of the main section which is the file manager with a neat q-layout of buttons across the top with a maximum of 3-4 columns (set with columns property).  These buttons should be grouped so that the File buttons are together, then the next set of buttons together, etc.  The buttons should be Load File, Save File | Load Palette, Save Palette, Import Palette Item | Page Info (setting name, author, canonical URL). THere should also be a title that says QHTML7 Page Builder on the left side.
+
+Now beneath that section, also in the main area to right of the palette sidebar and stretching across the remaining viewport width, we have the canvas. The canvas is imported via page-builder/canvas.qhtml as a q-component named PageBuilderCanvas and instantiated with width set in vw and height set to 100% so that it can grow with the content. By default, the PageBuilderCanvas component will have a single slot with default content containing a q-layout with a q-row and a q-col object  and some text saying "Drop palete items here".  Dropping the palette item onto that slot will open up the replace or insert into slot dialog, which the user can choose from either one. This is canvas.
+
+Palette items are actually QComponentDefinition instances under the hood and adding them into a slot is just a matter of creating a new QHTMLComponentInstance and adding it as a child to whatever slot the palette item was dropped onto.
+
+Dropping:  dropping a palette item has a few different available choices.. depending on the positioning of where the item is dropped in relation to the item that the mouse is hovering over. It works like this:
+
+- If palette item instance has a parent that is a q-row (QHTMLLayoutRow), if the cursor is closer to the right side then we append the new dragged palette item instance after the one hovered by the cursor, if its closer to the left side then we insert it directly before in the q-row's qhtmlChildren. If the cursor is closer to the center than either side (xpos of 25% - 75% of the width), then the target when dropped is a replace / insert dialog which asks whether to insert into a slot or replace the entire component.
+- The same applied for q-col, only we uss the top and bottom boundaries to determine what the target shall be, either before for top, after for bottom, or insert to slot / replace dialog for center.
+- q-components instances that are children of another q-component instance also are valid targets, so if a canvas component instance has 3 children, then a determination has to be made as to which one the mouse is currently hovered over when drag and dropping, and then depending on if there is a layout or not, providing different highlight options (either highlight left border, top, bottom, right or whole border of the deepest element that contains the mouse cursor while dragging from palette area.)
+- When no layout exists, the only option is insert into slot / replace. If no slote exists, then the options become replace only.
+- There should also be a context menu available via right-click which has options to modify the layout in an area. If you right click on a component in the canvas, and go to Layout Menu, the submenu pops up with: Wrap in Layout, Unwrap Layout and if there is already a layout parent, then the additional options become available:  Add Row, Add Column, set Row Count, set Column Count, set width, set height, and more... clicking on more... will bring up the remaining shortcuts like set backgroundColor, set marginLeft, setPaddingLeft, set x, set y, etc. -- This will allow the user to manipulate layouts manually with some precision and style them to an extent.
+- any QHTMLLayout* based class is also a valid drop target and follows the same highlight and targeting rules as instances do, the only difference is that if a area is empty, the only choice is to add palette item to this specific layout area.  If it is not, then follow the same conventions but instead of adding the palette item as a child of the parent layout, we would be adding it to the target layout itself so we don't run into problems with incorrect drop zones.
+
+There is also a pencil on the top right that appears when the cursor is over a palette item so we need to track palette items and which objects they are via some attribute or something, the pencil will open up the Edit Dialog which allows the user to manually edit the instance and its slot contents / instantiated properties via a q-editor instance with the source code for the instance populated in it.  Changes to the editor in this dialog after clicking "Save" will be reflected on the canvas immediately for that instance.  Changes to the definition are only possible trough the palette sidebar edit pencil btton next to each palette item, and follow a similar design.
+
+
+26. Additional implementation for page-builder
+
+26a. First off we need to ensure that QHTMLComponentDefinition class has a .toJSON() or similar function which will convert the QComponentDefinition into a JSON object with a variety of properties. Properties will include: qhtmlName, qhtmlChildren and qhtmlInherits.  qhtmlChildren and qhtmlInherits are JSON arrays, and qhtmlName is the accessible name that this QQHTMLComponentDefinition can be instantiated with. Since we are also converting the children of the QHTMLComponentDefinition into JSON as well, we will need to provide a .toJSON() as a unique method for every QHTML* type in C++.  Each one must also follow a basic format so that they can be distinguished from each other.  The basic format is this:
+
+ For the following qhtml declarative code:
+
+ ```
+ <q-html>
+ q-component othercomp {
+    q-signal signal1(val)
+    function method1(val) { alert(val); }
+    q-property value1: 42
+ }
+ q-component mycomp extends othercomp {
+   q-property value2: 95
+   function method2(val) { this.method1(val) }
+   div,span { text { hello world } b { text { ${this.value1} }  } }
+   onvalue1changed(val) {
+
+      this.querySelector("b").innerHTML = String(val);
+      this.method2(val);
+   }
+ }
+ </q-html>
+ ```
+ `QHTMLDomTree().toJSON()` should return the following:
+ `document.querySelector("q-html").toJSON()` should return the same:
+
+ ```
+
+ [{ qhtmlType: "QHTMLComponentDefinition", qhtmlName: "othercomp", qhtmlChildren:[{qhtmlType: "QHTMLSignal", qhtmlName: "signal1", qhtmlParameters: ["val"]}, {qhtmlType: "QHTMLFunction", qhtmlName: "method1", qhtmlParameters: ["val"], qhtmlChildren: [ {qhtmlType: "QHTMLJavaScriptBlock", qhtmlContents: "alert(val);"}]}, {qhtmltype: "QHTMLProperty", qhtmlName: "value1", qhtmlValue: {type: "number", value: "42"}}]}, {qhtmlType: "QHTMLComponentDefinition", qhtmlName: "mycomp", qhtmlInherits:[ <insert full object for othercomp here>], qhtmlChildren: [<property object> <function object>, {qhtmlType: "QHTMLAnonNode", ..., {qhtmlType: "QHTMLEventHandler", ...}}] }]
+
+ ```
+
+ This format will allow for quick serialization / reconstruction of QHTML object trees as well as provide an editable JSON array that can be modified without creating the actual objects and then instantiated as required by appending to the various arrays. This should be the core of the page-builder, meaning that everything that the page builder does should operate on this exact data structure that can be retrieved, modified and then set using .fromJSON(<json data>) on any QHTMLNode C++ class. calling .fromJSON will recursively call .fromJSON for each object inside of qhtmlChildren arrays.
+
+ ```
+ document.querySelector("q-html").fromJSON([{ qhtmlType: "QHTMLComponentDefinition", qhtmlName: "othercomp", qhtmlChildren:[{qhtmlType: "QHTMLSignal", qhtmlName: "signal1", qhtmlParameters: ["val"]}, {qhtmlType: "QHTMLFunction", qhtmlName: "method1", qhtmlParameters: ["val"], qhtmlChildren: [ {qhtmlType: "QHTMLJavaScriptBlock", qhtmlContents: "alert(val);"}]}, {qhtmltype: "QHTMLProperty", qhtmlName: "value1", qhtmlValue: {type: "number", value: "42"}}]}, {qhtmlType: "QHTMLComponentDefinition", qhtmlName: "mycomp", qhtmlInherits:[ <insert full object for othercomp here>], qhtmlChildren: [<property object> <function object>, {qhtmlType: "QHTMLAnonNode", ..., {qhtmlType: "QHTMLEventHandler", ...}}] }])
+ ```
+
+This willl create a new QHTMLComponentDefinition in the QHTMLDomTree for this <q-html> element named othercomp, and then call .fromJSON with the object for `othercomp` which will populate the properties, signals, functions, slots, etc, and then for each object in qhtmlChildren, create a new object based on the qhtmlType and then call .fromJSON(<object>) on that newly created object.
+
+This willl ease the burdon of having to constantly convert and parse raw QHTML source by allowing for the page-builder (and QHTML as a whole) to operate on JSON data for manipulation and data flow between non-qhtml areas and qhmtl areas of the code base.
+
+The last thing is going to be .reload() on QHTMLDomTree(). This reload() method will essentially take the QHTMLDomTree and call .toQHTML() and store it in a variable. Next it will create a <template> with <q-html> followed by the QHTML source with no outer quotes and finally a </q-html>, then the the template will be cloned into a new DOM element and added to the document, and the old one will be removed at the same time.
+
+-----
+
+26b. The actual builder itself is now trivial to construct. The last piece of this puzzle is going to be every C++ class also needs .toQHTML() and .fromQHTML() which works just like the JSON .toJSON() and .fromJSON(), only instead it converts into QHTML from a QDomTree or other QHTMLComponent. It works exactly opposite from how the parser works. Each QHTML* typed C++ class will have a method called .toQHTML() which will use the .qhtmlName, .qhtmlChildren, and other .qhtml* properties to build QHTML source from the C++ objects. It will be recursive in that it will iterate through qhtmlChildren and convert each of those into QHTML source as well, adding each one while properly balancing braces.
+
+`othercomp.toQHTML()` would result in:
+
+```
+ q-component othercomp {
+    q-signal signal1(val)
+    function method1(val) { alert(val); }
+    q-property value1: 42
+ }
+
+ ```
+
+ and fromQHTML should also be available for every C++ QHTML* typed class in C++ so that
+
+ QComponentDefinition* comp = new QHTMLComponentDefinition();
+ comp.fromQHTML("q-component othercomp { q-signal mysignal(val) ... etc }");
+
+ comp is now a QHTMLComponentDefinition 'othercomp'
+
+
+ ----
+
+ 26c.  With these pieces in place, we can simply convert between QHTML, JSON, and QHTML* typed objects at will making the page-builder a matter of converting the data to JSON, modify the JSON data from Javascript, and converting it back into QHTML for the exported QHTML for each page, and rendering it by creating a new QHTMLDomTree(), (stored as document.querySelector("q-html").qhtmlDomTree) then callling qhtmlDomTree.fromQHTML() or .fromJSON() depending on where the data is coming from.  and then rendering it to the DOM canvas by calling .fromQHTML followed by .reload()  which would convert QDomTree objects into HTML using the standard process of creating a <q-html> element. exact process. (can use existing HTML Dom rendering strategies). Now we can save the entire canvas as JSON data, update it when it changes by calling .fromJSON() on the new data, and display it as HTML using .toHTML() then when we need to edit a palette item, we simply call .fromJSON() on the object, then .toQHTML() on generated object and display it in a q-editor in a dialog box and we're done.
+
+
+---------
+
+27. Highlighting - whenever an area is under the mouse that is a QComponentInstanceSlot type, it should have the borderColor property set as blue.

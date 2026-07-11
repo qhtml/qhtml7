@@ -162,6 +162,23 @@ inline QString qhtmlScalarValue(QString value)
     return value;
 }
 
+inline QString qhtmlJsStringLiteral(const QString &value)
+{
+    QJsonArray array;
+    array.append(value);
+    QString json = QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
+    if (json.startsWith(QLatin1Char('[')) && json.endsWith(QLatin1Char(']'))) {
+        return json.mid(1, json.size() - 2);
+    }
+    return QStringLiteral("\"\"");
+}
+
+inline QString qhtmlScriptBody(QString value)
+{
+    value.replace(QStringLiteral("</script"), QStringLiteral("<\\/script"), Qt::CaseInsensitive);
+    return value;
+}
+
 class QHTMLAstNode;
 class QHTMLFunction;
 class QHTMLSignal;
@@ -640,10 +657,27 @@ public:
     }
 
     std::string sourceQHTMLJs() const { return sourceQHTML().toStdString(); }
+
+    QString toQHTML(int indentLevel = 0) const { return sourceQHTML(indentLevel); }
+    std::string toQHTMLJs() const { return toQHTML().toStdString(); }
+    int fromQHTML(const QString &source);
+    int fromQHTMLJs(const std::string &source) { return fromQHTML(QString::fromStdString(source)); }
+
+    QString toHTML() const;
+    std::string toHTMLJs() const { return toHTML().toStdString(); }
+
+    QJsonValue toJsonValue() const;
     QJsonObject toJsonObject() const;
     QString toJSONText() const;
     std::string toJSONTextJs() const { return toJSONText().toStdString(); }
     emscripten::val toJSONJs() const;
+    bool fromJsonValue(const QJsonValue &value);
+    bool fromJsonObject(const QJsonObject &object);
+    bool fromJSONText(const QString &json);
+    bool fromJSONTextJs(const std::string &json) { return fromJSONText(QString::fromStdString(json)); }
+    bool fromJSONJs(emscripten::val value);
+
+    static QHTMLNode *nodeFromJsonObject(const QJsonObject &object, QHTMLNode *ownerScope = nullptr);
 
     static QString escapeText(const QString &value)
     {
@@ -722,6 +756,15 @@ public:
 
     QString tagName() const { return m_tagName; }
     std::string tagNameJs() const { return tagName().toStdString(); }
+    void setTagName(const QString &tagName)
+    {
+        m_tagName = tagName.trimmed();
+        setQHTMLName(m_tagName);
+    }
+    void setTagNameJs(const std::string &tagName) { setTagName(QString::fromStdString(tagName)); }
+
+    void clearAttributes() { m_attributes.clear(); }
+    void setAttributes(const QHash<QString, QString> &attributes) { m_attributes = attributes; }
 
     void setAttribute(const QString &key, const QString &value)
     {
@@ -831,6 +874,8 @@ public:
 
     QString value() const { return m_value; }
     std::string valueJs() const { return value().toStdString(); }
+    void setValue(const QString &value) { m_value = value; }
+    void setValueJs(const std::string &value) { setValue(QString::fromStdString(value)); }
     QString renderHtml() const override { return escapeText(m_value); }
     QString renderHtmlInContext(const QHTMLNode *contextNode) const override
     {
@@ -856,6 +901,8 @@ public:
 
     QString value() const { return m_value; }
     std::string valueJs() const { return value().toStdString(); }
+    void setValue(const QString &value) { m_value = value; }
+    void setValueJs(const std::string &value) { setValue(QString::fromStdString(value)); }
     QString renderHtml() const override { return m_value; }
     QString renderHtmlInContext(const QHTMLNode *contextNode) const override
     {
@@ -881,6 +928,8 @@ public:
 
     QString value() const { return m_value; }
     std::string valueJs() const { return value().toStdString(); }
+    void setValue(const QString &value) { m_value = value.trimmed(); }
+    void setValueJs(const std::string &value) { setValue(QString::fromStdString(value)); }
     QString renderHtml() const override { return escapeText(m_value); }
     QString renderHtmlInContext(const QHTMLNode *contextNode) const override
     {
@@ -910,7 +959,15 @@ public:
 
     QString keyword() const { return m_keyword; }
     std::string keywordJs() const { return keyword().toStdString(); }
+    void setKeyword(const QString &keyword)
+    {
+        m_keyword = keyword.trimmed();
+        setProperty(QStringLiteral("keyword"), m_keyword);
+    }
+    void setKeywordJs(const std::string &keyword) { setKeyword(QString::fromStdString(keyword)); }
     QHash<QString, QString> attributes() const { return m_attributes; }
+    void clearAttributes() { m_attributes.clear(); }
+    void setAttributes(const QHash<QString, QString> &attributes) { m_attributes = attributes; }
 
     void setAttribute(const QString &key, const QString &value)
     {
@@ -950,6 +1007,41 @@ private:
     QHash<QString, QString> m_attributes;
 };
 
+class QHTMLJavaScriptBlock final : public QHTMLDomNode
+{
+public:
+    explicit QHTMLJavaScriptBlock(const QString &contents = QString())
+        : QHTMLDomNode(QStringLiteral("QHTMLJavaScriptBlock"), QStringLiteral("script")),
+          m_contents(contents.trimmed())
+    {
+    }
+
+    QString contents() const { return m_contents; }
+    QString body() const { return m_contents; }
+    QString value() const { return m_contents; }
+    std::string contentsJs() const { return m_contents.toStdString(); }
+    void setContents(const QString &contents) { m_contents = contents.trimmed(); }
+    void setContentsJs(const std::string &contents) { setContents(QString::fromStdString(contents)); }
+
+    QString renderHtml() const override { return QString(); }
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        const QString pad = sourceIndent(indentLevel);
+        QString out;
+        const QStringList lines = m_contents.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (!out.isEmpty()) {
+                out += QLatin1Char('\n');
+            }
+            out += pad + line;
+        }
+        return out;
+    }
+
+private:
+    QString m_contents;
+};
+
 class QHTMLFunction final : public QHTMLTypedNode
 {
 public:
@@ -967,9 +1059,18 @@ public:
     QStringList parameters() const { return m_parameters; }
     QString parameterList() const { return m_parameters.join(QStringLiteral(", ")); }
     std::string parameterListJs() const { return parameterList().toStdString(); }
+    void setParameters(const QStringList &parameters)
+    {
+        m_parameters = parameters;
+        setAttribute(QStringLiteral("parameters"), parameterList());
+    }
+    void setParameterList(const QString &parameters) { setParameters(parseParameters(parameters)); }
+    void setParameterListJs(const std::string &parameters) { setParameterList(QString::fromStdString(parameters)); }
 
     QString body() const { return m_body; }
     std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body) { m_body = body.trimmed(); }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
 
     QStringList lastArguments() const { return m_lastArguments; }
     QString lastArgumentList() const { return m_lastArguments.join(QStringLiteral(", ")); }
@@ -1061,6 +1162,13 @@ public:
     QStringList parameters() const { return m_parameters; }
     QString parameterList() const { return m_parameters.join(QStringLiteral(", ")); }
     std::string parameterListJs() const { return parameterList().toStdString(); }
+    void setParameters(const QStringList &parameters)
+    {
+        m_parameters = parameters;
+        setAttribute(QStringLiteral("parameters"), parameterList());
+    }
+    void setParameterList(const QString &parameters) { setParameters(QHTMLFunction::parseParameters(parameters)); }
+    void setParameterListJs(const std::string &parameters) { setParameterList(QString::fromStdString(parameters)); }
 
     bool connect(QHTMLFunction *function);
     int emitSignal(const QStringList &arguments, QHTMLNode *sender = nullptr);
@@ -1307,6 +1415,12 @@ public:
 
     QString value() const { return m_value; }
     std::string valueJs() const { return m_value.toStdString(); }
+    void setValue(const QString &value)
+    {
+        m_value = value;
+        setAttribute(QStringLiteral("value"), value);
+    }
+    void setValueJs(const std::string &value) { setValue(QString::fromStdString(value)); }
     QHTMLPropertyAssignment *cloneAssignment() const
     {
         QHash<QString, QString> clonedAttributes = attributes();
@@ -2017,6 +2131,30 @@ public:
     std::string componentDefinitionUUIDJs() const
     {
         return componentDefinitionUUID().toStdString();
+    }
+
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QString header = m_definition ? m_definition->qhtmlName().trimmed() : keyword().trimmed();
+        if (header.isEmpty()) {
+            header = QStringLiteral("q-component-instance");
+        }
+        if (!qhtmlName().trimmed().isEmpty()) {
+            header += QLatin1Char(' ') + qhtmlName().trimmed();
+        }
+
+        QStringList lines;
+        const QStringList keys = attributes().keys();
+        for (const QString &key : keys) {
+            const QString value = attributes().value(key);
+            if (!key.trimmed().isEmpty() && !value.isEmpty()) {
+                lines.append(key + QStringLiteral(": ") + sourceQuote(value));
+            }
+        }
+        for (QHTMLNode *child : children()) {
+            lines.append(child->sourceQHTML(0));
+        }
+        return sourceBlock(header, lines.join(QLatin1Char('\n')), indentLevel);
     }
 
     int slotCount() const { return collectSlots().size(); }
@@ -4659,6 +4797,16 @@ public:
 
     QString body() const { return m_body; }
     std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body)
+    {
+        m_body = body.trimmed();
+        m_path.clear();
+        m_cacheMode = QStringLiteral("default");
+        parseBody(m_body);
+        setProperty(QStringLiteral("path"), m_path);
+        setProperty(QStringLiteral("cache"), m_cacheMode);
+    }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
 
     QString renderHtml() const override { return QString(); }
     QString sourceQHTML(int indentLevel = 0) const override
@@ -4764,12 +4912,31 @@ public:
 
     QString variableName() const { return m_variableName; }
     std::string variableNameJs() const { return m_variableName.toStdString(); }
+    void setVariableName(const QString &variableName)
+    {
+        m_variableName = variableName.trimmed();
+        setQHTMLName(m_variableName);
+        setProperty(QStringLiteral("variable"), m_variableName);
+    }
+    void setVariableNameJs(const std::string &variableName) { setVariableName(QString::fromStdString(variableName)); }
 
     QString collectionExpression() const { return m_collectionExpression; }
     std::string collectionExpressionJs() const { return m_collectionExpression.toStdString(); }
+    void setCollectionExpression(const QString &collectionExpression)
+    {
+        m_collectionExpression = collectionExpression.trimmed();
+        setAttribute(QStringLiteral("collection"), m_collectionExpression);
+        setProperty(QStringLiteral("collection"), m_collectionExpression);
+    }
+    void setCollectionExpressionJs(const std::string &collectionExpression)
+    {
+        setCollectionExpression(QString::fromStdString(collectionExpression));
+    }
 
     QString body() const { return m_body; }
     std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body) { m_body = body; }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
 
     QString renderHtml() const override
     {
@@ -5088,13 +5255,28 @@ public:
 
     QString eventName() const { return m_eventName; }
     std::string eventNameJs() const { return m_eventName.toStdString(); }
+    void setEventName(const QString &eventName)
+    {
+        m_eventName = eventName.trimmed().toLower();
+        setQHTMLName(m_eventName);
+    }
+    void setEventNameJs(const std::string &eventName) { setEventName(QString::fromStdString(eventName)); }
 
     QStringList parameters() const { return m_parameters; }
     QString parameterList() const { return m_parameters.join(QStringLiteral(", ")); }
     std::string parameterListJs() const { return parameterList().toStdString(); }
+    void setParameters(const QStringList &parameters)
+    {
+        m_parameters = parameters;
+        setAttribute(QStringLiteral("parameters"), parameterList());
+    }
+    void setParameterList(const QString &parameters) { setParameters(QHTMLFunction::parseParameters(parameters)); }
+    void setParameterListJs(const std::string &parameters) { setParameterList(QString::fromStdString(parameters)); }
 
     QString body() const { return m_body; }
     std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body) { m_body = body.trimmed(); }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
 
     bool propagate() const
     {
@@ -6078,6 +6260,8 @@ public:
 
     QString body() const { return m_body; }
     std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body) { m_body = body.trimmed(); }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
 
     QString sourcePath() const
     {
@@ -7527,91 +7711,1343 @@ private:
     static void moveChildren(QHTMLNode *from, QHTMLNode *to);
 };
 
+inline QString qhtmlStandaloneHtmlSelectorForNode(const QHTMLNode *node)
+{
+    if (!node || dynamic_cast<const QHTMLDomTree *>(node)) {
+        return QStringLiteral("document");
+    }
+    if (dynamic_cast<const QHTMLComponentInstance *>(node)) {
+        return QStringLiteral("[component-instance='") + node->qhtmlUUID() + QStringLiteral("']");
+    }
+    return QStringLiteral("[qhtml-node='") + node->qhtmlUUID() + QStringLiteral("']");
+}
+
+inline QString qhtmlStandaloneHtmlDomEventName(QString eventName)
+{
+    eventName = eventName.trimmed().toLower();
+    if (eventName.startsWith(QStringLiteral("on")) && eventName.size() > 2) {
+        return eventName.mid(2);
+    }
+    return eventName;
+}
+
+inline QString qhtmlStandaloneHtmlJsIdentifier(QString name)
+{
+    name = name.trimmed();
+    QString out;
+    for (int i = 0; i < name.size(); ++i) {
+        const QChar ch = name.at(i);
+        const bool valid = ch.isLetterOrNumber() || ch == QLatin1Char('_') || ch == QLatin1Char('$');
+        out += valid ? ch : QLatin1Char('_');
+    }
+    if (out.isEmpty() || out.at(0).isDigit()) {
+        out.prepend(QLatin1Char('_'));
+    }
+    return out;
+}
+
+inline QString qhtmlStandaloneHtmlElementName(const QHTMLComponentDefinition *definition)
+{
+    if (!definition) {
+        return QStringLiteral("qhtml-component");
+    }
+    QString base = definition->qhtmlName().trimmed().toLower();
+    QString out;
+    for (const QChar ch : base) {
+        if ((ch >= QLatin1Char('a') && ch <= QLatin1Char('z')) ||
+            (ch >= QLatin1Char('0') && ch <= QLatin1Char('9')) ||
+            ch == QLatin1Char('-') ||
+            ch == QLatin1Char('_') ||
+            ch == QLatin1Char('.')) {
+            out += ch;
+        } else {
+            out += QLatin1Char('-');
+        }
+    }
+    if (out.isEmpty()) {
+        out = QStringLiteral("qhtml-component");
+    }
+    if (!out.at(0).isLetter()) {
+        out.prepend(QStringLiteral("qhtml-"));
+    }
+    if (!out.contains(QLatin1Char('-'))) {
+        out += QLatin1Char('-') + definition->qhtmlUUID().left(8).toLower();
+    }
+    return out;
+}
+
+inline QString qhtmlStandaloneHtmlHandlerName(const QHTMLNode *node, const QHTMLEventHandler *handler)
+{
+    QString seed = node ? node->qhtmlUUID() : QHTMLReference::createUUID();
+    seed.remove(QLatin1Char('-'));
+    const QString eventName = handler ? qhtmlStandaloneHtmlDomEventName(handler->eventName()) : QStringLiteral("event");
+    return QStringLiteral("qhtml_handler_") + seed.left(16) + QStringLiteral("_") + qhtmlStandaloneHtmlJsIdentifier(eventName);
+}
+
+inline void qhtmlAppendStandaloneComponentClass(const QHTMLComponentDefinition *definition, QStringList &lines)
+{
+    if (!definition || definition->qhtmlName().trimmed().isEmpty()) {
+        return;
+    }
+
+    QHash<QString, QString> localSignalNames;
+    for (QHTMLNode *child : definition->children()) {
+        if (const QHTMLSignal *signalNode = dynamic_cast<const QHTMLSignal *>(child)) {
+            if (!signalNode->qhtmlName().trimmed().isEmpty()) {
+                localSignalNames.insert(signalNode->qhtmlName().trimmed().toLower(), signalNode->qhtmlName().trimmed());
+            }
+        }
+    }
+
+    const QString tagName = qhtmlStandaloneHtmlElementName(definition);
+    const QString className = qhtmlStandaloneHtmlJsIdentifier(definition->qhtmlName().trimmed() + QStringLiteral("_") + definition->qhtmlUUID().left(8));
+    lines.append(QStringLiteral("class ") + className + QStringLiteral(" extends HTMLElement {"));
+    lines.append(QStringLiteral("  connectedCallback() {"));
+    lines.append(QStringLiteral("    if (this.__qhtmlStandaloneConnected) return;"));
+    lines.append(QStringLiteral("    this.__qhtmlStandaloneConnected = true;"));
+    for (QHTMLNode *child : definition->children()) {
+        if (const QHTMLEventHandler *handler = dynamic_cast<const QHTMLEventHandler *>(child)) {
+            const QString rawEventName = qhtmlStandaloneHtmlDomEventName(handler->eventName());
+            const QString eventName = localSignalNames.value(rawEventName.toLower(), rawEventName);
+            const bool signalEvent = localSignalNames.contains(rawEventName.toLower());
+            if (!eventName.trimmed().isEmpty()) {
+                const QString params = handler->parameterList().trimmed().isEmpty()
+                                           ? QStringLiteral("event")
+                                           : handler->parameterList().trimmed();
+                lines.append(QStringLiteral("    this.addEventListener(") + qhtmlJsStringLiteral(eventName) + QStringLiteral(", function(event) {"));
+                lines.append(QStringLiteral("      return (function(") + params + QStringLiteral(") {"));
+                const QStringList bodyLines = qhtmlScriptBody(handler->body()).split(QLatin1Char('\n'));
+                for (const QString &bodyLine : bodyLines) {
+                    lines.append(QStringLiteral("        ") + bodyLine);
+                }
+                lines.append(QStringLiteral("      }).apply(this, ") +
+                             (signalEvent ? QStringLiteral("Array.isArray(event.detail) ? event.detail : [event]);")
+                                          : QStringLiteral("[event]);")));
+                lines.append(QStringLiteral("    });"));
+            }
+        }
+    }
+    lines.append(QStringLiteral("  }"));
+    for (QHTMLNode *child : definition->children()) {
+        if (const QHTMLFunction *functionNode = dynamic_cast<const QHTMLFunction *>(child)) {
+            if (!functionNode->qhtmlName().trimmed().isEmpty()) {
+                lines.append(QStringLiteral("  ") + qhtmlStandaloneHtmlJsIdentifier(functionNode->qhtmlName()) +
+                             QStringLiteral("(") + functionNode->parameterList() + QStringLiteral(") {"));
+                const QStringList bodyLines = qhtmlScriptBody(functionNode->body()).split(QLatin1Char('\n'));
+                for (const QString &bodyLine : bodyLines) {
+                    lines.append(QStringLiteral("    ") + bodyLine);
+                }
+                lines.append(QStringLiteral("  }"));
+            }
+        } else if (const QHTMLSignal *signalNode = dynamic_cast<const QHTMLSignal *>(child)) {
+            if (!signalNode->qhtmlName().trimmed().isEmpty()) {
+                lines.append(QStringLiteral("  ") + qhtmlStandaloneHtmlJsIdentifier(signalNode->qhtmlName()) +
+                             QStringLiteral("(") + signalNode->parameterList() + QStringLiteral(") {"));
+                lines.append(QStringLiteral("    this.dispatchEvent(new CustomEvent(") +
+                             qhtmlJsStringLiteral(signalNode->qhtmlName().trimmed()) +
+                             QStringLiteral(", { detail: Array.prototype.slice.call(arguments), bubbles: true }));"));
+                lines.append(QStringLiteral("  }"));
+            }
+        }
+    }
+    lines.append(QStringLiteral("}"));
+    lines.append(QStringLiteral("if (!customElements.get(") + qhtmlJsStringLiteral(tagName) +
+                 QStringLiteral(")) customElements.define(") + qhtmlJsStringLiteral(tagName) +
+                 QStringLiteral(", ") + className + QStringLiteral(");"));
+}
+
+inline void qhtmlAppendStandaloneHtmlNodeBootstrap(const QHTMLNode *node, QStringList &lines)
+{
+    if (!node || dynamic_cast<const QHTMLComponentInstance *>(node)) {
+        return;
+    }
+    for (QHTMLNode *child : node->children()) {
+        if (const QHTMLEventHandler *handler = dynamic_cast<const QHTMLEventHandler *>(child)) {
+            const QString eventName = qhtmlStandaloneHtmlDomEventName(handler->eventName());
+            if (!eventName.trimmed().isEmpty()) {
+                const QString params = handler->parameterList().trimmed().isEmpty()
+                                           ? QStringLiteral("event")
+                                           : handler->parameterList().trimmed();
+                lines.append(QStringLiteral("function ") + qhtmlStandaloneHtmlHandlerName(node, handler) +
+                             QStringLiteral("(") + params + QStringLiteral(") {"));
+                const QStringList bodyLines = qhtmlScriptBody(handler->body()).split(QLatin1Char('\n'));
+                for (const QString &bodyLine : bodyLines) {
+                    lines.append(QStringLiteral("  ") + bodyLine);
+                }
+                lines.append(QStringLiteral("}"));
+            }
+        }
+    }
+}
+
+inline void qhtmlCollectStandaloneHtmlScript(const QHTMLNode *node, QStringList &lines, QStringList &scriptBlocks)
+{
+    if (!node) {
+        return;
+    }
+
+    if (dynamic_cast<const QHTMLDomTree *>(node) ||
+        dynamic_cast<const QHTMLDomElement *>(node) ||
+        dynamic_cast<const QHTMLComponentInstance *>(node) ||
+        dynamic_cast<const QHTMLLayout *>(node) ||
+        dynamic_cast<const QHTMLCanvas *>(node) ||
+        dynamic_cast<const QHTMLVideo *>(node)) {
+        qhtmlAppendStandaloneHtmlNodeBootstrap(node, lines);
+    }
+
+    if (const QHTMLJavaScriptBlock *script = dynamic_cast<const QHTMLJavaScriptBlock *>(node)) {
+        if (!script->body().trimmed().isEmpty()) {
+            scriptBlocks.append(qhtmlScriptBody(script->body()));
+        }
+    } else if (const QHTMLConnect *connect = dynamic_cast<const QHTMLConnect *>(node)) {
+        if (!connect->sourcePath().trimmed().isEmpty() && !connect->targetPath().trimmed().isEmpty()) {
+            scriptBlocks.append(QStringLiteral("__qhtmlConnect(") +
+                                qhtmlJsStringLiteral(connect->sourcePath().trimmed()) +
+                                QStringLiteral(", ") +
+                                qhtmlJsStringLiteral(connect->targetPath().trimmed()) +
+                                QStringLiteral(");"));
+        }
+    }
+
+    for (QHTMLNode *child : node->children()) {
+        qhtmlCollectStandaloneHtmlScript(child, lines, scriptBlocks);
+    }
+}
+
+inline void qhtmlCollectStandaloneComponentClasses(const QHTMLNode *node, QStringList &lines)
+{
+    if (!node) {
+        return;
+    }
+    if (const QHTMLComponentDefinition *definition = dynamic_cast<const QHTMLComponentDefinition *>(node)) {
+        qhtmlAppendStandaloneComponentClass(definition, lines);
+    }
+    for (QHTMLNode *child : node->children()) {
+        qhtmlCollectStandaloneComponentClasses(child, lines);
+    }
+}
+
+inline QString qhtmlStandaloneHtmlScript(const QHTMLNode *node)
+{
+    QStringList classLines;
+    QStringList lines;
+    QStringList scriptBlocks;
+    qhtmlCollectStandaloneComponentClasses(node, classLines);
+    qhtmlCollectStandaloneHtmlScript(node, lines, scriptBlocks);
+    if (classLines.isEmpty() && lines.isEmpty() && scriptBlocks.isEmpty()) {
+        return QString();
+    }
+
+    QStringList out;
+    out.append(QStringLiteral("<script>"));
+    out.append(classLines);
+    out.append(lines);
+    bool needsConnect = false;
+    for (const QString &scriptBlock : scriptBlocks) {
+        if (scriptBlock.contains(QStringLiteral("__qhtmlConnect("))) {
+            needsConnect = true;
+            break;
+        }
+    }
+    if (needsConnect) {
+        out.append(QStringLiteral("function __qhtmlResolve(path) { return String(path).split('.').reduce(function(value, part) { return value && value[part]; }, window); }"));
+        out.append(QStringLiteral("function __qhtmlConnect(sourcePath, targetPath) {"));
+        out.append(QStringLiteral("  var sourceParts = String(sourcePath).split('.');"));
+        out.append(QStringLiteral("  var eventName = sourceParts.pop();"));
+        out.append(QStringLiteral("  var owner = __qhtmlResolve(sourceParts.join('.'));"));
+        out.append(QStringLiteral("  var target = __qhtmlResolve(targetPath);"));
+        out.append(QStringLiteral("  owner.addEventListener(eventName, function(event) { target.apply(owner, event.detail || []); });"));
+        out.append(QStringLiteral("}"));
+    }
+    for (const QString &scriptBlock : scriptBlocks) {
+        const QStringList bodyLines = scriptBlock.split(QLatin1Char('\n'));
+        for (const QString &bodyLine : bodyLines) {
+            out.append(bodyLine);
+        }
+    }
+    out.append(QStringLiteral("</script>"));
+    return out.join(QLatin1Char('\n'));
+}
+
+inline void qhtmlApplyStandaloneHtmlIdsForNode(const QHTMLNode *node, QString &html)
+{
+    if (!node) {
+        return;
+    }
+    if (const QHTMLComponentInstance *instance = dynamic_cast<const QHTMLComponentInstance *>(node)) {
+        if (instance->definition() && !instance->definition()->qhtmlName().trimmed().isEmpty()) {
+            const QString originalTag = QRegularExpression::escape(instance->definition()->qhtmlName().trimmed());
+            const QString replacementTag = qhtmlStandaloneHtmlElementName(instance->definition());
+            html.replace(QRegularExpression(QStringLiteral("<") + originalTag + QStringLiteral("(?=[\\s>])")),
+                         QStringLiteral("<") + replacementTag);
+            html.replace(QRegularExpression(QStringLiteral("</") + originalTag + QStringLiteral(">")),
+                         QStringLiteral("</") + replacementTag + QStringLiteral(">"));
+        }
+        if (!instance->qhtmlName().trimmed().isEmpty()) {
+            const QString marker = QStringLiteral(" component-instance=\"") + QHTMLNode::escapeAttribute(instance->qhtmlUUID()) + QStringLiteral("\"");
+            const QString replacement = QStringLiteral(" id=\"") + QHTMLNode::escapeAttribute(instance->qhtmlName().trimmed()) + QStringLiteral("\"") + marker;
+            html.replace(marker, replacement);
+        }
+    } else if (!dynamic_cast<const QHTMLDomTree *>(node) &&
+               (dynamic_cast<const QHTMLDomElement *>(node) ||
+                dynamic_cast<const QHTMLLayout *>(node) ||
+                dynamic_cast<const QHTMLCanvas *>(node) ||
+                dynamic_cast<const QHTMLVideo *>(node))) {
+        QString eventAttributes;
+        for (QHTMLNode *child : node->children()) {
+            if (const QHTMLEventHandler *handler = dynamic_cast<const QHTMLEventHandler *>(child)) {
+                const QString eventName = qhtmlStandaloneHtmlDomEventName(handler->eventName());
+                if (!eventName.trimmed().isEmpty()) {
+                    eventAttributes += QStringLiteral(" on") + QHTMLNode::escapeAttribute(eventName.trimmed()) +
+                                       QStringLiteral("=\"") +
+                                       QHTMLNode::escapeAttribute(qhtmlStandaloneHtmlHandlerName(node, handler) + QStringLiteral("(event)")) +
+                                       QStringLiteral("\"");
+                }
+            }
+        }
+        const QString marker = QStringLiteral(" qhtml-node=\"") + QHTMLNode::escapeAttribute(node->qhtmlUUID()) + QStringLiteral("\"");
+        const QString replacement = QStringLiteral(" id=\"") + QHTMLNode::escapeAttribute(node->qhtmlUUID()) + QStringLiteral("\"") + eventAttributes + marker;
+        html.replace(marker, replacement);
+    }
+    for (QHTMLNode *child : node->children()) {
+        qhtmlApplyStandaloneHtmlIdsForNode(child, html);
+    }
+}
+
+inline QString qhtmlStandaloneHtmlMarkup(const QHTMLNode *node)
+{
+    QString html = node ? node->renderHtml() : QString();
+    qhtmlApplyStandaloneHtmlIdsForNode(node, html);
+    return html;
+}
+
+inline QString qhtmlScriptElementText(QString value)
+{
+    value.replace(QRegularExpression(QStringLiteral("</script"), QRegularExpression::CaseInsensitiveOption),
+                  QStringLiteral("<\\/script"));
+    return value;
+}
+
+inline QString qhtmlBase64EncodeUtf8(const QString &value);
+inline QString qhtmlBase64DecodeUtf8(const QString &value);
+inline void qhtmlInsertBase64Body(QJsonObject &object, const QString &body);
+
+inline QString QHTMLNode::toHTML() const
+{
+    const QString rollId = qhtmlUUID().trimmed().isEmpty()
+                               ? QHTMLReference::createUUID()
+                               : qhtmlUUID();
+    const QString html = renderHtml();
+    const QString jsonPayload = qhtmlBase64EncodeUtf8(toJSONText());
+    QString out;
+    out += QStringLiteral("<div data-qhtml-rolled-root=\"") + escapeAttribute(rollId) +
+           QStringLiteral("\" style=\"display: contents;\">");
+    out += html;
+    out += QStringLiteral("\n");
+    out += QStringLiteral("<script>");
+    out += QStringLiteral("(function(script){");
+    out += QStringLiteral("var done=false;");
+    out += QStringLiteral("function run(){");
+    out += QStringLiteral("if(done)return;done=true;");
+    out += QStringLiteral("var root=script.closest('[data-qhtml-rolled-root=\"") +
+           escapeAttribute(rollId) + QStringLiteral("\"]');");
+    out += QStringLiteral("var obj=document.createElement('q-html');");
+    out += QStringLiteral("var json=new TextDecoder().decode(Uint8Array.from(atob(") +
+           qhtmlJsStringLiteral(jsonPayload) +
+           QStringLiteral("),function(ch){return ch.charCodeAt(0);}));");
+    out += QStringLiteral("obj.fromJSON(JSON.parse(json));");
+    out += QStringLiteral("root.replaceWith(obj);");
+    out += QStringLiteral("}");
+    out += QStringLiteral("document.addEventListener('QHTML7Ready',run,{once:true});");
+    out += QStringLiteral("if(window.QHTML7Ready){window.QHTML7Ready.then(run);}");
+    out += QStringLiteral("})(document.currentScript);");
+    out += QStringLiteral("</script>");
+    out += QStringLiteral("</div>");
+    return out;
+}
+
+inline QJsonObject qhtmlStringHashToJsonObject(const QHash<QString, QString> &values)
+{
+    QJsonObject object;
+    const QStringList keys = values.keys();
+    for (const QString &key : keys) {
+        object.insert(key, values.value(key));
+    }
+    return object;
+}
+
+inline QHash<QString, QString> qhtmlStringHashFromJsonObject(const QJsonObject &object)
+{
+    QHash<QString, QString> values;
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
+        if (it.key().trimmed().isEmpty()) {
+            continue;
+        }
+        QString value;
+        if (it.value().isString()) {
+            value = it.value().toString();
+        } else if (it.value().isDouble()) {
+            const double number = it.value().toDouble();
+            const qint64 rounded = qRound64(number);
+            value = qAbs(number - double(rounded)) < 0.000000000001
+                        ? QString::number(rounded)
+                        : QString::number(number, 'g', 15);
+        } else if (it.value().isBool()) {
+            value = it.value().toBool() ? QStringLiteral("true") : QStringLiteral("false");
+        } else if (it.value().isNull()) {
+            value = QStringLiteral("null");
+        } else if (it.value().isArray()) {
+            value = QString::fromUtf8(QJsonDocument(it.value().toArray()).toJson(QJsonDocument::Compact));
+        } else if (it.value().isObject()) {
+            value = QString::fromUtf8(QJsonDocument(it.value().toObject()).toJson(QJsonDocument::Compact));
+        }
+        values.insert(it.key(), value);
+    }
+    return values;
+}
+
+inline QString qhtmlFirstJsonString(const QJsonObject &object, std::initializer_list<const char *> keys, const QString &fallback = QString())
+{
+    for (const char *key : keys) {
+        const QString qKey = QString::fromLatin1(key);
+        if (!object.contains(qKey)) {
+            continue;
+        }
+        const QJsonValue value = object.value(qKey);
+        if (value.isString()) {
+            return value.toString();
+        }
+        if (value.isDouble()) {
+            const double number = value.toDouble();
+            const qint64 rounded = qRound64(number);
+            if (qAbs(number - double(rounded)) < 0.000000000001) {
+                return QString::number(rounded);
+            }
+            return QString::number(number, 'g', 15);
+        }
+        if (value.isBool()) {
+            return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+        }
+        if (value.isNull()) {
+            return QStringLiteral("null");
+        }
+        if (value.isArray()) {
+            return QString::fromUtf8(QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact));
+        }
+        if (value.isObject()) {
+            return QString::fromUtf8(QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact));
+        }
+    }
+    return fallback;
+}
+
+inline QJsonArray qhtmlStringListToJsonArray(const QStringList &values)
+{
+    QJsonArray array;
+    for (const QString &value : values) {
+        array.append(value);
+    }
+    return array;
+}
+
+inline QStringList qhtmlStringListFromJsonValue(const QJsonValue &value)
+{
+    QStringList out;
+    if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        for (const QJsonValue &item : array) {
+            if (item.isString()) {
+                out.append(item.toString());
+            } else {
+                QJsonObject wrapper;
+                wrapper.insert(QStringLiteral("value"), item);
+                out.append(qhtmlFirstJsonString(wrapper, {"value"}));
+            }
+        }
+    } else if (value.isString()) {
+        out = QHTMLFunction::parseParameters(value.toString());
+    }
+    return out;
+}
+
+inline bool qhtmlIsInternalRuntimeChild(const QHTMLNode *parent, const QHTMLNode *child)
+{
+    if (!parent || !child) {
+        return false;
+    }
+    if (const QHTMLTimer *timer = dynamic_cast<const QHTMLTimer *>(parent)) {
+        return child == timer->timeoutSignal();
+    }
+    if (const QHTMLPropertyAnimation *animation = dynamic_cast<const QHTMLPropertyAnimation *>(parent)) {
+        return child == animation->startedSignal() ||
+               child == animation->stoppedSignal() ||
+               child == animation->steppedSignal() ||
+               child == animation->endedSignal() ||
+               child == animation->finishedSignal();
+    }
+    if (const QHTMLScriptAction *action = dynamic_cast<const QHTMLScriptAction *>(parent)) {
+        return child == action->startedSignal() ||
+               child == action->finishedSignal();
+    }
+    if (const QHTMLAnimationGroup *group = dynamic_cast<const QHTMLAnimationGroup *>(parent)) {
+        return child == group->startedSignal() ||
+               child == group->stoppedSignal() ||
+               child == group->finishedSignal();
+    }
+    return false;
+}
+
+inline QString qhtmlBase64EncodeUtf8(const QString &value)
+{
+    return QString::fromLatin1(value.toUtf8().toBase64());
+}
+
+inline QString qhtmlBase64DecodeUtf8(const QString &value)
+{
+    return QString::fromUtf8(QByteArray::fromBase64(value.toLatin1()));
+}
+
+inline void qhtmlInsertBase64Body(QJsonObject &object, const QString &body)
+{
+    const QString encoded = qhtmlBase64EncodeUtf8(body);
+    object.insert(QStringLiteral("qhtmlContents"), encoded);
+    object.insert(QStringLiteral("body"), encoded);
+    object.insert(QStringLiteral("qhtmlContentsEncoding"), QStringLiteral("base64"));
+    object.insert(QStringLiteral("bodyEncoding"), QStringLiteral("base64"));
+}
+
+inline QJsonArray qhtmlChildArrayFromNode(const QHTMLNode *node)
+{
+    QJsonArray childrenArray;
+    if (!node) {
+        return childrenArray;
+    }
+
+    if (const QHTMLFunction *functionNode = dynamic_cast<const QHTMLFunction *>(node)) {
+        if (!functionNode->body().trimmed().isEmpty()) {
+            QJsonObject body;
+            body.insert(QStringLiteral("qhtmlType"), QStringLiteral("QHTMLJavaScriptBlock"));
+            qhtmlInsertBase64Body(body, functionNode->body());
+            childrenArray.append(body);
+        }
+    }
+
+    for (QHTMLNode *child : node->children()) {
+        if (child && !qhtmlIsInternalRuntimeChild(node, child)) {
+            childrenArray.append(child->toJsonObject());
+        }
+    }
+    return childrenArray;
+}
+
+inline QString qhtmlJsonValueToQHTMLSource(const QJsonValue &value)
+{
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        if (object.contains(QStringLiteral("value"))) {
+            return qhtmlJsonValueToQHTMLSource(object.value(QStringLiteral("value")));
+        }
+        return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
+    }
+    if (value.isArray()) {
+        return QString::fromUtf8(QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact));
+    }
+    if (value.isString()) {
+        return value.toString();
+    }
+    if (value.isDouble()) {
+        const double number = value.toDouble();
+        const qint64 rounded = qRound64(number);
+        if (qAbs(number - double(rounded)) < 0.000000000001) {
+            return QString::number(rounded);
+        }
+        return QString::number(number, 'g', 15);
+    }
+    if (value.isBool()) {
+        return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    }
+    if (value.isNull()) {
+        return QStringLiteral("null");
+    }
+    return QString();
+}
+
+inline QJsonObject qhtmlPropertyValueObject(const QString &source)
+{
+    const QString value = source.trimmed();
+    QJsonObject object;
+    if (value == QStringLiteral("true") || value == QStringLiteral("false")) {
+        object.insert(QStringLiteral("type"), QStringLiteral("boolean"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    if (value == QStringLiteral("null")) {
+        object.insert(QStringLiteral("type"), QStringLiteral("null"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    if (value.startsWith(QLatin1Char('`')) && value.endsWith(QLatin1Char('`'))) {
+        object.insert(QStringLiteral("type"), QStringLiteral("template"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    if (value.startsWith(QLatin1Char('[')) || value.startsWith(QLatin1Char('{'))) {
+        QJsonParseError error;
+        const QJsonDocument document = QJsonDocument::fromJson(value.toUtf8(), &error);
+        if (error.error == QJsonParseError::NoError) {
+            object.insert(QStringLiteral("type"), document.isArray() ? QStringLiteral("array") : QStringLiteral("object"));
+            object.insert(QStringLiteral("value"), document.isArray() ? QJsonValue(document.array()) : QJsonValue(document.object()));
+            object.insert(QStringLiteral("source"), value);
+            return object;
+        }
+    }
+    if (QRegularExpression(QStringLiteral("^[-+]?(?:\\d+|\\d*\\.\\d+)$")).match(value).hasMatch()) {
+        object.insert(QStringLiteral("type"), QStringLiteral("number"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    if (QRegularExpression(QStringLiteral("^[-+]?(?:\\d+|\\d*\\.\\d+)(?:%|px|em|rem|vw|vh|vmin|vmax|ch|ex|cm|mm|in|pt|pc|deg|rad|turn|s|ms)$")).match(value).hasMatch()) {
+        object.insert(QStringLiteral("type"), QStringLiteral("css-unit"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    if (value.endsWith(QStringLiteral(")")) && value.contains(QLatin1Char('('))) {
+        object.insert(QStringLiteral("type"), QStringLiteral("call"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    if (value.contains(QLatin1Char('.')) && !value.contains(QRegularExpression(QStringLiteral("\\s")))) {
+        object.insert(QStringLiteral("type"), QStringLiteral("reference"));
+        object.insert(QStringLiteral("value"), value);
+        return object;
+    }
+    object.insert(QStringLiteral("type"), QStringLiteral("string"));
+    object.insert(QStringLiteral("value"), value);
+    return object;
+}
+
+inline QString qhtmlBodyFromJsonObject(const QJsonObject &object)
+{
+    const QString qhtmlContentsEncoding = qhtmlFirstJsonString(object, {"qhtmlContentsEncoding", "contentsEncoding"}).toLower();
+    const QString bodyEncoding = qhtmlFirstJsonString(object, {"bodyEncoding", "qhtmlBodyEncoding"}).toLower();
+    const QString qhtmlContents = qhtmlFirstJsonString(object, {"qhtmlContents", "qhtmlBody", "contents", "value"});
+    const QString body = qhtmlFirstJsonString(object, {"body"});
+    if (qhtmlContentsEncoding == QStringLiteral("base64") && !qhtmlContents.isNull()) {
+        return qhtmlBase64DecodeUtf8(qhtmlContents);
+    }
+    if (bodyEncoding == QStringLiteral("base64") && !body.isNull()) {
+        return qhtmlBase64DecodeUtf8(body);
+    }
+    const QString qhtmlContentsBase64 = qhtmlFirstJsonString(object, {"qhtmlContentsBase64", "contentsBase64"});
+    if (!qhtmlContentsBase64.isNull() && !qhtmlContentsBase64.isEmpty()) {
+        return qhtmlBase64DecodeUtf8(qhtmlContentsBase64);
+    }
+    const QString bodyBase64 = qhtmlFirstJsonString(object, {"bodyBase64", "qhtmlBodyBase64"});
+    if (!bodyBase64.isNull() && !bodyBase64.isEmpty()) {
+        return qhtmlBase64DecodeUtf8(bodyBase64);
+    }
+    const QString direct = qhtmlFirstJsonString(object, {"qhtmlContents", "qhtmlBody", "body", "contents", "value"});
+    if (!direct.isNull() && !direct.isEmpty()) {
+        return direct;
+    }
+    const QJsonArray children = object.value(QStringLiteral("qhtmlChildren")).toArray(object.value(QStringLiteral("children")).toArray());
+    for (const QJsonValue &childValue : children) {
+        if (!childValue.isObject()) {
+            continue;
+        }
+        const QJsonObject child = childValue.toObject();
+        const QString type = qhtmlFirstJsonString(child, {"qhtmlType", "type"});
+        if (type == QStringLiteral("QHTMLJavaScriptBlock")) {
+            return qhtmlBodyFromJsonObject(child);
+        }
+    }
+    return QString();
+}
+
+inline bool qhtmlNodeConsumesJavaScriptBlock(const QHTMLNode *node)
+{
+    return dynamic_cast<const QHTMLFunction *>(node) ||
+           dynamic_cast<const QHTMLEventHandler *>(node) ||
+           dynamic_cast<const QHTMLScript *>(node) ||
+           dynamic_cast<const QHTMLScriptAction *>(node) ||
+           dynamic_cast<const QHTMLClass *>(node) ||
+           dynamic_cast<const QHTMLStyle *>(node) ||
+           dynamic_cast<const QHTMLTheme *>(node) ||
+           dynamic_cast<const QHTMLPainter *>(node) ||
+           dynamic_cast<const QHTMLForNode *>(node) ||
+           dynamic_cast<const QHTMLConnect *>(node) ||
+           dynamic_cast<const QHTMLImportNode *>(node);
+}
+
+inline const QHTMLNode *qhtmlTopScope(const QHTMLNode *node)
+{
+    const QHTMLNode *scope = node;
+    while (scope && scope->parent()) {
+        scope = scope->parent();
+    }
+    return scope ? scope : node;
+}
+
+inline QHTMLComponentDefinition *qhtmlFindComponentDefinitionByNameIn(QHTMLNode *node, const QString &name)
+{
+    if (!node || name.trimmed().isEmpty()) {
+        return nullptr;
+    }
+    if (QHTMLComponentDefinition *definition = dynamic_cast<QHTMLComponentDefinition *>(node)) {
+        if (definition->qhtmlName() == name) {
+            return definition;
+        }
+    }
+    for (QHTMLNode *child : node->children()) {
+        if (QHTMLComponentDefinition *found = qhtmlFindComponentDefinitionByNameIn(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+inline void qhtmlResolveComponentInstanceDefinitions(QHTMLNode *node, QHTMLNode *scope = nullptr)
+{
+    if (!node) {
+        return;
+    }
+    QHTMLNode *lookupScope = scope ? scope : node;
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(node)) {
+        QString componentName = instance->property(QStringLiteral("qhtmlComponentName")).trimmed();
+        if (componentName.isEmpty()) {
+            componentName = instance->property(QStringLiteral("componentName")).trimmed();
+        }
+        if (componentName.isEmpty() && instance->definition()) {
+            componentName = instance->definition()->qhtmlName();
+        }
+        if (!componentName.isEmpty()) {
+            if (!instance->definition() || instance->definition()->qhtmlName() != componentName) {
+                instance->setDefinition(qhtmlFindComponentDefinitionByNameIn(lookupScope, componentName));
+            }
+            instance->setProperty(QStringLiteral("qhtmlComponentName"), componentName);
+            instance->setProperty(QStringLiteral("componentName"), componentName);
+        }
+    }
+    for (QHTMLNode *child : node->children()) {
+        qhtmlResolveComponentInstanceDefinitions(child, lookupScope);
+    }
+}
+
+inline QJsonArray qhtmlComponentInheritsArray(const QHTMLComponentDefinition *definition)
+{
+    QJsonArray inherits;
+    if (!definition) {
+        return inherits;
+    }
+    QHTMLNode *top = const_cast<QHTMLNode *>(qhtmlTopScope(definition));
+    QSet<QString> emitted;
+    for (const QString &baseName : definition->extendsList()) {
+        if (baseName.trimmed().isEmpty()) {
+            continue;
+        }
+        QHTMLComponentDefinition *base = qhtmlFindComponentDefinitionByNameIn(top, baseName.trimmed());
+        if (!base || base == definition || emitted.contains(base->qhtmlUUID())) {
+            QJsonObject unresolved;
+            unresolved.insert(QStringLiteral("qhtmlType"), QStringLiteral("QHTMLComponentDefinition"));
+            unresolved.insert(QStringLiteral("qhtmlName"), baseName.trimmed());
+            unresolved.insert(QStringLiteral("qhtmlUnresolved"), true);
+            inherits.append(unresolved);
+            continue;
+        }
+        emitted.insert(base->qhtmlUUID());
+        inherits.append(base->toJsonObject());
+    }
+    return inherits;
+}
+
+inline QJsonValue QHTMLNode::toJsonValue() const
+{
+    if (dynamic_cast<const QHTMLDomTree *>(this)) {
+        QJsonArray childrenArray;
+        for (QHTMLNode *child : children()) {
+            if (child) {
+                childrenArray.append(child->toJsonObject());
+            }
+        }
+        return childrenArray;
+    }
+    return toJsonObject();
+}
+
 inline QJsonObject QHTMLNode::toJsonObject() const
 {
     QJsonObject object;
+    object.insert(QStringLiteral("qhtmlType"), qhtmlType());
+    object.insert(QStringLiteral("qhtmlName"), qhtmlName());
+    object.insert(QStringLiteral("qhtmlUUID"), qhtmlUUID());
+
+    // Compatibility aliases for older tooling that consumed the previous serializer.
     object.insert(QStringLiteral("type"), qhtmlType());
     object.insert(QStringLiteral("name"), qhtmlName());
     object.insert(QStringLiteral("uuid"), qhtmlUUID());
 
-    QJsonObject properties;
-    for (auto it = qhtmlProperties.constBegin(); it != qhtmlProperties.constEnd(); ++it) {
-        properties.insert(it.key(), it.value());
-    }
-    object.insert(QStringLiteral("properties"), properties);
+    object.insert(QStringLiteral("qhtmlProperties"), qhtmlStringHashToJsonObject(qhtmlProperties));
+    object.insert(QStringLiteral("properties"), qhtmlStringHashToJsonObject(qhtmlProperties));
 
     if (const QHTMLDomElement *element = dynamic_cast<const QHTMLDomElement *>(this)) {
+        object.insert(QStringLiteral("qhtmlTagName"), element->tagName());
         object.insert(QStringLiteral("tagName"), element->tagName());
-        QJsonObject attributes;
-        const QHash<QString, QString> localAttributes = element->attributes();
-        for (auto it = localAttributes.constBegin(); it != localAttributes.constEnd(); ++it) {
-            attributes.insert(it.key(), it.value());
-        }
-        object.insert(QStringLiteral("attributes"), attributes);
+        object.insert(QStringLiteral("qhtmlAttributes"), qhtmlStringHashToJsonObject(element->attributes()));
+        object.insert(QStringLiteral("attributes"), qhtmlStringHashToJsonObject(element->attributes()));
     }
+
     if (const QHTMLTypedNode *typed = dynamic_cast<const QHTMLTypedNode *>(this)) {
+        object.insert(QStringLiteral("qhtmlKeyword"), typed->keyword());
         object.insert(QStringLiteral("keyword"), typed->keyword());
-        QJsonObject attributes;
-        const QHash<QString, QString> localAttributes = typed->attributes();
-        for (auto it = localAttributes.constBegin(); it != localAttributes.constEnd(); ++it) {
-            attributes.insert(it.key(), it.value());
-        }
-        object.insert(QStringLiteral("attributes"), attributes);
+        object.insert(QStringLiteral("qhtmlAttributes"), qhtmlStringHashToJsonObject(typed->attributes()));
+        object.insert(QStringLiteral("attributes"), qhtmlStringHashToJsonObject(typed->attributes()));
     }
+
     if (const QHTMLTextFragment *text = dynamic_cast<const QHTMLTextFragment *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), text->value());
         object.insert(QStringLiteral("value"), text->value());
     } else if (const QHTMLHTMLFragment *html = dynamic_cast<const QHTMLHTMLFragment *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), html->value());
         object.insert(QStringLiteral("value"), html->value());
     } else if (const QHTMLUnknownFragment *unknown = dynamic_cast<const QHTMLUnknownFragment *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), unknown->value());
         object.insert(QStringLiteral("value"), unknown->value());
+    } else if (const QHTMLJavaScriptBlock *scriptBlock = dynamic_cast<const QHTMLJavaScriptBlock *>(this)) {
+        qhtmlInsertBase64Body(object, scriptBlock->contents());
+    } else if (const QHTMLArrayNode *arrayNode = dynamic_cast<const QHTMLArrayNode *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), arrayNode->valuesLiteral());
+        object.insert(QStringLiteral("valuesLiteral"), arrayNode->valuesLiteral());
+    } else if (const QHTMLMapNode *mapNode = dynamic_cast<const QHTMLMapNode *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), mapNode->valuesLiteral());
+        object.insert(QStringLiteral("keysLiteral"), mapNode->keysLiteral());
+        object.insert(QStringLiteral("valuesLiteral"), mapNode->valuesLiteral());
+    } else if (const QHTMLJsonValue *jsonValue = dynamic_cast<const QHTMLJsonValue *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), jsonValue->toJson());
+        object.insert(QStringLiteral("qhtmlJson"), jsonValue->toJson());
+        object.insert(QStringLiteral("qhtmlJsonType"), jsonValue->typeName());
+    } else if (const QHTMLJsonArray *jsonArray = dynamic_cast<const QHTMLJsonArray *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), jsonArray->valuesLiteral());
+        object.insert(QStringLiteral("qhtmlJson"), jsonArray->valuesLiteral());
+    } else if (const QHTMLJsonObject *jsonObject = dynamic_cast<const QHTMLJsonObject *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), jsonObject->valuesLiteral());
+        object.insert(QStringLiteral("qhtmlJson"), jsonObject->valuesLiteral());
+    } else if (const QHTMLJsonDocument *jsonDocument = dynamic_cast<const QHTMLJsonDocument *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), jsonDocument->toJson());
+        object.insert(QStringLiteral("qhtmlJson"), jsonDocument->toJson());
+        object.insert(QStringLiteral("parseError"), jsonDocument->parseError());
+    } else if (const QHTMLArray *arrayBlock = dynamic_cast<const QHTMLArray *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), arrayBlock->valuesLiteral());
+        object.insert(QStringLiteral("valuesLiteral"), arrayBlock->valuesLiteral());
+    } else if (const QHTMLMap *mapBlock = dynamic_cast<const QHTMLMap *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), mapBlock->valuesLiteral());
+        object.insert(QStringLiteral("keysLiteral"), mapBlock->keysLiteral());
+        object.insert(QStringLiteral("valuesLiteral"), mapBlock->valuesLiteral());
+    } else if (const QHTMLModel *modelBlock = dynamic_cast<const QHTMLModel *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), modelBlock->valuesLiteral());
+        object.insert(QStringLiteral("valuesLiteral"), modelBlock->valuesLiteral());
     } else if (const QHTMLProperty *propertyNode = dynamic_cast<const QHTMLProperty *>(this)) {
+        object.insert(QStringLiteral("qhtmlValue"), qhtmlPropertyValueObject(propertyNode->value()));
         object.insert(QStringLiteral("value"), propertyNode->value());
     } else if (const QHTMLPropertyAssignment *assignment = dynamic_cast<const QHTMLPropertyAssignment *>(this)) {
+        object.insert(QStringLiteral("qhtmlValue"), qhtmlPropertyValueObject(assignment->value()));
         object.insert(QStringLiteral("value"), assignment->value());
     } else if (const QHTMLFunction *functionNode = dynamic_cast<const QHTMLFunction *>(this)) {
-        object.insert(QStringLiteral("body"), functionNode->body());
+        object.insert(QStringLiteral("qhtmlParameters"), qhtmlStringListToJsonArray(functionNode->parameters()));
         object.insert(QStringLiteral("parameters"), functionNode->parameterList());
+        qhtmlInsertBase64Body(object, functionNode->body());
+    } else if (const QHTMLSignal *signalNode = dynamic_cast<const QHTMLSignal *>(this)) {
+        object.insert(QStringLiteral("qhtmlParameters"), qhtmlStringListToJsonArray(signalNode->parameters()));
+        object.insert(QStringLiteral("parameters"), signalNode->parameterList());
     } else if (const QHTMLEventHandler *handler = dynamic_cast<const QHTMLEventHandler *>(this)) {
-        object.insert(QStringLiteral("body"), handler->body());
+        object.insert(QStringLiteral("qhtmlEventName"), handler->eventName());
+        object.insert(QStringLiteral("qhtmlParameters"), qhtmlStringListToJsonArray(handler->parameters()));
+        object.insert(QStringLiteral("parameters"), handler->parameterList());
+        qhtmlInsertBase64Body(object, handler->body());
     } else if (const QHTMLScript *script = dynamic_cast<const QHTMLScript *>(this)) {
-        object.insert(QStringLiteral("body"), script->body());
+        qhtmlInsertBase64Body(object, script->body());
+    } else if (const QHTMLScriptAction *action = dynamic_cast<const QHTMLScriptAction *>(this)) {
+        qhtmlInsertBase64Body(object, action->body());
     } else if (const QHTMLStyle *style = dynamic_cast<const QHTMLStyle *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), style->body());
         object.insert(QStringLiteral("body"), style->body());
+        object.insert(QStringLiteral("qhtmlCssText"), style->cssText());
         object.insert(QStringLiteral("cssText"), style->cssText());
     } else if (const QHTMLTheme *theme = dynamic_cast<const QHTMLTheme *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), theme->body());
         object.insert(QStringLiteral("body"), theme->body());
+    } else if (const QHTMLClass *classNode = dynamic_cast<const QHTMLClass *>(this)) {
+        qhtmlInsertBase64Body(object, classNode->body());
+    } else if (const QHTMLForNode *forNode = dynamic_cast<const QHTMLForNode *>(this)) {
+        object.insert(QStringLiteral("qhtmlVariable"), forNode->variableName());
+        object.insert(QStringLiteral("qhtmlCollection"), forNode->collectionExpression());
+        object.insert(QStringLiteral("qhtmlContents"), forNode->body());
+        object.insert(QStringLiteral("body"), forNode->body());
+    } else if (const QHTMLConnect *connect = dynamic_cast<const QHTMLConnect *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), connect->body());
+        object.insert(QStringLiteral("body"), connect->body());
+        object.insert(QStringLiteral("qhtmlSourcePath"), connect->sourcePath());
+        object.insert(QStringLiteral("qhtmlTargetPath"), connect->targetPath());
     } else if (const QHTMLImportNode *importNode = dynamic_cast<const QHTMLImportNode *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), importNode->body());
+        object.insert(QStringLiteral("body"), importNode->body());
+        object.insert(QStringLiteral("qhtmlPath"), importNode->path());
         object.insert(QStringLiteral("path"), importNode->path());
+        object.insert(QStringLiteral("qhtmlCacheMode"), importNode->cacheMode());
+        object.insert(QStringLiteral("qhtmlImportKind"), importNode->importKind());
         object.insert(QStringLiteral("importKind"), importNode->importKind());
+    } else if (const QHTMLPainter *painter = dynamic_cast<const QHTMLPainter *>(this)) {
+        qhtmlInsertBase64Body(object, painter->body());
     } else if (const QHTMLComponentDefinition *definition = dynamic_cast<const QHTMLComponentDefinition *>(this)) {
+        object.insert(QStringLiteral("qhtmlInherits"), qhtmlComponentInheritsArray(definition));
         object.insert(QStringLiteral("componentName"), definition->qhtmlName());
         object.insert(QStringLiteral("extends"), definition->extendsList().join(QStringLiteral(" ")));
     } else if (const QHTMLComponentInstance *instance = dynamic_cast<const QHTMLComponentInstance *>(this)) {
+        object.insert(QStringLiteral("qhtmlComponentDefinitionUUID"), instance->componentDefinitionUUID());
+        object.insert(QStringLiteral("qhtmlComponentName"), instance->definition() ? instance->definition()->qhtmlName() : QString());
         object.insert(QStringLiteral("componentDefinitionUUID"), instance->componentDefinitionUUID());
         object.insert(QStringLiteral("componentName"), instance->definition() ? instance->definition()->qhtmlName() : QString());
     }
 
+    object.insert(QStringLiteral("qhtmlSource"), sourceQHTML(0));
     object.insert(QStringLiteral("source"), sourceQHTML(0));
+    object.insert(QStringLiteral("qhtmlHTML"), renderHtml());
     object.insert(QStringLiteral("html"), renderHtml());
 
-    QJsonArray childrenArray;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            childrenArray.append(child->toJsonObject());
-        }
-    }
+    const QJsonArray childrenArray = qhtmlChildArrayFromNode(this);
+    object.insert(QStringLiteral("qhtmlChildren"), childrenArray);
     object.insert(QStringLiteral("children"), childrenArray);
     return object;
 }
 
 inline QString QHTMLNode::toJSONText() const
 {
-    QHTMLJsonDocument document{QJsonDocument(toJsonObject())};
-    return document.toJson();
+    const QJsonValue value = toJsonValue();
+    if (value.isArray()) {
+        return QString::fromUtf8(QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact));
+    }
+    if (value.isObject()) {
+        return QString::fromUtf8(QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact));
+    }
+    return QStringLiteral("null");
 }
 
 inline emscripten::val QHTMLNode::toJSONJs() const
 {
     const std::string json = toJSONText().toStdString();
     return emscripten::val::global("JSON").call<emscripten::val>("parse", json);
+}
+
+inline QHTMLNode *QHTMLNode::nodeFromJsonObject(const QJsonObject &object, QHTMLNode *ownerScope)
+{
+    const QString type = qhtmlFirstJsonString(object, {"qhtmlType", "qhtmltype", "type"}, QStringLiteral("QHTMLNode"));
+    const QString name = qhtmlFirstJsonString(object, {"qhtmlName", "name"});
+    const QString keyword = qhtmlFirstJsonString(object, {"qhtmlKeyword", "keyword"});
+    const QJsonObject attributeObject = object.value(QStringLiteral("qhtmlAttributes")).toObject(object.value(QStringLiteral("attributes")).toObject());
+    QHash<QString, QString> attributes = qhtmlStringHashFromJsonObject(attributeObject);
+    const QString body = qhtmlBodyFromJsonObject(object);
+
+    QHTMLNode *node = nullptr;
+    if (type == QStringLiteral("QHTMLDomTree")) {
+        node = new QHTMLDomTree();
+    } else if (type == QStringLiteral("QHTMLDomElement") || type == QStringLiteral("QHTMLAnonNode")) {
+        const QString tagName = qhtmlFirstJsonString(object, {"qhtmlTagName", "tagName"}, name);
+        node = new QHTMLDomElement(tagName, attributes);
+    } else if (type == QStringLiteral("QHTMLTextFragment")) {
+        node = new QHTMLTextFragment(qhtmlFirstJsonString(object, {"qhtmlContents", "value", "contents"}));
+    } else if (type == QStringLiteral("QHTMLHTMLFragment")) {
+        node = new QHTMLHTMLFragment(qhtmlFirstJsonString(object, {"qhtmlContents", "value", "contents"}));
+    } else if (type == QStringLiteral("QHTMLUnknownFragment")) {
+        node = new QHTMLUnknownFragment(qhtmlFirstJsonString(object, {"qhtmlContents", "value", "contents"}));
+    } else if (type == QStringLiteral("QHTMLJavaScriptBlock")) {
+        node = new QHTMLJavaScriptBlock(body);
+    } else if (type == QStringLiteral("QHTMLArrayNode")) {
+        node = new QHTMLArrayNode(qhtmlFirstJsonString(object, {"qhtmlContents", "valuesLiteral", "value"}));
+    } else if (type == QStringLiteral("QHTMLMapNode")) {
+        node = new QHTMLMapNode(qhtmlFirstJsonString(object, {"qhtmlContents", "valuesLiteral", "value"}));
+    } else if (type == QStringLiteral("QHTMLJsonValue")) {
+        node = new QHTMLJsonValue(qhtmlFirstJsonString(object, {"qhtmlJson", "qhtmlContents", "valuesLiteral", "value"}));
+    } else if (type == QStringLiteral("QHTMLJsonArray")) {
+        node = new QHTMLJsonArray(qhtmlFirstJsonString(object, {"qhtmlJson", "qhtmlContents", "valuesLiteral", "value"}));
+    } else if (type == QStringLiteral("QHTMLJsonObject")) {
+        node = new QHTMLJsonObject(qhtmlFirstJsonString(object, {"qhtmlJson", "qhtmlContents", "valuesLiteral", "value"}));
+    } else if (type == QStringLiteral("QHTMLJsonDocument")) {
+        node = new QHTMLJsonDocument(qhtmlFirstJsonString(object, {"qhtmlJson", "qhtmlContents", "valuesLiteral", "value"}));
+    } else if (type == QStringLiteral("QHTMLComponentDefinition")) {
+        QString extends = qhtmlFirstJsonString(object, {"extends"});
+        if (extends.trimmed().isEmpty() && object.value(QStringLiteral("qhtmlInherits")).isArray()) {
+            QStringList names;
+            for (const QJsonValue &inheritValue : object.value(QStringLiteral("qhtmlInherits")).toArray()) {
+                if (inheritValue.isObject()) {
+                    const QString baseName = qhtmlFirstJsonString(inheritValue.toObject(), {"qhtmlName", "name", "componentName"});
+                    if (!baseName.trimmed().isEmpty()) {
+                        names.append(baseName.trimmed());
+                    }
+                } else if (inheritValue.isString()) {
+                    names.append(inheritValue.toString().trimmed());
+                }
+            }
+            extends = names.join(QLatin1Char(' '));
+        }
+        if (!extends.trimmed().isEmpty()) {
+            attributes.insert(QStringLiteral("extends"), extends.trimmed());
+        }
+        node = new QHTMLComponentDefinition(name, attributes);
+    } else if (type == QStringLiteral("QHTMLComponentInstance")) {
+        QHTMLComponentDefinition *definition = nullptr;
+        const QString componentName = qhtmlFirstJsonString(object, {"qhtmlComponentName", "componentName"});
+        if (ownerScope && !componentName.isEmpty()) {
+            definition = qhtmlFindComponentDefinitionByNameIn(qhtmlTopScope(ownerScope) ? const_cast<QHTMLNode *>(qhtmlTopScope(ownerScope)) : ownerScope, componentName);
+        }
+        node = new QHTMLComponentInstance(name, attributes, definition);
+    } else if (type == QStringLiteral("QHTMLFunction")) {
+        const QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
+        if (!parameters.isEmpty()) {
+            attributes.insert(QStringLiteral("parameters"), parameters.join(QStringLiteral(", ")));
+        } else if (object.contains(QStringLiteral("parameters"))) {
+            attributes.insert(QStringLiteral("parameters"), qhtmlFirstJsonString(object, {"parameters"}));
+        }
+        node = new QHTMLFunction(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLSignal")) {
+        const QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
+        if (!parameters.isEmpty()) {
+            attributes.insert(QStringLiteral("parameters"), parameters.join(QStringLiteral(", ")));
+        } else if (object.contains(QStringLiteral("parameters"))) {
+            attributes.insert(QStringLiteral("parameters"), qhtmlFirstJsonString(object, {"parameters"}));
+        }
+        node = new QHTMLSignal(name, attributes);
+    } else if (type == QStringLiteral("QHTMLComponentSlot") || type == QStringLiteral("QHTMLSlot")) {
+        node = new QHTMLComponentSlot(name, attributes);
+    } else if (type == QStringLiteral("QHTMLSlotDefault")) {
+        node = new QHTMLSlotDefault(name, attributes);
+    } else if (type == QStringLiteral("QHTMLProperty")) {
+        attributes.insert(QStringLiteral("value"), object.contains(QStringLiteral("qhtmlValue"))
+                                                   ? qhtmlJsonValueToQHTMLSource(object.value(QStringLiteral("qhtmlValue")))
+                                                   : qhtmlFirstJsonString(object, {"value"}));
+        node = new QHTMLProperty(name, attributes);
+    } else if (type == QStringLiteral("QHTMLPropertyAssignment")) {
+        attributes.insert(QStringLiteral("value"), object.contains(QStringLiteral("qhtmlValue"))
+                                                   ? qhtmlJsonValueToQHTMLSource(object.value(QStringLiteral("qhtmlValue")))
+                                                   : qhtmlFirstJsonString(object, {"value"}));
+        node = new QHTMLPropertyAssignment(name, attributes);
+    } else if (type == QStringLiteral("QHTMLEventHandler")) {
+        const QString eventName = qhtmlFirstJsonString(object, {"qhtmlEventName", "eventName"}, name);
+        const QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
+        if (!parameters.isEmpty()) {
+            attributes.insert(QStringLiteral("parameters"), parameters.join(QStringLiteral(", ")));
+        } else if (object.contains(QStringLiteral("parameters"))) {
+            attributes.insert(QStringLiteral("parameters"), qhtmlFirstJsonString(object, {"parameters"}));
+        }
+        node = new QHTMLEventHandler(eventName, attributes, body);
+    } else if (type == QStringLiteral("QHTMLScript")) {
+        node = new QHTMLScript(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLScriptAction")) {
+        node = new QHTMLScriptAction(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLStyle")) {
+        node = new QHTMLStyle(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLTheme")) {
+        node = new QHTMLTheme(keyword.isEmpty() ? QStringLiteral("q-theme") : keyword, name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLClass")) {
+        node = new QHTMLClass(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLVar")) {
+        node = new QHTMLVar(name, attributes);
+    } else if (type == QStringLiteral("QHTMLArray")) {
+        node = new QHTMLArray(name, attributes);
+    } else if (type == QStringLiteral("QHTMLMap")) {
+        node = new QHTMLMap(name, attributes);
+    } else if (type == QStringLiteral("QHTMLModel")) {
+        node = new QHTMLModel(name, attributes);
+    } else if (type == QStringLiteral("QHTMLTemplate")) {
+        node = new QHTMLTemplate(name, attributes);
+    } else if (type == QStringLiteral("QHTMLModelView")) {
+        node = new QHTMLModelView(name, attributes);
+    } else if (type == QStringLiteral("QHTMLFactory")) {
+        node = new QHTMLFactory(name, attributes);
+    } else if (type == QStringLiteral("QHTMLTimer")) {
+        node = new QHTMLTimer(name, attributes);
+    } else if (type == QStringLiteral("QHTMLPropertyAnimation")) {
+        node = new QHTMLPropertyAnimation(name, attributes);
+    } else if (type == QStringLiteral("QHTMLSequentialAnimation")) {
+        node = new QHTMLSequentialAnimation(name, attributes);
+    } else if (type == QStringLiteral("QHTMLParallelAnimation")) {
+        node = new QHTMLParallelAnimation(name, attributes);
+    } else if (type == QStringLiteral("QHTMLBehavior")) {
+        node = new QHTMLBehavior(name, attributes);
+    } else if (type == QStringLiteral("QHTMLPainter")) {
+        node = new QHTMLPainter(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLCanvas")) {
+        node = new QHTMLCanvas(name, attributes);
+    } else if (type == QStringLiteral("QHTMLVideo")) {
+        node = new QHTMLVideo(keyword.isEmpty() ? QStringLiteral("q-video") : keyword, name, attributes);
+    } else if (type == QStringLiteral("QHTMLLayout")) {
+        node = new QHTMLLayout(keyword.isEmpty() ? QStringLiteral("q-layout") : keyword, name, attributes);
+    } else if (type == QStringLiteral("QHTMLRowLayout")) {
+        node = new QHTMLRowLayout(name, attributes);
+    } else if (type == QStringLiteral("QHTMLColumnLayout")) {
+        node = new QHTMLColumnLayout(name, attributes);
+    } else if (type == QStringLiteral("QHTMLForNode")) {
+        const QString variable = qhtmlFirstJsonString(object, {"qhtmlVariable", "variable"}, name);
+        const QString collection = qhtmlFirstJsonString(object, {"qhtmlCollection", "collection"});
+        if (!collection.trimmed().isEmpty()) {
+            attributes.insert(QStringLiteral("collection"), collection.trimmed());
+        }
+        node = new QHTMLForNode(variable, attributes, body);
+    } else if (type == QStringLiteral("QHTMLImportNode")) {
+        const QString importKind = qhtmlFirstJsonString(object, {"qhtmlImportKind", "importKind"}, keyword.isEmpty() ? QStringLiteral("q-import") : keyword);
+        QString importBody = body;
+        if (importBody.trimmed().isEmpty()) {
+            importBody = qhtmlFirstJsonString(object, {"qhtmlPath", "path"});
+            const QString cache = qhtmlFirstJsonString(object, {"qhtmlCacheMode", "cacheMode"});
+            if (!cache.trimmed().isEmpty() && cache != QStringLiteral("default")) {
+                importBody += QLatin1Char(' ') + cache.trimmed();
+            }
+        }
+        node = new QHTMLImportNode(importKind, importBody, attributes);
+    } else if (type == QStringLiteral("QHTMLConnect")) {
+        node = new QHTMLConnect(body);
+    } else if (type == QStringLiteral("QHTMLStyleApplication")) {
+        node = new QHTMLStyleApplication(nullptr);
+        node->setQHTMLName(name);
+    } else if (type == QStringLiteral("QHTMLThemeApplication")) {
+        node = new QHTMLThemeApplication(nullptr);
+        node->setQHTMLName(name);
+    } else if (type == QStringLiteral("QHTMLWorker")) {
+        node = new QHTMLWorker(name, attributes);
+    } else if (type == QStringLiteral("QHTMLSourceFragment")) {
+        node = new QHTMLSourceFragment(name, attributes);
+    } else {
+        node = new QHTMLTypedNode(keyword.isEmpty() ? type : keyword, name, attributes);
+        node->setQHTMLType(type);
+    }
+
+    if (!node) {
+        return nullptr;
+    }
+
+    const QString uuid = qhtmlFirstJsonString(object, {"qhtmlUUID", "uuid"});
+    if (!uuid.trimmed().isEmpty()) {
+        node->setQHTMLUUID(uuid.trimmed());
+    }
+    node->fromJsonObject(object);
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(node)) {
+        const QString componentName = qhtmlFirstJsonString(object, {"qhtmlComponentName", "componentName"});
+        if (!componentName.trimmed().isEmpty()) {
+            instance->setProperty(QStringLiteral("qhtmlComponentName"), componentName.trimmed());
+            instance->setProperty(QStringLiteral("componentName"), componentName.trimmed());
+        }
+    }
+    return node;
+}
+
+inline bool QHTMLNode::fromJsonValue(const QJsonValue &value)
+{
+    if (value.isArray()) {
+        QVector<QHTMLNode *> preservedRuntimeChildren;
+        for (int i = childCount() - 1; i >= 0; --i) {
+            QHTMLNode *candidate = childAt(i);
+            if (qhtmlIsInternalRuntimeChild(this, candidate)) {
+                preservedRuntimeChildren.prepend(takeChildAt(i));
+            }
+        }
+        clearChildren();
+        for (QHTMLNode *preserved : preservedRuntimeChildren) {
+            appendChild(preserved);
+        }
+        const QJsonArray array = value.toArray();
+        for (const QJsonValue &childValue : array) {
+            if (!childValue.isObject()) {
+                continue;
+            }
+            if (QHTMLNode *child = QHTMLNode::nodeFromJsonObject(childValue.toObject(), this)) {
+                appendChild(child);
+            }
+        }
+        qhtmlResolveComponentInstanceDefinitions(this, this);
+        return true;
+    }
+    if (value.isObject()) {
+        const bool loaded = fromJsonObject(value.toObject());
+        if (loaded) {
+            qhtmlResolveComponentInstanceDefinitions(this, this);
+        }
+        return loaded;
+    }
+    return false;
+}
+
+inline bool QHTMLNode::fromJsonObject(const QJsonObject &object)
+{
+    const QString name = qhtmlFirstJsonString(object, {"qhtmlName", "name"});
+    if (!name.isNull()) {
+        setQHTMLName(name);
+    }
+    const QString uuid = qhtmlFirstJsonString(object, {"qhtmlUUID", "uuid"});
+    if (!uuid.trimmed().isEmpty()) {
+        setQHTMLUUID(uuid.trimmed());
+    }
+
+    qhtmlProperties.clear();
+    const QJsonObject propertyObject = object.value(QStringLiteral("qhtmlProperties")).toObject(object.value(QStringLiteral("properties")).toObject());
+    for (auto it = propertyObject.constBegin(); it != propertyObject.constEnd(); ++it) {
+        setProperty(it.key(), qhtmlJsonValueToQHTMLSource(it.value()));
+    }
+
+    const QJsonObject attributeObject = object.value(QStringLiteral("qhtmlAttributes")).toObject(object.value(QStringLiteral("attributes")).toObject());
+    const QHash<QString, QString> attributes = qhtmlStringHashFromJsonObject(attributeObject);
+    if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(this)) {
+        element->setTagName(qhtmlFirstJsonString(object, {"qhtmlTagName", "tagName"}, element->tagName()));
+        element->setAttributes(attributes);
+    }
+    if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(this)) {
+        typed->setKeyword(qhtmlFirstJsonString(object, {"qhtmlKeyword", "keyword"}, typed->keyword()));
+        typed->setAttributes(attributes);
+    }
+
+    if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(this)) {
+        text->setValue(qhtmlFirstJsonString(object, {"qhtmlContents", "value", "contents"}));
+    } else if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(this)) {
+        html->setValue(qhtmlFirstJsonString(object, {"qhtmlContents", "value", "contents"}));
+    } else if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(this)) {
+        unknown->setValue(qhtmlFirstJsonString(object, {"qhtmlContents", "value", "contents"}));
+    } else if (QHTMLJavaScriptBlock *scriptBlock = dynamic_cast<QHTMLJavaScriptBlock *>(this)) {
+        scriptBlock->setContents(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLProperty *propertyNode = dynamic_cast<QHTMLProperty *>(this)) {
+        propertyNode->setValue(object.contains(QStringLiteral("qhtmlValue"))
+                               ? qhtmlJsonValueToQHTMLSource(object.value(QStringLiteral("qhtmlValue")))
+                               : qhtmlFirstJsonString(object, {"value"}));
+    } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(this)) {
+        assignment->setValue(object.contains(QStringLiteral("qhtmlValue"))
+                             ? qhtmlJsonValueToQHTMLSource(object.value(QStringLiteral("qhtmlValue")))
+                             : qhtmlFirstJsonString(object, {"value"}));
+    } else if (QHTMLFunction *functionNode = dynamic_cast<QHTMLFunction *>(this)) {
+        QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
+        if (parameters.isEmpty()) {
+            parameters = QHTMLFunction::parseParameters(qhtmlFirstJsonString(object, {"parameters"}));
+        }
+        functionNode->setParameters(parameters);
+        functionNode->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLSignal *signalNode = dynamic_cast<QHTMLSignal *>(this)) {
+        QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
+        if (parameters.isEmpty()) {
+            parameters = QHTMLFunction::parseParameters(qhtmlFirstJsonString(object, {"parameters"}));
+        }
+        signalNode->setParameters(parameters);
+    } else if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(this)) {
+        handler->setEventName(qhtmlFirstJsonString(object, {"qhtmlEventName", "eventName"}, handler->eventName()));
+        QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
+        if (parameters.isEmpty()) {
+            parameters = QHTMLFunction::parseParameters(qhtmlFirstJsonString(object, {"parameters"}));
+        }
+        handler->setParameters(parameters);
+        handler->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLScript *script = dynamic_cast<QHTMLScript *>(this)) {
+        script->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLScriptAction *action = dynamic_cast<QHTMLScriptAction *>(this)) {
+        action->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(this)) {
+        style->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(this)) {
+        theme->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLClass *classNode = dynamic_cast<QHTMLClass *>(this)) {
+        classNode->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLForNode *forNode = dynamic_cast<QHTMLForNode *>(this)) {
+        forNode->setVariableName(qhtmlFirstJsonString(object, {"qhtmlVariable", "variable"}, forNode->variableName()));
+        forNode->setCollectionExpression(qhtmlFirstJsonString(object, {"qhtmlCollection", "collection"}, forNode->collectionExpression()));
+        forNode->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLConnect *connect = dynamic_cast<QHTMLConnect *>(this)) {
+        connect->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLImportNode *importNode = dynamic_cast<QHTMLImportNode *>(this)) {
+        importNode->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLPainter *painter = dynamic_cast<QHTMLPainter *>(this)) {
+        painter->setBody(qhtmlBodyFromJsonObject(object));
+    }
+
+    if (QHTMLComponentDefinition *definition = dynamic_cast<QHTMLComponentDefinition *>(this)) {
+        QStringList inherits;
+        const QJsonArray inheritedArray = object.value(QStringLiteral("qhtmlInherits")).toArray();
+        for (const QJsonValue &inheritValue : inheritedArray) {
+            if (inheritValue.isObject()) {
+                const QString baseName = qhtmlFirstJsonString(inheritValue.toObject(), {"qhtmlName", "name", "componentName"});
+                if (!baseName.trimmed().isEmpty()) {
+                    inherits.append(baseName.trimmed());
+                }
+            } else if (inheritValue.isString()) {
+                inherits.append(inheritValue.toString().trimmed());
+            }
+        }
+        if (!inherits.isEmpty()) {
+            definition->setAttribute(QStringLiteral("extends"), inherits.join(QLatin1Char(' ')));
+        }
+    }
+
+    QVector<QHTMLNode *> preservedRuntimeChildren;
+    for (int i = childCount() - 1; i >= 0; --i) {
+        QHTMLNode *candidate = childAt(i);
+        if (qhtmlIsInternalRuntimeChild(this, candidate)) {
+            preservedRuntimeChildren.prepend(takeChildAt(i));
+        }
+    }
+    clearChildren();
+    for (QHTMLNode *preserved : preservedRuntimeChildren) {
+        appendChild(preserved);
+    }
+
+    const QJsonArray childrenArray = object.value(QStringLiteral("qhtmlChildren")).toArray(object.value(QStringLiteral("children")).toArray());
+    for (const QJsonValue &childValue : childrenArray) {
+        if (!childValue.isObject()) {
+            continue;
+        }
+        const QJsonObject childObject = childValue.toObject();
+        const QString childType = qhtmlFirstJsonString(childObject, {"qhtmlType", "qhtmltype", "type"});
+        if (childType == QStringLiteral("QHTMLJavaScriptBlock") && qhtmlNodeConsumesJavaScriptBlock(this)) {
+            continue;
+        }
+        if (QHTMLNode *child = QHTMLNode::nodeFromJsonObject(childObject, this)) {
+            appendChild(child);
+        }
+    }
+    qhtmlResolveComponentInstanceDefinitions(this, qhtmlTopScope(this) ? const_cast<QHTMLNode *>(qhtmlTopScope(this)) : this);
+    return true;
+}
+
+inline bool QHTMLNode::fromJSONText(const QString &json)
+{
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError) {
+        return false;
+    }
+    if (document.isArray()) {
+        return fromJsonValue(QJsonValue(document.array()));
+    }
+    if (document.isObject()) {
+        return fromJsonValue(QJsonValue(document.object()));
+    }
+    return false;
+}
+
+inline bool QHTMLNode::fromJSONJs(emscripten::val value)
+{
+    if (value.isUndefined() || value.isNull()) {
+        return false;
+    }
+    if (value.typeOf().as<std::string>() == std::string("string")) {
+        return fromJSONText(QString::fromStdString(value.as<std::string>()));
+    }
+    const std::string json = emscripten::val::global("JSON").call<std::string>("stringify", value);
+    return fromJSONText(QString::fromStdString(json));
+}
+
+inline int QHTMLNode::fromQHTML(const QString &source)
+{
+    clearChildren();
+    const int inserted = appendQHTMLSource(source);
+    if (inserted == 1 && childCount() == 1 && !dynamic_cast<QHTMLDomTree *>(this)) {
+        QHTMLNode *parsed = childAt(0);
+        if (parsed && parsed->qhtmlType() == qhtmlType()) {
+            const QJsonObject object = parsed->toJsonObject();
+            delete takeChildAt(0);
+            return fromJsonObject(object) ? 1 : 0;
+        }
+    }
+    return inserted;
 }
