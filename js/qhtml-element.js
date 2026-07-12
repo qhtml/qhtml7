@@ -9,12 +9,14 @@
   const QHTML6_RESOURCE_PATH = ":/resources/qhtml6/qhtml.js";
   const QHTML_VERSION = "v7.3.4";
   const QHTML_IMPORT_MAX_PER_RESOURCE_DEFAULT = 100;
+  const QHTML_CONTENT_LOADED_EVENT = "QHTMLContentLoaded";
   const QHTML_ROOT_SELECTOR = `${ELEMENT_NAME},${ELEMENT_NAME_7}`;
   const ELEMENT_INNER_HTML = typeof Element !== "undefined"
     ? Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML")
     : null;
   let activePropertyTransactionId = "";
   let propertyTransactionCounter = 0;
+  let qhtmlContentLoadedDispatchPending = false;
 
   if (!globalScope.QHTML7 || !globalScope.QHTML7.Module) {
     throw new Error("qhtml-element.js must be loaded after qhtml-wasm.js initializes WASM");
@@ -30,6 +32,21 @@
     const tree = new qtModule.QHTMLDomTree();
     tree.loadFromAST(parser.parse(String(source || "")));
     return { parser, tree };
+  }
+
+  function dispatchQHTMLContentLoadedSoon() {
+    if (qhtmlContentLoadedDispatchPending) {
+      return;
+    }
+    qhtmlContentLoadedDispatchPending = true;
+    globalScope.setTimeout(() => {
+      qhtmlContentLoadedDispatchPending = false;
+      const detail = { runtime: "qhtml7", QHTML7: globalScope.QHTML7 || null };
+      document.dispatchEvent(new CustomEvent(QHTML_CONTENT_LOADED_EVENT, { detail }));
+      if (globalScope && globalScope !== document && typeof globalScope.dispatchEvent === "function") {
+        globalScope.dispatchEvent(new CustomEvent(QHTML_CONTENT_LOADED_EVENT, { detail }));
+      }
+    }, 0);
   }
 
   function qhtmlImportCache() {
@@ -1585,6 +1602,7 @@
         parserHost: element
       }
     }));
+    dispatchQHTMLContentLoadedSoon();
     if (runtimeName === "qhtml6") {
       resumeQHTML6RunningComponents(qhtmlElement);
     }
@@ -6776,6 +6794,7 @@
         bubbles: true,
         detail: { source: sourceToParse, qhtmlDom: element.qhtmlDomTree }
       }));
+      dispatchQHTMLContentLoadedSoon();
 
       return element.qhtmlDomTree;
     })();
@@ -6867,6 +6886,7 @@
         bubbles: true,
         detail: { source: this.qhtmlSource, qhtmlDom: tree }
       }));
+      dispatchQHTMLContentLoadedSoon();
       return tree;
     }
 
@@ -7179,6 +7199,7 @@
         bubbles: true,
         detail: { source: element.qhtmlSource, qhtmlDom: tree }
       }));
+      dispatchQHTMLContentLoadedSoon();
       return tree;
     },
     mountElement,
