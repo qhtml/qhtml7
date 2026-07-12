@@ -786,6 +786,7 @@ public:
     QHash<QString, QString> attributes() const { return m_attributes; }
 
     QString inlineStyleForContext(const QHTMLNode *contextNode) const;
+    QString assignmentAttributesForContext(const QHTMLNode *contextNode) const;
 
     QString renderHtml() const override
     {
@@ -846,6 +847,7 @@ private:
                        QStringLiteral("\"");
             }
         }
+        out += assignmentAttributesForContext(childContext);
         const QString inlineStyle = inlineStyleForContext(childContext);
         if (!inlineStyle.trimmed().isEmpty()) {
             out += QStringLiteral(" style=\"") + escapeAttribute(inlineStyle) + QStringLiteral("\"");
@@ -1472,6 +1474,44 @@ inline QString QHTMLDomElement::inlineStyleForContext(const QHTMLNode *contextNo
         emitted.insert(cssName);
     }
     return declarations.join(QStringLiteral(";"));
+}
+
+inline QString QHTMLDomElement::assignmentAttributesForContext(const QHTMLNode *contextNode) const
+{
+    const QHTMLNode *childContext = contextNode ? contextNode : this;
+    QSet<QString> declaredProperties;
+    for (QHTMLNode *child : children()) {
+        if (child && child->qhtmlType() == QStringLiteral("QHTMLProperty") && !child->qhtmlName().trimmed().isEmpty()) {
+            declaredProperties.insert(child->qhtmlName().trimmed().toLower());
+        }
+    }
+
+    QSet<QString> emitted;
+    for (const QString &key : m_attributes.keys()) {
+        emitted.insert(key.toLower());
+    }
+
+    QString out;
+    for (QHTMLNode *child : children()) {
+        QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+        if (!assignment) {
+            continue;
+        }
+        const QString name = assignment->qhtmlName().trimmed();
+        const QString lowerName = name.toLower();
+        if (name.isEmpty() ||
+            emitted.contains(lowerName) ||
+            declaredProperties.contains(lowerName) ||
+            qhtmlIsCssShortcutProperty(name) ||
+            lowerName == QStringLiteral("style")) {
+            continue;
+        }
+        out += QStringLiteral(" ") + name + QStringLiteral("=\"") +
+               escapeAttribute(qhtmlInterpolateTextForContext(qhtmlScalarValue(assignment->value()), childContext)) +
+               QStringLiteral("\"");
+        emitted.insert(lowerName);
+    }
+    return out;
 }
 
 class QHTMLLayout : public QHTMLTypedNode

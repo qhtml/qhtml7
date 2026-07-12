@@ -11,8 +11,8 @@ fi
 EMSDK_DIR="$(cd "$(dirname "$EMSDK_BIN")" && pwd)"
 
 source "$EMSDK_DIR/emsdk_env.sh"
-/usr/local/qt/Tools/CMake/bin/cmake clean ./wasm/src/build/single-thread/MinSizeRel
-/usr/local/qt/Tools/CMake/bin/cmake build ./wasm/src/build/single-thread/MinSizeRel
+/usr/local/qt/Tools/CMake/bin/cmake --build "$WASM_BUILD_DIR" --target clean
+/usr/local/qt/Tools/CMake/bin/cmake --build "$WASM_BUILD_DIR" --parallel
 cd $ROOT_DIR
 mkdir -p "$DIST_DIR"
 

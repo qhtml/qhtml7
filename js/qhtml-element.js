@@ -818,6 +818,49 @@
     "data-pb-create-component"
   ]);
 
+  const QHTML_CSS_SHORTCUT_NAMES = new Set([
+    "aligncontent", "alignitems", "alignself", "aspectratio", "background",
+    "backgroundcolor", "backgroundimage", "backgroundposition", "backgroundrepeat",
+    "backgroundsize", "bordercolor", "borderradius", "borderstyle", "borderwidth",
+    "bottom", "boxshadow", "boxsizing", "color", "columngap", "cursor", "display",
+    "filter", "flex", "flexbasis", "flexdirection", "flexgrow", "flexshrink",
+    "flexwrap", "fontfamily", "fontsize", "fontstyle", "fontweight", "gap",
+    "gridarea", "gridcolumn", "gridrow", "height", "justifycontent",
+    "justifyitems", "justifyself", "left", "letterspacing", "lineheight",
+    "liststyle", "liststyletype", "margin", "marginbottom", "marginleft",
+    "marginright", "margintop", "maxheight", "maxwidth", "minheight", "minwidth",
+    "objectfit", "objectposition", "opacity", "order", "overflow", "overflowx",
+    "overflowy", "padding", "paddingbottom", "paddingleft", "paddingright",
+    "paddingtop", "pointerevents", "position", "right", "rowgap", "textalign",
+    "textdecoration", "textoverflow", "texttransform", "top", "transform",
+    "transformorigin", "transition", "visibility", "whitespace", "width",
+    "wordbreak", "x", "y", "zindex"
+  ]);
+
+  const QHTML_CSS_SHORTCUT_CSS_NAMES = new Set([
+    "align-content", "align-items", "align-self", "aspect-ratio", "background",
+    "background-color", "background-image", "background-position", "background-repeat",
+    "background-size", "border-color", "border-radius", "border-style", "border-width",
+    "bottom", "box-shadow", "box-sizing", "color", "column-gap", "cursor", "display",
+    "filter", "flex", "flex-basis", "flex-direction", "flex-grow", "flex-shrink",
+    "flex-wrap", "font-family", "font-size", "font-style", "font-weight", "gap",
+    "grid-area", "grid-column", "grid-row", "height", "justify-content",
+    "justify-items", "justify-self", "left", "letter-spacing", "line-height",
+    "list-style", "list-style-type", "margin", "margin-bottom", "margin-left",
+    "margin-right", "margin-top", "max-height", "max-width", "min-height", "min-width",
+    "object-fit", "object-position", "opacity", "order", "overflow", "overflow-x",
+    "overflow-y", "padding", "padding-bottom", "padding-left", "padding-right",
+    "padding-top", "pointer-events", "position", "right", "row-gap", "text-align",
+    "text-decoration", "text-overflow", "text-transform", "top", "transform",
+    "transform-origin", "transition", "visibility", "white-space", "width",
+    "word-break", "z-index"
+  ]);
+
+  function isCssShortcutAssignmentName(name) {
+    const lowerName = String(name || "").trim().toLowerCase();
+    return QHTML_CSS_SHORTCUT_NAMES.has(lowerName) || QHTML_CSS_SHORTCUT_CSS_NAMES.has(lowerName);
+  }
+
   function isDeclarativeLayoutAttribute(name) {
     const lowerName = String(name || "").toLowerCase();
     return lowerName.startsWith("data-") ||
@@ -825,20 +868,50 @@
       QHTML_LAYOUT_ATTRIBUTE_NAMES.has(lowerName);
   }
 
-  function shouldBindDeclarativeAttribute(domElement, nodeType, name) {
+  function nodeHasDirectQHTMLProperty(node, name) {
+    const wanted = String(name || "").trim().toLowerCase();
+    const count = node && typeof node.childCount === "function" ? node.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = node.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLProperty" && qhtmlNodeName(child).trim().toLowerCase() === wanted) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function componentDefinitionHasProperty(instanceNode, name) {
+    const definitionNode = instanceNode && typeof instanceNode.componentDefinition === "function"
+      ? instanceNode.componentDefinition()
+      : null;
+    const wanted = String(name || "").trim().toLowerCase();
+    return propertyNodesForDefinition(definitionNode)
+      .some((propertyNode) => qhtmlNodeName(propertyNode).trim().toLowerCase() === wanted);
+  }
+
+  function shouldBindDeclarativeAttribute(domElement, qhtmlNode, name) {
+    const nodeType = qhtmlNodeType(qhtmlNode);
     const lowerName = String(name || "").toLowerCase();
     const tagName = domElement && domElement.localName ? String(domElement.localName).toLowerCase() : "";
+    if (!lowerName || lowerName === "style" || isCssShortcutAssignmentName(lowerName)) {
+      return false;
+    }
+    if (nodeType === "QHTMLComponentInstance") {
+      return !componentDefinitionHasProperty(qhtmlNode, lowerName);
+    }
+    if (nodeHasDirectQHTMLProperty(qhtmlNode, lowerName)) {
+      return false;
+    }
     if (nodeType === "QHTMLLayout" || nodeType === "QHTMLRowLayout" || nodeType === "QHTMLColumnLayout") {
       return isDeclarativeLayoutAttribute(lowerName);
     }
     if (tagName === "q-palette-toolbox-button") {
       return QHTML_PALETTE_BUTTON_ATTRIBUTE_NAMES.has(lowerName);
     }
-    return false;
+    return true;
   }
 
   function bindDeclarativeAssignmentAttributes(domElement, qhtmlNode, registry) {
-    const nodeType = qhtmlNodeType(qhtmlNode);
     const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
     for (let index = 0; index < count; index += 1) {
       const child = qhtmlNode.childAt(index);
@@ -846,7 +919,7 @@
         continue;
       }
       const name = qhtmlNodeName(child);
-      if (!shouldBindDeclarativeAttribute(domElement, nodeType, name)) {
+      if (!shouldBindDeclarativeAttribute(domElement, qhtmlNode, name)) {
         continue;
       }
       const rawValue = typeof child.value === "function" ? child.value() : "";
@@ -6612,6 +6685,7 @@
         return;
       }
       bindComponentDefinitionDeclarations(domElement, instanceNode, registry);
+      bindDeclarativeAssignmentAttributes(domElement, instanceNode, registry);
       bindRuntimeChildren(domElement, instanceNode, registry);
 
       domElement.dispatchEvent(new CustomEvent("QHTMLComponentReady", {
