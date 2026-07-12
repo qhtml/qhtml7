@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QHTML Wiki - QDOM API</title>
+  <link rel="stylesheet" href="w3.css" />
+  <link rel="stylesheet" href="wiki.css" />
+  <script src="../qhtml.js"></script>
+  <script src="q-editor.js"></script>
+</head>
+<body>
+  <main class="doc-root">
+    <q-html>
+q-import { wiki-common.qhtml }
+
+wiki-shell {
+  sectionKey: "qdom-api"
+  pathPrefix: ""
+  pageTitle: "QDOM API"
+  pageIntro: "Mounted q-html trees expose a source-of-truth QDOM tree. You mutate QDOM first, then call update() to re-render."
+  main {
+    wiki-example-card {
+      title: "Find and append"
+      summary: "Find a node in QDOM, append a new QDOM node, then call update()."
+      note: "This is the simplest manual mutation flow."
+      details {
+        html {
+          <q-editor>div {
+  button {
+    text { Append item }
+    onclick {
+      var host = this.closest("q-html");
+      var root = host.qdom();
+      var list = root.find("#items");
+      list.appendNode(list.createQElement("li", { textContent: "Added via qdom()" }));
+      host.update();
+    }
+  }
+
+  ul {
+    id: "items"
+    li { text { Existing item } }
+  }
+}</q-editor>
+        }
+      }
+    }
+
+    wiki-example-card {
+      title: "Replace a node with QHTML"
+      summary: "replaceWithQHTML swaps the target node with newly parsed QHTML."
+      note: "Use this when replacing a whole branch is easier than mutating fields one by one."
+      details {
+        html {
+          <q-editor>div {
+  button {
+    text { Replace list }
+    onclick {
+      var host = this.closest("q-html");
+      host.qdom().find("#items").replaceWithQHTML("ul#items { li { text { Replaced via replaceWithQHTML } } li { text { Fresh branch } } }");
+      host.update();
+    }
+  }
+
+  ul {
+    id: "items"
+    li { text { Original row A } }
+    li { text { Original row B } }
+  }
+}</q-editor>
+        }
+      }
+    }
+
+    wiki-example-card {
+      title: "qdom().rewrite(...)"
+      summary: "This is the QDOM-side rewrite helper."
+      note: "It mirrors the idea of q-rewrite, but runs against a mounted QDOM node."
+      details {
+        html {
+          <q-editor>div {
+  button {
+    text { Rewrite target }
+    onclick {
+      var host = this.closest("q-html");
+      host.qdom().find("#rewrite-target").rewrite(function () {
+        return "div#rewrite-target.rewritten-box { style { padding: 12px; border: 1px solid #93c5fd; background: #eff6ff; } text { Rewritten by qdom().rewrite(...) } }";
+      });
+      host.update();
+    }
+  }
+
+  div {
+    id: "rewrite-target"
+    text { Original rewrite target }
+  }
+}</q-editor>
+        }
+      }
+    }
+
+    wiki-example-card {
+      title: "Serialize and deserialize"
+      summary: "Serialize captures the QDOM tree. Deserialize appends or replaces it."
+      note: "This is useful for persistence, snapshots, and editor-style flows."
+      details {
+        html {
+          <q-editor>div {
+  button {
+    text { Append snapshot }
+    onclick {
+      var host = this.closest("q-html");
+      var serialized = host.qdom().find("#snapshot-source").serialize();
+      host.qdom().find("#snapshot-target").deserialize(serialized, false);
+      host.update();
+    }
+  }
+
+  button {
+    text { Replace snapshot target }
+    onclick {
+      var host = this.closest("q-html");
+      var serialized = host.qdom().find("#snapshot-source").serialize();
+      host.qdom().find("#snapshot-target").deserialize(serialized, true);
+      host.update();
+    }
+  }
+
+  div {
+    id: "snapshot-source"
+    style { padding: 10px; border: 1px solid #cbd5e1; margin-top: 10px; }
+    h4 { text { Snapshot source } }
+    p { text { This branch is serialized first, then appended or replaced. } }
+  }
+
+  div {
+    id: "snapshot-target"
+    style { padding: 10px; border: 1px dashed #94a3b8; margin-top: 10px; }
+    text { Snapshot target }
+  }
+}</q-editor>
+        }
+      }
+    }
+
+    wiki-example-card {
+      title: "Component instance property helpers"
+      summary: "A component instance qdom() gives property helper methods for reads and writes."
+      note: "Use these when mutating a component through its QDOM facade."
+      details {
+        html {
+          <q-editor>q-component my-card {
+  q-property title: "Initial title"
+  div.card-shell {
+    style { padding: 12px; border: 1px solid #cbd5e1; margin-top: 10px; }
+    h4 { id: "card-title" text { ${this.component.title} } }
+  }
+}
+
+my-card demoCard { }
+
+button {
+  text { Update component title via qdom() }
+  onclick {
+    var comp = this.closest("q-html").querySelector("my-card");
+    var qnode = comp.qdom();
+    qnode.property("title", "Updated through component qdom()");
+    comp.update();
+  }
+}</q-editor>
+        }
+      }
+    }
+
+    wiki-example-card {
+      title: "Scoped vs full updates"
+      summary: "Update only the component you changed or update the whole q-html host."
+      note: "Prefer the smaller update when you know the scope."
+      details {
+        html {
+          <q-editor>q-component scope-demo {
+  q-property count: 0
+
+  div {
+    style { padding: 12px; border: 1px solid #cbd5e1; margin-top: 10px; }
+    p { id: "scope-count" text { Component count: ${this.component.count} } }
+    button {
+      text { Increment with component update() }
+      onclick {
+        this.component.count = Number(this.component.count) + 1;
+        this.component.update();
+      }
+    }
+  }
+}
+
+scope-demo localScopeDemo { }
+
+button {
+  text { Update page summary with root().update() }
+  onclick {
+    localScopeDemo.count = Number(localScopeDemo.count) + 1;
+    localScopeDemo.root().update();
+  }
+}
+
+div {
+  id: "page-summary"
+  text { Page sees count: ${localScopeDemo.count} }
+}</q-editor>
+        }
+      }
+    }
+  }
+}
+    </q-html>
+  </main>
+</body>
+</html>

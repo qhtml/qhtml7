@@ -966,6 +966,11 @@ public:
     }
     void setKeywordJs(const std::string &keyword) { setKeyword(QString::fromStdString(keyword)); }
     QHash<QString, QString> attributes() const { return m_attributes; }
+    QString attribute(const QString &key) const { return m_attributes.value(key); }
+    std::string attributeJs(const std::string &key) const
+    {
+        return attribute(QString::fromStdString(key)).toStdString();
+    }
     void clearAttributes() { m_attributes.clear(); }
     void setAttributes(const QHash<QString, QString> &attributes) { m_attributes = attributes; }
 
@@ -978,6 +983,13 @@ public:
 
     QString renderHtml() const override
     {
+        if (m_keyword == QStringLiteral("q-var") ||
+            m_keyword == QStringLiteral("q-callback") ||
+            m_keyword == QStringLiteral("q-macro") ||
+            m_keyword == QStringLiteral("q-rewrite") ||
+            m_keyword == QStringLiteral("q-switch")) {
+            return QString();
+        }
         return QHTMLDomNode::renderHtml();
     }
 
@@ -2528,6 +2540,12 @@ private:
         }
         if (dynamic_cast<QHTMLSlotDefault *>(node)) {
             return QString();
+        }
+        if (QHTMLTypedNode *typedNode = dynamic_cast<QHTMLTypedNode *>(node)) {
+            if (typedNode->keyword() == QStringLiteral("q-var") ||
+                typedNode->keyword() == QStringLiteral("q-callback")) {
+                return QString();
+            }
         }
         if (isRuntimeInstanceChild(node)) {
             return QString();

@@ -1,0 +1,340 @@
+# MODULE API — qhtml-runtime
+
+## Purpose
+Runtime mount/update engine for `<q-html>` in browser environments.
+
+## Export surface
+- `globalThis.QHtmlModules.qhtmlRuntime`
+- aliased to `globalThis.QHtml`
+
+## Public APIs
+- `mountQHtmlElement(qHtmlElement, options?)`
+  - Mount one host.
+  - Returns binding object immediately and exposes `binding.ready` promise for async import completion.
+- `unmountQHtmlElement(qHtmlElement)`
+  - Detach observers/listeners for one host.
+- `getQDomForElement(qHtmlElement)`
+  - Returns observed QDom proxy.
+- `toQHtmlSource(qHtmlElement, options?)`
+  - Serialize current mounted model to source.
+- `listRegisteredComponentIds(options?)`
+  - Returns sorted globally registered definition ids from loaded components/imports.
+  - Filters to `q-component` definitions by default.
+  - `options.includeTemplates === true` includes `q-template` ids.
+  - `options.includeSignals === true` includes `q-signal` ids.
+- `listRegisteredComponentSlots(componentId)`
+  - Returns ordered unique slot names declared by a registered `q-component` definition.
+  - Reads slot declarations and `q-slot-default` declarations from the stored component definition tree, even when a mounted instance does not preserve slot handles.
+- `updateQHtmlElement(qHtmlElement, options?)`
+  - Re-evaluates binding expressions and re-renders mounted output.
+  - Optional `options.scopeElement` (mapped DOM element) performs scoped rerender of only that subtree.
+  - Optional `options.uuid` resolves a mapped DOM element via host UUID maps and scopes update to it.
+  - Includes loop protection for binding-driven re-entry:
+    - caps recursive update cycles per tick
+    - caps same-epoch re-entry attempts
+    - aborts with console error when limits are exceeded
+- `hydrateComponentElement(hostElement)`
+  - Hydrate custom-element/component host from registered definitions.
+  - If a matching `q-sdml-component` declaration exists and the definition is not yet loaded, it lazily fetches and registers it, then hydrates.
+- `emitQSignal(target, payload, eventNamePrefix?)`
+  - Dispatch runtime signal events (`q-signal` and optional namespaced event).
+- `createQSignalEvent(payload)`
+  - Create a bubbling/composed `q-signal` event object.
+- `enqueueWorkerEvent(type, process, metadata?)`
+  - Queue worker-related dispatch tasks on the dedicated worker queue.
+  - Worker queue entries are processed in queued mode interleaved with main queue entries.
+- `registerSignalSubscriber({ emitterUuid, signalName, handler, ... })`
+  - Register queued-mode UUID-routed signal subscriber metadata.
+  - Supports `mode: "connect"` and `mode: "declarative"`.
+  - Returns registration descriptor with token/route key.
+- `unregisterSignalSubscriber({ token } | { emitterUuid, signalName, routeKey })`
+  - Remove one registered queued signal subscriber.
+- `registerSignalReference({ emitterUuid, signalName, subscriberUuid, routeKey? })`
+  - Register explicit signal reference metadata (`emitter -> subscriber`) used for diagnostics/target maps.
+- `unregisterSignalReference({ emitterUuid, referenceKey|routeKey })`
+  - Remove one explicit signal reference metadata row.
+- `clearSignalSubscribersForEmitter(emitterUuid)`
+  - Remove all registered signal subscribers for an emitter UUID.
+- `runWithExecutionHost(hostElement, fn)`
+  - Execute `fn` with runtime execution-host context set to `hostElement` (used by signal `.connect(...)` attribution).
+- `getCurrentExecutionHost()`
+  - Returns the current execution-host element during runtime-managed script execution, otherwise `null`.
+- `getEventLoopMode()`
+  - Returns active runtime mode: `queued` (default) or `compat`.
+- `getEventLoopSnapshot(options?)`
+  - Returns a readable live snapshot of queued event-loop state.
+  - Output includes:
+    - queue metadata (`mode`, `processing`, `transactionDepth`, `scheduleDueAt`)
+    - `queue` / `transactionQueue` entries (id/type/createdAt/target/payload)
+    - `workerQueue` / `workerTransactionQueue` entries (id/type/createdAt/target/payload)
+    - `workerRecentHistory` (recent processed worker-dispatch entries)
+    - timer records (`interval`, `repeat`, `running`, `nextAt`, `msUntilNext`)
+  - Options:
+    - `limit` (default `200`) limits returned queue items per queue.
+    - `includePayload` (default `true`) toggles payload cloning.
+    - `includeTimers` (default `true`) toggles timer list.
+- `printEventLoopSnapshot(options?)`
+  - Console-oriented wrapper around `getEventLoopSnapshot(...)`.
+  - Prints summary + queue tables, and returns the same snapshot object.
+- Named `q-timer` runtime handles
+  - Named timer declarations (`q-timer myTimer { ... }`) are exported as runtime handle objects (not raw numeric IDs).
+  - `duration` is accepted as an alias for `interval`.
+- q-perf reporting
+  - Root keyword timer execution is measured when the mounted document has `q-perf { q-timer }` metadata.
+  - During `QHTMLContentLoaded`, runtime calls `domRenderer.logQPerfData()` so measured QDom nodes are reported to the console after render settlement.
+  - Handle shape:
+    - methods: `start()`, `stop()`, `restart()`
+    - properties: `name`, `timerId`, `running`, `repeat`, `interval`
+  - Numeric compatibility is preserved for legacy timer-id usage via `valueOf()`/`toString()` (for APIs like `clearTimeout(...)` expecting an id).
+- `dispatchPropertyChangedEvent(target, payload)`
+  - Routes declared `q-property` setter changes through per-property signal dispatch (`<property>Changed`).
+  - Queued mode: enqueues targeted property-subscriber updates and signal dispatch on runtime queue.
+  - Compat mode: dispatches immediately.
+- `createQModel(input)`
+  - Returns normalized model adapter with mutators/events:
+    - `add`, `insert`, `remove`, `set`, `replace`, `push`, `push_front`
+    - `keys`, `values`, `entries`, `at`, `value`, `key`, `indexOf`, `count`, `foreach`, `forEach`, `map`, `walk`, `traverse`
+    - `toArray`, `toObject`
+    - object-like property proxy access:
+      - map mode: `model.someKey` / `model.someKey = value`
+      - array mode: `model[0]` / `model[0] = value` and `model.length`
+      - method-name key collisions are supported:
+        - `model.set` (no call) resolves to data key `"set"` in expression evaluation and string interpolation contexts
+        - `model.set(...)` still resolves to the model method call
+    - `subscribe(listener)` and `emit(type, details?)`
+    - `modelChanged.connect(listener)` / `modelChanged.disconnect(listener)` / `modelChanged.emit(details?)`
+    - mutators emit legacy operation events (`add|insert|update|remove`) and canonical `modelChanged` payloads (`event.op`)
+  - Exposed as both `QHtml.createQModel(...)` and global `QModel(...)`.
+- `createQArray(input)`
+  - Convenience constructor for array-backed models.
+  - Accepts:
+    - native JS arrays (`[1,2,3]`)
+    - existing QModel instances (reused if already array mode; otherwise normalized via `toArray()`)
+    - model-like objects with `toArray()`
+  - Fallback for unsupported inputs is an empty array model.
+  - Exposed as both `QHtml.createQArray(...)` and global `QArray(...)`.
+- `createQPoint(x, y)` / `QPoint(x, y)`
+  - Convenience constructor for coordinate maps.
+  - Returns the same model shape as `QMap({ x: x, y: y })`, with object-like `.x` and `.y` access.
+  - Exposed as `QHtml.createQPoint(...)`, `QHtml.QPoint(...)`, and global `QPoint(...)`.
+- `createQCallback(fn, options?)`
+  - Wraps a function as a QHTML callback object with creator-context preservation.
+  - Options:
+    - `name` callback identifier metadata
+    - `creator` creator host component element for execution binding (`this.component` retention)
+  - Callback invocation appends caller metadata as final argument:
+    - `{ caller, callerUuid, callerTag, timestamp }`
+  - Exposed as both `QHtml.createQCallback(...)` and global `QCallback(...)`.
+- Runtime type exports:
+  - `QHtml.QSignal` / global `QSignal`
+  - `QHtml.QProperty` / global `QProperty`
+  - `QHtml.QComponentInstance` / global `QComponentInstance`
+  - `QHtml.QVar` / global `QVar`
+  - `QHtml.QCssValue` / global `QCssValue` / global `QCSSValue`
+  - sourced from `dom-renderer` runtime type constructors
+- CSS numeric helper exports:
+  - `QHtml.cssValue(value, unit?, options?)` creates a CSS numeric value object.
+  - `QHtml.cssCalc(context?, property?)` and `QHtml.createCssContext(context?, property?)` return the scoped `qcss` helper namespace used by QHTML-owned expression transforms.
+  - `QHtml.resolveCssValue(value, context?, property?)` resolves a CSS numeric value to pixels when the DOM/computed-style context is sufficient.
+  - Existing `css(value, unit)` in QHTML script scopes remains compatible and returns CSS numeric values for recognized units.
+- Behavior/animation exports from `dom-renderer`:
+  - `QHtml.qSet`, `QHtml.commitProperty`
+  - `QHtml.registerBehavior`, `QHtml.getBehavior`, `QHtml.removeBehavior`
+  - `QHtml.BehaviorController`, `QHtml.NumberAnimation`, `QHtml.AnimationJob`
+  - Binding updates targeting a property with a registered behavior route through `qSet(..., { source: "binding" })`, so behavior interception is shared by user writes and binding writes.
+- `qhtml(source)`
+  - Creates QHTML fragment tokens consumable by renderer callback/direct-call paths.
+  - Typical usage from callbacks: `return qhtml("div { text { hello } }");`
+  - Exposed as both `QHtml.qhtml(...)` and global `qhtml(...)`.
+- `qmapNode(qdomNode, options?)`
+  - Normalizes a QDom node/document into a tree-shaped map object for model/tree rendering.
+  - `options.filters` (array/string) narrows output to matching keywords/tags when `includeFullTree` is `false`.
+  - `options.includeFullTree === true` returns the full normalized tree with keyword groups.
+- `getQDomDataForUuid(uuid)`
+  - Returns a normalized global QDOM data record for one UUID, or `null`.
+  - Record includes UUID refs for `parentUuid`, `childUuids`, `propertyUuids`, `signalUuids`, and `callbackUuids`.
+- `getQDomDataSnapshot(options?)`
+  - Returns the full global normalized QDOM data registry.
+  - Default shape is array of records; `options.asObject === true` returns `{ [uuid]: record }`.
+- `registerWorkerRuntime(uuid, runtimeRecord)`
+  - Register one q-worker runtime record under a UUID key.
+- `unregisterWorkerRuntime(uuid)`
+  - Remove one q-worker runtime record by UUID.
+- `getWorkerRuntime(uuid)`
+  - Lookup one q-worker runtime record by UUID.
+- `rootContext`
+  - Runtime-wide context frame API (QML-style root context semantics):
+    - `QHtml.rootContext.set(name, value)`
+    - `QHtml.rootContext.get(name)`
+    - `QHtml.rootContext.has(name)`
+    - `QHtml.rootContext.child()` (creates child context frame)
+    - `QHtml.rootContext.toObject()`
+  - Aliases:
+    - `QHtml.setContextProperty(name, value)`
+    - `QHtml.getContextProperty(name)`
+    - `QHtml.createChildContext(parentContext?)`
+  - Values injected into root context are propagated into mounted hosts and can be resolved by bindings/inline expressions.
+- `initAll(root?, options?)`
+  - Mount all unprocessed `<q-html>` descendants.
+  - Skips unmounted `<q-html>` hosts carrying `data-qhtml-processed`.
+- `startAutoMountObserver(root?, options?)`
+  - Observe subtree insertions and mount new unprocessed `<q-html>` automatically.
+  - Skips unmounted `<q-html>` hosts carrying `data-qhtml-processed`.
+- `stopAutoMountObserver()`
+  - Disable auto mount observer.
+
+## Processed Host Marker
+- After a `<q-html>` host successfully parses and renders, the runtime sets `data-qhtml-processed="true"` on the host element.
+- Direct mounting, `initAll()`, and automatic mount discovery skip unmounted `<q-html>` hosts with that attribute.
+- This lets copied/static rendered `<q-html>` blocks contain ordinary HTML without being parsed again as QHTML source.
+- Live mounted hosts keep their existing runtime binding even after the marker is set; the marker only prevents new mounts for unbound copied/static hosts.
+
+## Mount options (not exhaustive)
+- import controls (`importBaseUrl`, `maxImports`, `importCache`)
+- template preference (`preferTemplate`)
+- parser/rewrite/script pass limits
+- `q-import` mount behavior:
+  - host QDOM keeps lightweight import metadata (`meta.imports`, `meta.importCacheRefs`, `meta.importUrls`)
+  - imported definitions are preloaded/registered from cache without inlining imported source into host QDOM
+- `q-sdml-component` mount behavior:
+  - endpoint aliases can be declared with `sdml-endpoint` parser metadata (`meta.sdmlEndpoints`)
+  - `q-sdml-component alias { endpointName }` resolves endpointName to URL before loading
+  - declarations are read from parser metadata (`meta.sdmlComponents`)
+  - URLs are resolved against `importBaseUrl`/document base URI
+  - remote definitions are loaded lazily on first host usage (no eager preload)
+  - response must be strict JSON containing a non-empty `block` string
+  - failures are reported as warnings and skipped (mount continues)
+  - per-document URL cache dedupes fetch/parse during one page lifecycle
+
+## Scope and Context Resolution
+- Runtime resolves symbol paths through layered scope/context frames.
+- General resolution order for simple symbol paths:
+  1. expression-local scope values (inline/event/lifecycle scope object)
+  2. lexical QHTML scope frame (named instances declared in the active QHTML scope)
+  3. current scope object (`this` / `this.component` members)
+  4. current runtime context frame
+  5. parent runtime context frames
+  6. runtime root context (`QHtml.rootContext`)
+- Named instance references are UUID-backed handles and resolve lazily through UUID maps.
+- `q-template` aliases are head-only symbols (template type markers); member dot-walk on template aliases is rejected by resolver.
+- `q-class` definitions expose scoped JavaScript constructors, and `q-class` instances expose scoped constructed objects while their backing `class-instance` QDom nodes remain eligible for attribute synchronization and UUID lookup.
+
+## `.qdom()` and node list helpers
+- `host.qdom()` / `element.qdom()` return facades over source QDom nodes.
+- Mounted `<q-html>` hosts expose `.update()` as shorthand for `QHtml.updateQHtmlElement(host)`.
+- Mounted `<q-html>` hosts expose `.update(uuid)` for UUID-targeted scoped refresh.
+- Mounted `<q-html>` hosts expose UUID lookup helpers:
+  - `uuidMaps()` returns host-bound maps (`uuidToDom`, `domToUuid`, `uuidToQdom`, `qdomToUuid`).
+  - `uuidFor(value)` resolves UUID from DOM/QDom nodes.
+  - `elementForUuid(uuid)` and `qdomForUuid(uuid)` resolve mapped DOM/QDom nodes.
+  - `lookupUuid(uuid)` / `uuidLookup(uuid)` / `qdomProxyForUuid(uuid)` return a UUID facade with:
+    - `qdom()`, `element()`, `children()`, `properties()`, `signals()`
+    - soft-fail `null` on missing UUID.
+  - `qdomDataForUuid(uuid)` returns normalized UUID record from global QDOM data registry.
+  - `qdomDataSnapshot(options?)` returns full normalized registry snapshot.
+- Component instance hosts expose `.update()` as shorthand for scoped `QHtml.updateQHtmlElement(hostRoot, { scopeElement: componentHost })`.
+- Component instance hosts also accept targeted UUID updates:
+  - `.update(uuid)` forwards scoped refresh by UUID.
+  - `.invalidate(uuid|options)` forces binding evaluation and supports UUID targeting.
+- Mounted elements expose `.root()` as shorthand for the owning `<q-html>` host.
+- Mounted elements expose `.builderNode()`:
+  - returns a reusable facade with DOM+QDOM helper methods:
+    - `highlight(shouldHighlight)`
+    - `isMouseWithin(x, y)`
+    - `hasSlots()`
+    - `hasChildComponent(componentName?)`
+    - `hasChildComponentInSlot(slotName, componentName?)`
+    - `appendToSlot(slotName, input, options?)`
+    - `replaceSlotContent(slotName, input, options?)`
+- Prototype fallback: `HTMLElement.prototype.qdom()` resolves via closest component host first (`[qhtml-component-instance='1']`), then nearest `<q-html>` host (`uuidFor/qdomForUuid` when available).
+- QDom mutation helpers include `replaceWithQHTML(source, rootNode?)` and `rewrite(parameterBindings?, callback)`.
+ - QDom property helpers on facades:
+  - `setProperty(name, value)`
+  - `getProperty(name)`
+  - `property(name)` getter
+  - `property(name, value)` setter alias of `setProperty`
+  - `rewrite(...)` executes `callback` with default bindings `{ this: currentNodeFacade }`.
+  - The callback return value is stringified and applied to the calling node via `replaceWithQHTML(...)`.
+- QDom tree/model helper:
+  - `createQTreeSource(model, options?)` returns qhtml list-node source (`li`/`details`) for nested object/array/QModel input.
+  - Supports resolving named models through `options.host` and `options.targetElement`.
+- QDom projection helpers:
+  - `show(prop1, prop2, ...)` returns `[projectedTree]` with only requested keys on each QDom node.
+  - `map({ fromKey: toKey, ... })` returns `[projectedTree]` with key names remapped recursively.
+- QDom keyword/tree extractor:
+  - `qmap(filters?, includeFullTree?)` returns a normalized map object from the current QDom node.
+  - `filters` accepts array/string tokens (case-insensitive), for example `["q-property","q-signal","slot"]`.
+  - `includeFullTree === true` returns full tree; `false` returns filtered results (with matched descendants retained).
+- QDom facades expose `root(options?)`:
+  - default returns owning `<q-html>` host element
+  - `{ qdom: true }` or `"qdom"` returns the QDom document root facade
+- `children()` returns `QDomNodeList` with:
+  - `qhtml(options?)`
+  - `htmldom(targetDocument?)`
+  - `html(targetDocument?)`
+  - iteration and indexed access helpers
+- QDom traversal helpers (`find`, `findAll`, parent/child walking, selector fallback scanning) include repeater/model structures:
+  - `repeater.model` (`QDomModel`)
+  - `model.entries`
+  - `entry.nodes` payloads for q-object model entries
+- Slot composition helpers on QDom facades:
+  - `hasSlots()`
+  - `hasChildComponent(componentName?)`
+  - `hasChildComponentInSlot(slotName, componentName?)`
+  - `appendToSlot(slotName, input, options?)`
+  - `replaceSlotContent(slotName, input, options?)`
+  - `input` supports QDom nodes, QHTML strings, and mapped DOM nodes.
+  - missing named slot falls back to `default`.
+  - default update behavior is automatic (`options.autoUpdate !== false`) with UUID-scoped refresh when available.
+- Layout mutation helpers on QDom facades:
+  - `rows()`, `row(index)`, `cols()`, `col(index)`
+  - `addRow(index?, attrs?, text?, options?)`
+  - `addCol(index?, attrs?, text?, options?)`
+  - `addLayout(index?, attrs?, text?, options?)`
+  - `removeRow(index?, options?)`, `removeCol(index?, options?)`
+  - helpers operate on QDom `q-layout` / `q-row` / `q-col` nodes and request scoped refresh by default.
+  - `attrs.width`, `attrs.height`, and `attrs.gap` are preserved as QHTML attributes for renderer layout sizing.
+
+## Side effects
+- Executes lifecycle scripts and inline `on<Event>` handler bodies with dynamic `Function` evaluation.
+- Root-level `onReady { ... }` hooks (no parent element) are deferred until mount settles, then run once per host mount cycle.
+- Executes `meta.qBindings` scripts (canonical `q-script`; `q-bind` inputs are parser-normalized aliases) with `this` bound to each source QDom node before render/update.
+- Emits runtime signal events through `emitQSignal(...)` helpers.
+- In queued event-loop mode, routes component signal delivery through UUID subscriber maps and queues per-subscriber handler calls on the main runtime queue.
+- Worker runtime records are still exposed for diagnostics and lifecycle cleanup; q-worker method dispatch is scheduled through the runtime worker queue when available.
+- Root `q-connect` lifecycle scripts run immediately before queued root `onReady` scripts so signal wiring is established before startup hooks emit.
+- Queued timer scheduling is de-duplicated per timer record (`pending` guard), preventing timer-timeout backlog spam while a prior timeout is still queued/processing.
+- Runtime turn processing prioritizes already-queued work before enqueuing new due timers, reducing signal/property starvation under heavy timer load.
+- Queued signal/property target resolution is UUID-record driven via `QHTML_QDOM_DATA_MAP`.
+- Queued subscriber membership is mirrored into UUID records in `QHTML_QDOM_DATA_MAP`:
+  - `record.signalSubscribers[signalName] -> [{ routeKey, subscriberUuid, mode, attributeName, token, createdAt }]`
+  - `record.propertySubscribers[propertyName] -> [subscriberUuid, ...]`
+  - Runtime now treats UUID-record membership as authoritative for routing; legacy signal maps remain only as handler-pointer storage.
+- In queued event-loop mode, signal dispatch is strict-targeted: emitter-local signal events are dispatched without bubbling, and cross-component delivery is performed via UUID subscriber routing only.
+- Declared `q-property` writes dispatch per-property changed signals (`<property>Changed`) through the runtime dispatcher (`event.detail.params.value` / `args[0]`).
+- Component instance hydration auto-registers implicit `<property>Changed` signal emitters for declared properties (for `.connect/.disconnect/.emit` use), and `on<Property>Changed` listeners are matched case-insensitively via signal routing.
+- Runtime mode defaults to `queued`; set `window.QHTML_EVENT_LOOP_MODE = "compat"` before runtime init to use immediate compatibility mode.
+- Initializes/terminates component `q-wasm` sessions as component hosts are rendered, replaced, or unmounted.
+- Persists updated QDom into mapped sibling template nodes.
+- Emits/consumes DOM events and mutation observers.
+- DOM mutation sync is one-way by source:
+  - user/DOM-originated mutations are synced into QDom.
+  - QDom-driven render/patch cycles run with sync suppression to avoid feeding renderer writes back into QDom.
+- Adds context helpers on DOM elements (`qhtmlRoot()`, `root()`, `component`, `slot`, `qdom`).
+- Maintains host-bound UUID maps (`uuid↔dom`, `uuid↔qdom`) and listens for `qhtml:update` scoped-refresh events.
+- Exposes global runtime maps for diagnostics:
+  - `QHTML_UUID_MAP`
+  - `QHTML_UUID_LOOKUP_MAP`
+  - `QHTML_QDOM_DATA_MAP`
+  - `QHTML_SIGNAL_SUBSCRIBER_MAP`
+  - `QHTML_SIGNAL_REFERENCE_MAP`
+  - `QHTML_WORKER_MAP`
+  - lookup coverage includes live QDOM nodes and component declaration entries (`q-property` / `q-signal`) when UUID metadata is present.
+- Maintains component-host property reference indexes (`propertyName -> Set<qdomUuid>`) derived from binding scripts that reference `this.component.<prop>` / `component.<prop>` for scoped refresh targeting APIs.
+- Property-reference indexing also tracks simple inline scoped expressions (for example `${myProp}`) and repeater model-source expressions (including `for (...)` sources) for targeted update routing.
+- Named runtime value synchronization preserves q-var handles in host/component scope maps without assigning those handles through q-var public accessors; this prevents q-var self-reference corruption during render propagation.
+- Custom-element registration (`customElements.define`) now applies parsed component `q-property` defaults per instance at construction/connection time (non-binding defaults only).
+- SDML helper component/template/signal definitions from remote blocks are scoped to their owning alias definition via internal prefixed ids, avoiding global definition collisions.
+- When parser metadata contains top-level named `q-model` definitions (`doc.meta.qModels`), mount syncs them onto host properties as `QModel` instances and subscribes host updates to model mutations.
+- Marker-based model-view refresh now groups by `[q-model-view-instance]` roots, so wrapperless repeater output (such as `for (...)`) can participate in model-driven refresh replacement.
+- Named `q-canvas` keywords (`q-canvas <name> { ... }`) publish the canvas element to host/global scope under `<name>` and attach `<name>.context` as the resolved 2D context helper for manual drawing access.

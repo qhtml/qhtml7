@@ -1,0 +1,196 @@
+q-component q-modal {
+  q-property visible: true
+  q-property backgroundColor: "#ffffff"
+  q-property color: "#111827"
+  q-property titlebarBackgroundColor: "#f3f4f6"
+  q-property borderColor: "#d1d5db"
+  q-property backdropColor: "rgba(15, 23, 42, 0.45)"
+
+  q-style q-modal-overlay-style {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    padding: 10vh 10vw;
+    background: var(--q-modal-backdrop-color, rgba(15, 23, 42, 0.45));
+  }
+
+  q-style q-modal-container-style {
+    width: min(720px, 80vw);
+    max-height: 80vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid var(--q-modal-border-color, #d1d5db);
+    border-radius: 8px;
+    background: var(--q-modal-background-color, #ffffff);
+    color: var(--q-modal-color, #111827);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  }
+
+  q-style q-modal-titlebar-style {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 48px;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--q-modal-border-color, #d1d5db);
+    background: var(--q-modal-titlebar-background-color, #f3f4f6);
+    font-weight: 700;
+  }
+
+  q-style q-modal-title-style {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  q-style q-modal-close-style {
+    appearance: none;
+    border: 1px solid var(--q-modal-border-color, #d1d5db);
+    border-radius: 6px;
+    background: var(--q-modal-background-color, #ffffff);
+    color: var(--q-modal-color, #111827);
+    width: 32px;
+    height: 32px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  q-style q-modal-body-style {
+    min-height: 120px;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 16px;
+  }
+
+  q-style q-modal-footer-style {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border-top: 1px solid var(--q-modal-border-color, #d1d5db);
+    background: color-mix(in srgb, var(--q-modal-background-color, #ffffff) 92%, #000 8%);
+  }
+
+  q-theme q-modal-theme {
+    .q-modal-overlay { q-modal-overlay-style }
+    .q-modal-container { q-modal-container-style }
+    .q-modal-titlebar { q-modal-titlebar-style }
+    .q-modal-title { q-modal-title-style }
+    .q-modal-close { q-modal-close-style }
+    .q-modal-body { q-modal-body-style }
+    .q-modal-footer { q-modal-footer-style }
+  }
+
+  function modalRoot() {
+    if (this && this.matches && this.matches("q-modal")) {
+      return this;
+    }
+    if (this && this.closest) {
+      return this.closest("q-modal");
+    }
+    return null;
+  }
+
+  function applyModalProperties() {
+    var modal = this.modalRoot ? this.modalRoot() : this;
+    if (!modal || !modal.style) {
+      return modal || this;
+    }
+    modal.style.setProperty("--q-modal-background-color", modal.backgroundColor || "#ffffff");
+    modal.style.setProperty("--q-modal-color", modal.color || "#111827");
+    modal.style.setProperty("--q-modal-titlebar-background-color", modal.titlebarBackgroundColor || "#f3f4f6");
+    modal.style.setProperty("--q-modal-border-color", modal.borderColor || "#d1d5db");
+    modal.style.setProperty("--q-modal-backdrop-color", modal.backdropColor || "rgba(15, 23, 42, 0.45)");
+    return modal;
+  }
+
+  function syncVisible() {
+    var modal = this.modalRoot ? this.modalRoot() : this;
+    if (!modal || !modal.style) {
+      return modal || this;
+    }
+    modal.style.display = modal.visible == false ? "none" : "block";
+    return modal;
+  }
+
+  function show() {
+    var modal = this.modalRoot ? this.modalRoot() : this;
+    if (!modal) { return this; }
+    modal.visible = true;
+    if (modal.syncVisible) { modal.syncVisible(); }
+    return modal;
+  }
+
+  function hide() {
+    var modal = this.modalRoot ? this.modalRoot() : this;
+    if (!modal) { return this; }
+    modal.visible = false;
+    if (modal.syncVisible) { modal.syncVisible(); }
+    return modal;
+  }
+
+  function toggle() {
+    var modal = this.modalRoot ? this.modalRoot() : this;
+    if (!modal) { return this; }
+    modal.visible = !modal.visible;
+    if (modal.syncVisible) { modal.syncVisible(); }
+    return modal;
+  }
+
+  onready {
+    this.applyModalProperties();
+    this.syncVisible();
+  }
+  onvisiblechanged { this.syncVisible(); }
+  onbackgroundcolorchanged { this.applyModalProperties(); }
+  oncolorchanged { this.applyModalProperties(); }
+  ontitlebarbackgroundcolorchanged { this.applyModalProperties(); }
+  onbordercolorchanged { this.applyModalProperties(); }
+  onbackdropcolorchanged { this.applyModalProperties(); }
+
+  q-modal-theme {
+    div.q-modal-overlay {
+      div.q-modal-container {
+        div.q-modal-titlebar {
+          div.q-modal-title {
+            slot title { text { Information } }
+          }
+
+          button.q-modal-close {
+            type: "button"
+            aria-label: "Close dialog"
+            text { X }
+            onclick {
+              var modal = this.closest("q-modal");
+              if (modal && modal.hide) { modal.hide(); }
+            }
+          }
+        }
+
+        div.q-modal-body {
+          slot body { text { } }
+        }
+
+        div.q-modal-footer {
+          slot footer {
+            button {
+              type: "button"
+              text { Close }
+              onclick {
+                var modal = this.closest("q-modal");
+                if (modal && modal.hide) { modal.hide(); }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@
 #include "qhtml_types.hpp"
 
 #include <QtCore/QChar>
+#include <QtCore/QFile>
 #include <QtCore/QPair>
 #include <QtCore/QRegularExpression>
 
@@ -144,10 +145,14 @@ protected:
             QStringLiteral("q-signal"),
             QStringLiteral("q-class"),
             QStringLiteral("q-var"),
+            QStringLiteral("q-callback"),
             QStringLiteral("q-array"),
             QStringLiteral("q-map"),
             QStringLiteral("q-model"),
             QStringLiteral("q-template"),
+            QStringLiteral("q-macro"),
+            QStringLiteral("q-rewrite"),
+            QStringLiteral("q-switch"),
             QStringLiteral("q-script"),
             QStringLiteral("behavior"),
             QStringLiteral("q-model-view"),
@@ -379,6 +384,11 @@ private:
         }
         if (qhtmlKeyword == QStringLiteral("q-template")) {
             return new QHTMLTemplate(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-macro") ||
+            qhtmlKeyword == QStringLiteral("q-rewrite") ||
+            qhtmlKeyword == QStringLiteral("q-switch")) {
+            return new QHTMLTypedNode(qhtmlKeyword, qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("q-script") || qhtmlKeyword == QStringLiteral("script")) {
             return new QHTMLScript(qhtmlName, m_attributes, qhtmlContent);
@@ -2349,6 +2359,22 @@ inline void QHTMLDomTree::moveChildren(QHTMLNode *from, QHTMLNode *to)
     from->qhtmlChildren.clear();
 }
 
+inline std::string qhtmlReadResourceTextJs(const std::string &path)
+{
+    QString resourcePath = QString::fromStdString(path).trimmed();
+    if (resourcePath.isEmpty()) {
+        return {};
+    }
+    if (!resourcePath.startsWith(QStringLiteral(":"))) {
+        resourcePath.prepend(QStringLiteral(":/"));
+    }
+    QFile file(resourcePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+    return QString::fromUtf8(file.readAll()).toStdString();
+}
+
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_BINDINGS(qhtml7_core)
 {
@@ -2362,6 +2388,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     constant("QHTML_QUICKJS_ENABLED", true);
     constant("QHTML_QUICKJS_SIZE_BUDGET_BYTES", QHTML_QUICKJS_SIZE_BUDGET_BYTES);
     function("qhtmlVersion", &qhtmlVersionJs);
+    function("readResourceText", &qhtmlReadResourceTextJs);
 
     class_<QHTMLReference>("QHTMLReference")
         .function("qhtmlType", &QHTMLReference::qhtmlTypeJs)
@@ -2414,7 +2441,8 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("contents", &QHTMLJavaScriptBlock::contentsJs)
         .function("setContents", &QHTMLJavaScriptBlock::setContentsJs);
     class_<QHTMLTypedNode, base<QHTMLDomNode>>("QHTMLTypedNode")
-        .function("keyword", &QHTMLTypedNode::keywordJs);
+        .function("keyword", &QHTMLTypedNode::keywordJs)
+        .function("attribute", &QHTMLTypedNode::attributeJs);
     class_<QHTMLWorker, base<QHTMLTypedNode>>("QHTMLWorker");
     class_<QHTMLFunction, base<QHTMLTypedNode>>("QHTMLFunction")
         .function("parameters", &QHTMLFunction::parameterListJs)
@@ -2696,6 +2724,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     class_<QHTMLClass, base<QHTMLTypedNode>>("QHTMLClass")
         .function("body", &QHTMLClass::bodyJs)
         .function("setBody", &QHTMLClass::setBodyJs);
+    class_<QHTMLVar, base<QHTMLTypedNode>>("QHTMLVar");
     class_<QHTMLStyleApplication, base<QHTMLTypedNode>>("QHTMLStyleApplication")
         .function("style", &QHTMLStyleApplication::styleJs, allow_raw_pointers())
         .function("styleUUID", &QHTMLStyleApplication::styleUUIDJs);

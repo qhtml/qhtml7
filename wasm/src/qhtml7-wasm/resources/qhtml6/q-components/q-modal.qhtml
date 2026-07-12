@@ -1,0 +1,47 @@
+q-import { q-ui-components.qhtml }
+q-component q-modal {
+  q-property visible: true
+
+  onvisiblechanged { console.log("visible changed to",this.component.visible);  if (this.component.visible == false) { this.component.closest("q-modal").style.display = "none"; } else { this.component.closest("q-modal").style.display = "block" } }
+  onready { console.log("visible changed to",this.component.visible);  if (this.component.visible == false) { this.component.style.display = "none"; } else { this.component.style.display = "block"; } }
+
+  q-slot-default titlebar { text { Basic Titlebar Text } }
+q-slot-default header {     text { Basic Dialog Header } }
+
+q-slot-default main {   text { Basic modal content } }
+q-slot-default footer {
+    button {
+            text { Close }
+
+            onclick {
+             this.component.closest("q-modal").visible = false;
+            console.log(this.component.closest("q-modal"))
+            }
+          }
+}
+q-dialog modalDialog {
+
+      q-card modalCard {
+      q-titlebar modalTitlebar{
+      slot { titlebar }
+
+
+
+        }
+
+
+        q-header modalHeader {
+      slot { header }
+        }
+
+        q-main modalMain {
+         slot { main }
+        }
+
+        q-footer modalFooter {
+      slot { footer }
+        }
+      }
+    }
+}
+

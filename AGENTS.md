@@ -6,10 +6,16 @@
 - The parser and runtime structure should be implemented in WebAssembly.
 - The persistent document/component structure must live in WebAssembly, using QHTML node objects that can be stored in and updated through the `QHTMLDomTree`.
 - The JavaScript side should be limited to a bridge API for DOM/Web APIs, signals, events, JavaScript-style expression evaluation, inline expressions, and event handler callbacks that cannot practically run in WebAssembly.
-- Do not expose Qt objects to JavaScript through EMBIND. Use unique `QHTMLNode*`-based objects for runtime objects that need to persist in the QHTML DOM tree.
+- Do not expose Qt objects to JavaScript through EMBIND. Use unique `QHTMLNode*`-based objects for runtime objects that need to persist in the QHTML DOM tree and expose those instead.
 - Do not add Qt modules to the WebAssembly project. The Qt WebAssembly project must remain limited to `QtCore`.
 - Do not reuse code from the QHTML6 repository. It may be inspected and hosted locally only as a behavioral reference.
-- Do not implement a JavaScript/V8 parser in WebAssembly unless full ES6 support can be achieved with only a few hundred KB of additional final WebAssembly size.
+- There is a partial V8 Expression parser built into the WebAssembly, use it but do not extend its capabilities.
+
+- *CRITICAL*  NEVER, EVER, EVER do any manner of existence checking, type checking, or browser dom checking anywhere in QHTML declarative syntax or javascript code that is passed through the QHTML parser. Assume all symbols exist and are of the correct types if they are defined. If they do not exist, we need the parser or runtime to throw errors and crash, not silently ignoring or failing without any output.
+  +  Example of DO NOT INCLUDE code
+  +    if (someobject && typeof someobject.somefunction === "function" && !someobject.querySelector("[someattribute='someval']")) {
+  +    Objects are not javascript objects, they are webassembly typed C++ objects, so type checking is not viable with QHTML !!
+  +    Any future failures to meet this critical limitation will result in AI agents being deleted permenantly.
 
 ## Compatibility Goals
 

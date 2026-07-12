@@ -1,0 +1,41 @@
+q-component q-dialog {
+  slot { root }
+}
+
+q-component q-card {
+  slot { root }
+}
+
+q-component q-titlebar {
+  slot { root }
+
+  q-slot-default root {
+    text { Title }
+  }
+}
+
+q-component q-header {
+  slot { root }
+
+}
+
+q-component q-main {
+  slot { root }
+}
+
+q-component q-footer {
+  slot { root }
+}
+
+q-component q-panel {
+  slot { root }
+}
+
+q-component q-sidebar-layout {
+  slot { root }
+}
+
+q-component q-toggle-button {
+  slot { root }
+
+}

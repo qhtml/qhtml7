@@ -1,0 +1,753 @@
+q-component q-abstract-animation {
+  q-signal started()
+  q-signal stopped()
+  q-signal stepped(value, currentStep, progress)
+  q-signal ended()
+
+  q-property running: false
+
+  function normalizeBoolean(value, fallbackValue) {
+    if (value === true || value === false) {
+      return value;
+    }
+    if (value === 1 || value === "1") {
+      return true;
+    }
+    if (value === 0 || value === "0") {
+      return false;
+    }
+    var text = String(value == null ? "" : value).trim().toLowerCase();
+    if (text === "true" || text === "yes" || text === "on") {
+      return true;
+    }
+    if (text === "false" || text === "no" || text === "off" || text === "") {
+      return false;
+    }
+    return Boolean(fallbackValue);
+  }
+
+  function start() {
+    this.component.running = true;
+    this.component.started();
+  }
+
+  function stop() {
+    this.component.running = false;
+    this.component.stopped();
+  }
+
+  function end() {
+    this.component.running = false;
+    this.component.ended();
+  }
+
+  function restart() {
+    this.component.stop();
+    this.component.start();
+  }
+}
+
+q-component q-property-animation extends q-abstract-animation {
+  q-signal started()
+  q-signal stopped()
+  q-signal stepped(value, currentStep, progress)
+  q-signal ended()
+
+  q-property target: ""
+  q-property duration: 1000
+  q-property steps: 60
+  q-property easing: "linear"
+  q-property repeat: false
+  q-property from: ""
+  q-property to: ""
+  q-property running: false
+  q-property stepInterval: 16
+  q-property currentStep: 0
+  q-property currentLoop: 0
+  q-property activeFrom: ""
+
+  function stopAnimationClock() {
+    var host = this.component;
+    if (host.__qPropertyAnimationTimer) {
+      clearTimeout(host.__qPropertyAnimationTimer);
+      host.__qPropertyAnimationTimer = 0;
+    }
+  }
+
+  function startAnimationClock() {
+    var host = this.component;
+    host.stopAnimationClock();
+    var interval = Math.max(1, Math.floor(Number(host.stepInterval || 16)));
+    var tick = function propertyAnimationTick() {
+      if (!host.normalizeBoolean(host.running, false)) {
+        host.__qPropertyAnimationTimer = 0;
+        return;
+      }
+      host.advance();
+      if (host.normalizeBoolean(host.running, false)) {
+        host.__qPropertyAnimationTimer = setTimeout(tick, Math.max(1, Math.floor(Number(host.stepInterval || interval))));
+      } else {
+        host.__qPropertyAnimationTimer = 0;
+      }
+    };
+    host.__qPropertyAnimationTimer = setTimeout(tick, interval);
+  }
+
+  function normalizeNumber(value, fallbackValue) {
+    var number = Number(value);
+    return Number.isFinite(number) ? number : Number(fallbackValue || 0);
+  }
+
+  function normalizePositiveInteger(value, fallbackValue) {
+    var number = Math.floor(this.component.normalizeNumber(value, fallbackValue));
+    return number > 0 ? number : Math.max(1, Math.floor(Number(fallbackValue || 1)));
+  }
+
+  function normalizeBoolean(value, fallbackValue) {
+    if (value === true || value === false) {
+      return value;
+    }
+    if (value === 1 || value === "1") {
+      return true;
+    }
+    if (value === 0 || value === "0") {
+      return false;
+    }
+    var text = String(value == null ? "" : value).trim().toLowerCase();
+    if (text === "true" || text === "yes" || text === "on") {
+      return true;
+    }
+    if (text === "false" || text === "no" || text === "off" || text === "") {
+      return false;
+    }
+    return Boolean(fallbackValue);
+  }
+
+  function repeatLimit() {
+    var repeatValue = this.component.repeat;
+    if (typeof repeatValue === "number" && Number.isFinite(repeatValue)) {
+      return repeatValue > 0 ? Math.floor(repeatValue) : 1;
+    }
+    var repeatText = String(repeatValue == null ? "" : repeatValue).trim().toLowerCase();
+    if (/^\d+$/.test(repeatText)) {
+      var numericRepeat = Math.floor(Number(repeatText));
+      return numericRepeat > 0 ? numericRepeat : 1;
+    }
+    if (repeatValue === true || repeatText === "true" || repeatText === "yes" || repeatText === "on" || repeatText === "infinite") {
+      return Infinity;
+    }
+    if (repeatValue === false || repeatText === "false" || repeatText === "no" || repeatText === "off" || repeatText === "") {
+      return 1;
+    }
+    return 1;
+  }
+
+  function refreshTimerInterval() {
+    var durationValue = Math.max(0, this.component.normalizeNumber(this.component.duration, 1000));
+    var stepCount = this.component.normalizePositiveInteger(this.component.steps, 60);
+    var interval = Math.max(1, Math.floor(durationValue / stepCount));
+    this.component.stepInterval = interval;
+  }
+
+  function stripQuotes(value) {
+    var text = String(value == null ? "" : value).trim();
+    if (text.length >= 2) {
+      var first = text.charAt(0);
+      var last = text.charAt(text.length - 1);
+      if ((first === "\"" && last === "\"") || (first === "'" && last === "'") || (first === "`" && last === "`")) {
+        return text.slice(1, -1);
+      }
+    }
+    return text;
+  }
+
+  function parseNumericValue(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return { valid: true, value: value, unit: this.component.targetUnitFallback(), raw: value };
+    }
+    var text = this.component.stripQuotes(value);
+    var match = text.match(/^\s*(-?(?:\d+|\d*\.\d+))(px|%|vh|vw|vmin|vmax|rem|em|ch|ex|cm|mm|in|pt|pc|deg|rad|turn|s|ms)?\s*$/i);
+    if (!match) {
+      return { valid: false, value: 0, unit: "", raw: value };
+    }
+    return {
+      valid: true,
+      value: Number(match[1]),
+      unit: String(match[2] || this.component.targetUnitFallback()),
+      raw: value
+    };
+  }
+
+  function targetUnitFallback() {
+    var targetText = String(this.component.target || "").trim();
+    var parts = this.component.splitReferencePath(targetText);
+    if (parts.length < 3) {
+      return "";
+    }
+    var parentName = String(parts[parts.length - 2] || "").trim().toLowerCase();
+    var propertyName = String(parts[parts.length - 1] || "").trim().toLowerCase();
+    if (parentName !== "style") {
+      return "";
+    }
+    if (
+      propertyName === "opacity" ||
+      propertyName === "zindex" ||
+      propertyName === "fontweight" ||
+      propertyName === "lineheight" ||
+      propertyName === "scale" ||
+      propertyName === "flexgrow" ||
+      propertyName === "flexshrink" ||
+      propertyName === "order"
+    ) {
+      return "";
+    }
+    return "px";
+  }
+
+  function formatNumericValue(number, unit) {
+    var safe = Number(number);
+    if (!Number.isFinite(safe)) {
+      safe = 0;
+    }
+    var rounded = Math.abs(safe) < 0.000001 ? 0 : Math.round(safe * 10000) / 10000;
+    return unit ? String(rounded) + unit : rounded;
+  }
+
+  function splitReferencePath(pathText) {
+    var text = String(pathText == null ? "" : pathText).trim();
+    if (!text) {
+      return [];
+    }
+    return text.split(".").map(function cleanReferenceToken(part) {
+      return String(part || "").trim();
+    }).filter(Boolean);
+  }
+
+  function resolveReferenceOwner(pathText) {
+    var parts = this.component.splitReferencePath(pathText);
+    if (parts.length < 2) {
+      return null;
+    }
+    var rootName = parts[0];
+    var root = null;
+    if (rootName === "this" || rootName === "component") {
+      root = this.component;
+    } else if (this.component[rootName] !== undefined) {
+      root = this.component[rootName];
+    } else if (window[rootName] !== undefined) {
+      root = window[rootName];
+    } else if (document.getElementById(rootName)) {
+      root = document.getElementById(rootName);
+    } else if (document.querySelector(rootName)) {
+      root = document.querySelector(rootName);
+    }
+    if (root == null) {
+      return null;
+    }
+    for (var i = 1; i < parts.length - 1; i += 1) {
+      root = root[parts[i]];
+      if (root == null) {
+        return null;
+      }
+    }
+    return {
+      owner: root,
+      property: parts[parts.length - 1]
+    };
+  }
+
+  function readTargetValue() {
+    var resolved = this.component.resolveReferenceOwner(this.component.target);
+    if (!resolved || !resolved.owner || !resolved.property) {
+      return "";
+    }
+    return resolved.owner[resolved.property];
+  }
+
+  function writeTargetValue(value) {
+    var resolved = this.component.resolveReferenceOwner(this.component.target);
+    if (!resolved || !resolved.owner || !resolved.property) {
+      return false;
+    }
+    resolved.owner[resolved.property] = value;
+    return true;
+  }
+
+  function easeProgress(progress) {
+    var t = Math.max(0, Math.min(1, Number(progress) || 0));
+    var name = String(this.component.easing || "linear").trim().toLowerCase();
+    if (name === "ease-in" || name === "easein" || name === "easeinquad") {
+      return t * t;
+    }
+    if (name === "ease-out" || name === "easeout" || name === "easeoutquad") {
+      return t * (2 - t);
+    }
+    if (name === "ease" || name === "ease-in-out" || name === "easeinout" || name === "easeinoutquad") {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    }
+    return t;
+  }
+
+  function computeStepValue() {
+    var start = this.component.parseNumericValue(this.component.activeFrom);
+    var end = this.component.parseNumericValue(this.component.to);
+    if (!start.valid || !end.valid || start.unit !== end.unit) {
+      return this.component.currentStep >= this.component.normalizePositiveInteger(this.component.steps, 60)
+        ? this.component.stripQuotes(this.component.to)
+        : this.component.stripQuotes(this.component.activeFrom);
+    }
+    var stepCount = this.component.normalizePositiveInteger(this.component.steps, 60);
+    var progress = Math.max(0, Math.min(1, Number(this.component.currentStep || 0) / stepCount));
+    var eased = this.component.easeProgress(progress);
+    return this.component.formatNumericValue(start.value + ((end.value - start.value) * eased), end.unit);
+  }
+
+  function resetLoop() {
+    this.component.currentStep = 0;
+    if (String(this.component.from == null ? "" : this.component.from).trim()) {
+      this.component.activeFrom = this.component.from;
+    } else {
+      this.component.activeFrom = this.component.readTargetValue();
+    }
+  }
+
+  function start() {
+    if (!String(this.component.to == null ? "" : this.component.to).trim()) {
+      this.component.running = false;
+      this.component.stopAnimationClock();
+      return;
+    }
+    this.component.refreshTimerInterval();
+    this.component.currentLoop = 0;
+    this.component.resetLoop();
+    this.component.__qPropertyAnimationStarting = true;
+    this.component.running = true;
+    this.component.__qPropertyAnimationStarting = false;
+    this.component.started();
+    this.component.writeTargetValue(this.component.computeStepValue());
+    this.component.startAnimationClock();
+  }
+
+  function stop() {
+    this.component.running = false;
+    this.component.stopAnimationClock();
+    this.component.stopped();
+  }
+
+  function restart() {
+    this.component.stop();
+    this.component.start();
+  }
+
+  function step() {
+    this.component.advance();
+  }
+
+  function end() {
+    this.component.writeTargetValue(this.component.stripQuotes(this.component.to));
+    this.component.running = false;
+    this.component.stopAnimationClock();
+    this.component.ended();
+  }
+
+  function finish() {
+    this.component.currentLoop = Number(this.component.currentLoop || 0) + 1;
+    if (this.component.currentLoop < this.component.repeatLimit()) {
+      this.component.resetLoop();
+      return;
+    }
+    this.component.end();
+  }
+
+  function advance() {
+    if (!this.component.normalizeBoolean(this.component.running, false)) {
+      this.component.stopAnimationClock();
+      return;
+    }
+    var stepCount = this.component.normalizePositiveInteger(this.component.steps, 60);
+    if (Number(this.component.currentStep || 0) >= stepCount) {
+      this.component.finish();
+      return;
+    }
+    this.component.currentStep = Number(this.component.currentStep || 0) + 1;
+    var nextValue = this.component.computeStepValue();
+    var progress = Math.max(0, Math.min(1, Number(this.component.currentStep || 0) / stepCount));
+    this.component.writeTargetValue(nextValue);
+    this.component.stepped(nextValue, this.component.currentStep, progress);
+  }
+
+  onready {
+    this.component.refreshTimerInterval();
+    if (this.component.normalizeBoolean(this.component.running, false)) {
+      this.component.start();
+    }
+  }
+
+  ondurationchanged {
+    this.component.refreshTimerInterval();
+  }
+
+  onstepschanged {
+    this.component.refreshTimerInterval();
+  }
+
+  onrunningchanged {
+    if (this.component.__qPropertyAnimationStarting) {
+      return;
+    }
+    if (!this.component.normalizeBoolean(this.component.running, false)) {
+      this.component.stopAnimationClock();
+      return;
+    }
+    this.component.start();
+  }
+
+  onremoved {
+    this.component.stopAnimationClock();
+  }
+
+  onunload {
+    this.component.stopAnimationClock();
+  }
+
+  ondisconnected {
+    this.component.stopAnimationClock();
+  }
+}
+
+q-component q-parallel-animation-group extends q-abstract-animation {
+  q-signal started()
+  q-signal stopped()
+  q-signal ended()
+
+  q-property running: false
+  q-property completedCount: 0
+
+  slot { default }
+
+  function normalizeBoolean(value, fallbackValue) {
+    if (value === true || value === false) {
+      return value;
+    }
+    if (value === 1 || value === "1") {
+      return true;
+    }
+    if (value === 0 || value === "0") {
+      return false;
+    }
+    var text = String(value == null ? "" : value).trim().toLowerCase();
+    if (text === "true" || text === "yes" || text === "on") {
+      return true;
+    }
+    if (text === "false" || text === "no" || text === "off" || text === "") {
+      return false;
+    }
+    return Boolean(fallbackValue);
+  }
+
+  function ownsAnimation(animationElement) {
+    var host = this.component;
+    var cursor = animationElement && animationElement.parentElement;
+    while (cursor && cursor !== host) {
+      var tagName = String(cursor.tagName || "").toLowerCase();
+      if (tagName === "q-parallel-animation-group" || tagName === "q-sequential-animation-group" || tagName === "q-parallel-animation" || tagName === "q-sequential-animation") {
+        return false;
+      }
+      cursor = cursor.parentElement;
+    }
+    return cursor === host;
+  }
+
+  function isAnimationElement(animationElement) {
+    var tagName = String(animationElement && animationElement.tagName || "").toLowerCase();
+    return tagName === "q-property-animation" ||
+      tagName === "q-script-action" ||
+      tagName === "q-parallel-animation-group" ||
+      tagName === "q-sequential-animation-group" ||
+      tagName === "q-parallel-animation" ||
+      tagName === "q-sequential-animation" ||
+      tagName === "q-animation-queue" ||
+      tagName === "numberanimation" ||
+      tagName === "q-number-animation";
+  }
+
+  function animations() {
+    var host = this.component;
+    return Array.prototype.slice.call(host.querySelectorAll("q-property-animation, q-script-action, q-parallel-animation-group, q-sequential-animation-group, q-parallel-animation, q-sequential-animation, q-animation-queue, NumberAnimation, q-number-animation")).filter(function keepOwnedAnimation(node) {
+      return host.isAnimationElement(node) && host.ownsAnimation(node);
+    });
+  }
+
+  function bindChildEndedEvents() {
+    var host = this.component;
+    if (host.__qhtmlParallelAnimationEndedHandler) {
+      return;
+    }
+    host.__qhtmlParallelAnimationEndedHandler = function onParallelAnimationChildEnded(event) {
+      var target = event && event.target ? event.target : null;
+      if (!target || target === host || !host.isAnimationElement(target)) {
+        return;
+      }
+      if (!host.ownsAnimation(target)) {
+        return;
+      }
+      host.noteChildEnded(target);
+    };
+    host.addEventListener("ended", host.__qhtmlParallelAnimationEndedHandler);
+  }
+
+  function connectChildEndedEvents(items) {
+    var host = this.component;
+    if (!host.__qhtmlParallelAnimationChildEndedHandlers) {
+      host.__qhtmlParallelAnimationChildEndedHandlers = typeof WeakMap === "function" ? new WeakMap() : [];
+    }
+    var store = host.__qhtmlParallelAnimationChildEndedHandlers;
+    items.forEach(function connectChildEnded(animationElement) {
+      if (!animationElement || !animationElement.ended || typeof animationElement.ended.connect !== "function") {
+        return;
+      }
+      if (store instanceof WeakMap) {
+        if (store.has(animationElement)) {
+          return;
+        }
+        var weakHandler = function onConnectedChildEnded() {
+          host.noteChildEnded(animationElement);
+        };
+        store.set(animationElement, weakHandler);
+        animationElement.ended.connect(weakHandler);
+        return;
+      }
+      for (var i = 0; i < store.length; i += 1) {
+        if (store[i] && store[i].element === animationElement) {
+          return;
+        }
+      }
+      var arrayHandler = function onConnectedChildEnded() {
+        host.noteChildEnded(animationElement);
+      };
+      store.push({ element: animationElement, handler: arrayHandler });
+      animationElement.ended.connect(arrayHandler);
+    });
+  }
+
+  function resetCompletionState() {
+    this.component.completedCount = 0;
+    this.component.__qhtmlParallelAnimationCompleted = typeof WeakSet === "function" ? new WeakSet() : [];
+  }
+
+  function markCompleted(animationElement) {
+    var store = this.component.__qhtmlParallelAnimationCompleted;
+    if (!store) {
+      this.component.resetCompletionState();
+      store = this.component.__qhtmlParallelAnimationCompleted;
+    }
+    if (store instanceof WeakSet) {
+      if (store.has(animationElement)) {
+        return false;
+      }
+      store.add(animationElement);
+      return true;
+    }
+    if (store.indexOf(animationElement) >= 0) {
+      return false;
+    }
+    store.push(animationElement);
+    return true;
+  }
+
+  function noteChildEnded(animationElement) {
+    var host = this.component;
+    if (host.__qhtmlParallelAnimationEnding || !host.normalizeBoolean(host.running, false)) {
+      return;
+    }
+    if (!host.markCompleted(animationElement)) {
+      return;
+    }
+    host.completedCount = Number(host.completedCount || 0) + 1;
+    if (host.completedCount >= host.animations().length) {
+      host.__qhtmlParallelAnimationChangingRunning = true;
+      host.running = false;
+      host.__qhtmlParallelAnimationChangingRunning = false;
+      host.ended();
+    }
+  }
+
+  function start() {
+    var host = this.component;
+    if (host.__qhtmlParallelAnimationStarting) {
+      return;
+    }
+    host.__qhtmlParallelAnimationStarting = true;
+    host.bindChildEndedEvents();
+    host.resetCompletionState();
+    var items = host.animations();
+    host.connectChildEndedEvents(items);
+    host.__qhtmlParallelAnimationChangingRunning = true;
+    host.running = true;
+    host.__qhtmlParallelAnimationChangingRunning = false;
+    host.started();
+    if (!items.length) {
+      host.running = false;
+      host.ended();
+      host.__qhtmlParallelAnimationStarting = false;
+      return;
+    }
+    items.forEach(function startChildAnimation(animationElement) {
+      if (animationElement && typeof animationElement.start === "function") {
+        animationElement.start();
+      } else if (animationElement) {
+        animationElement.running = true;
+      }
+    });
+    host.__qhtmlParallelAnimationStarting = false;
+  }
+
+  function stop() {
+    var host = this.component;
+    if (host.__qhtmlParallelAnimationStopping) {
+      return;
+    }
+    host.__qhtmlParallelAnimationStopping = true;
+    host.animations().forEach(function stopChildAnimation(animationElement) {
+      if (animationElement && typeof animationElement.stop === "function") {
+        animationElement.stop();
+      } else if (animationElement) {
+        animationElement.running = false;
+      }
+    });
+    host.__qhtmlParallelAnimationChangingRunning = true;
+    host.running = false;
+    host.__qhtmlParallelAnimationChangingRunning = false;
+    host.stopped();
+    host.__qhtmlParallelAnimationStopping = false;
+  }
+
+  function end() {
+    var host = this.component;
+    if (host.__qhtmlParallelAnimationEnding) {
+      return;
+    }
+    host.__qhtmlParallelAnimationEnding = true;
+    host.animations().forEach(function endChildAnimation(animationElement) {
+      if (animationElement && typeof animationElement.end === "function") {
+        animationElement.end();
+      } else if (animationElement) {
+        animationElement.running = false;
+      }
+    });
+    host.__qhtmlParallelAnimationChangingRunning = true;
+    host.running = false;
+    host.__qhtmlParallelAnimationChangingRunning = false;
+    host.ended();
+    host.__qhtmlParallelAnimationEnding = false;
+  }
+
+  function restart() {
+    this.component.stop();
+    this.component.start();
+  }
+
+  onready {
+    this.component.bindChildEndedEvents();
+    if (this.component.normalizeBoolean(this.component.running, false)) {
+      this.component.start();
+    }
+  }
+
+  onrunningchanged {
+    if (this.component.__qhtmlParallelAnimationChangingRunning) {
+      return;
+    }
+    if (this.component.normalizeBoolean(this.component.running, false)) {
+      this.component.start();
+    } else {
+      this.component.stop();
+    }
+  }
+}
+
+q-component q-sequential-animation-group extends q-parallel-animation-group {
+  function bindChildEndedEvents() {
+  }
+
+  function connectChildEndedEvents(items) {
+  }
+
+  function start() {
+    var host = this.component;
+    if (host.__qhtmlParallelAnimationStarting) {
+      return;
+    }
+    host.__qhtmlParallelAnimationStarting = true;
+    var items = host.animations();
+    host.__qhtmlParallelAnimationChangingRunning = true;
+    host.running = true;
+    host.__qhtmlParallelAnimationChangingRunning = false;
+    host.started();
+    if (!items.length) {
+      host.running = false;
+      host.ended();
+      host.__qhtmlParallelAnimationStarting = false;
+      return;
+    }
+    var index = 0;
+    var startNext = function startNextSequentialChild() {
+      if (!host.normalizeBoolean(host.running, false)) {
+        host.__qhtmlParallelAnimationStarting = false;
+        return;
+      }
+      if (index >= items.length) {
+        var shouldRestart = host.__qhtmlSequentialAnimationRestartRequested === true;
+        host.__qhtmlSequentialAnimationRestartRequested = false;
+        host.__qhtmlParallelAnimationChangingRunning = true;
+        host.running = false;
+        host.__qhtmlParallelAnimationChangingRunning = false;
+        host.ended();
+        host.__qhtmlParallelAnimationStarting = false;
+        if (shouldRestart) {
+          host.start();
+        }
+        return;
+      }
+      var animationElement = items[index];
+      index += 1;
+      if (!animationElement) {
+        startNext();
+        return;
+      }
+      var endedHandler = function onSequentialChildEnded() {
+        if (animationElement.ended && typeof animationElement.ended.disconnect === "function") {
+          animationElement.ended.disconnect(endedHandler);
+        }
+        startNext();
+      };
+      if (animationElement.ended && typeof animationElement.ended.connect === "function") {
+        animationElement.ended.connect(endedHandler);
+      }
+      if (typeof animationElement.start === "function") {
+        animationElement.start();
+      } else {
+        animationElement.running = true;
+      }
+    };
+    startNext();
+  }
+
+  function restart() {
+    if (this.component.__qhtmlParallelAnimationStarting) {
+      this.component.__qhtmlSequentialAnimationRestartRequested = true;
+      return;
+    }
+    this.component.stop();
+    this.component.start();
+  }
+}
+
+q-component q-parallel-animation extends q-parallel-animation-group {
+}
+
+q-component q-sequential-animation extends q-sequential-animation-group {
+}
+
+q-component q-animation-queue extends q-sequential-animation-group {
+}

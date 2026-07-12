@@ -1,0 +1,283 @@
+q-component q-spritesheet {
+  q-signal frameChanged(frameIndex)
+
+  q-property source: ""
+  q-property frameCount: 1
+  q-property frameStart: 0
+  q-property frameStop: 0
+  q-property frameDuration: 120
+  q-property frameWidth: 0
+  q-property frameHeight: 0
+  q-property currentFrame: 0
+  q-property repeat: true
+  q-property running: false
+  q-property interpolate: false
+  q-property columns: 0
+  q-property rows: 0
+  q-property imageWidth: 0
+  q-property imageHeight: 0
+  q-property loaded: false
+
+  div.q-spritesheet-viewport#q-spritesheet-viewport { }
+
+  q-timer frameTimer {
+    interval: 120
+    repeat: true
+    running: false
+  }
+
+  q-connect { frameTimer.timeout this.nextFrame }
+
+  function normalizePositiveInt(value, fallbackValue) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return Math.max(1, Math.floor(Number(fallbackValue || 1)));
+    }
+    return Math.max(1, Math.floor(numeric));
+  }
+
+  function normalizeBoolean(value, fallbackValue) {
+    if (value === true || value === false) {
+      return value;
+    }
+    if (value === 1 || value === "1") {
+      return true;
+    }
+    if (value === 0 || value === "0") {
+      return false;
+    }
+    var text = String(value == null ? "" : value).trim().toLowerCase();
+    if (text === "true" || text === "yes" || text === "on") {
+      return true;
+    }
+    if (text === "false" || text === "no" || text === "off" || text === "") {
+      return false;
+    }
+    return Boolean(fallbackValue);
+  }
+
+  function resolveFrameStart() {
+    var count = this.normalizePositiveInt(this.frameCount, 1);
+    var start = Math.floor(Number(this.frameStart || 0));
+    if (!Number.isFinite(start) || start < 0) {
+      start = 0;
+    }
+    if (start > (count - 1)) {
+      start = count - 1;
+    }
+    return start;
+  }
+
+  function resolveFrameStop() {
+    var count = this.normalizePositiveInt(this.frameCount, 1);
+    var start = this.resolveFrameStart();
+    var maxStop = Math.max(start, count - 1);
+    var stop = Math.floor(Number(this.frameStop || 0));
+    if (!Number.isFinite(stop) || stop < start || stop > maxStop) {
+      stop = maxStop;
+    }
+    return stop;
+  }
+
+  function clampFrame(value) {
+    var start = this.resolveFrameStart();
+    var stop = this.resolveFrameStop();
+    var frame = Math.floor(Number(value || 0));
+    if (!Number.isFinite(frame)) {
+      frame = start;
+    }
+    if (frame < start) {
+      frame = start;
+    }
+    if (frame > stop) {
+      frame = stop;
+    }
+    return frame;
+  }
+
+  function configureGeometry() {
+    var count = this.normalizePositiveInt(this.frameCount, 1);
+    var imgWidth = Math.max(0, Math.floor(Number(this.imageWidth || 0)));
+    var imgHeight = Math.max(0, Math.floor(Number(this.imageHeight || 0)));
+
+    var currentFrameWidth = Math.floor(Number(this.frameWidth));
+    var autoFrameWidth = !Number.isFinite(currentFrameWidth) || currentFrameWidth <= 0;
+    var nextFrameWidth = autoFrameWidth ? 0 : currentFrameWidth;
+    if (autoFrameWidth && imgWidth > 0 && count > 0) {
+      nextFrameWidth = Math.floor(imgWidth / count);
+    }
+    nextFrameWidth = this.normalizePositiveInt(nextFrameWidth, 1);
+
+    var currentFrameHeight = Math.floor(Number(this.frameHeight));
+    var autoFrameHeight = !Number.isFinite(currentFrameHeight) || currentFrameHeight <= 0;
+    var nextFrameHeight = autoFrameHeight ? 0 : currentFrameHeight;
+    if (autoFrameHeight && imgHeight > 0) {
+      nextFrameHeight = imgHeight;
+    }
+    nextFrameHeight = this.normalizePositiveInt(nextFrameHeight, 1);
+
+    if ((!autoFrameWidth || imgWidth > 0) && Number(this.frameWidth) !== nextFrameWidth) {
+      this.frameWidth = nextFrameWidth;
+    }
+    if ((!autoFrameHeight || imgHeight > 0) && Number(this.frameHeight) !== nextFrameHeight) {
+      this.frameHeight = nextFrameHeight;
+    }
+
+    var derivedColumns = count;
+    if (imgWidth > 0 && nextFrameWidth > 0) {
+      derivedColumns = Math.max(1, Math.floor(imgWidth / nextFrameWidth));
+    }
+    var derivedRows = 1;
+    if (imgHeight > 0 && nextFrameHeight > 0) {
+      derivedRows = Math.max(1, Math.floor(imgHeight / nextFrameHeight));
+    }
+
+    if (Number(this.columns || 0) !== derivedColumns) {
+      this.columns = derivedColumns;
+    }
+    if (Number(this.rows || 0) !== derivedRows) {
+      this.rows = derivedRows;
+    }
+  }
+
+  function applyFrameToViewport() {
+    var viewport = this.querySelector("#q-spritesheet-viewport");
+    if (!viewport) {
+      return;
+    }
+    var frameWidth = this.normalizePositiveInt(this.frameWidth, 1);
+    var frameHeight = this.normalizePositiveInt(this.frameHeight, 1);
+    var frame = this.clampFrame(this.currentFrame);
+    if (frame !== Number(this.currentFrame || 0)) {
+      this.currentFrame = frame;
+      return;
+    }
+
+    viewport.style.display = "inline-block";
+    viewport.style.position = "relative";
+    viewport.style.overflow = "hidden";
+    viewport.style.width = String(frameWidth) + "px";
+    viewport.style.height = String(frameHeight) + "px";
+    viewport.style.backgroundRepeat = "no-repeat";
+    viewport.style.backgroundImage = this.source ? ("url(\"" + String(this.source) + "\")") : "none";
+    viewport.style.transition = this.normalizeBoolean(this.interpolate, false) ? "background-position 120ms linear" : "none";
+    viewport.style.backgroundPosition = String(-frame * frameWidth) + "px 0px";
+
+    this.frameChanged(frame);
+  }
+
+  function refreshTimer() {
+    var duration = Math.max(0, Math.floor(Number(this.frameDuration || 0)));
+    frameTimer.interval = duration;
+    if (this.normalizeBoolean(this.running, false) && this.loaded === true) {
+      frameTimer.start();
+      return;
+    }
+    frameTimer.stop();
+  }
+
+  function syncSource() {
+    var src = String(this.source || "").trim();
+    this.loaded = false;
+    this.imageWidth = 0;
+    this.imageHeight = 0;
+    if (!src) {
+      this.configureGeometry();
+      this.applyFrameToViewport();
+      this.refreshTimer();
+      return;
+    }
+    var image = new Image();
+    image.onload = function onSpriteSourceLoaded() {
+      this.imageWidth = Math.max(0, Math.floor(Number(image.width || 0)));
+      this.imageHeight = Math.max(0, Math.floor(Number(image.height || 0)));
+      this.loaded = true;
+      this.configureGeometry();
+      this.applyFrameToViewport();
+      this.refreshTimer();
+    }.bind(this);
+    image.onerror = function onSpriteSourceError() {
+      this.loaded = false;
+      this.configureGeometry();
+      this.applyFrameToViewport();
+      this.refreshTimer();
+    }.bind(this);
+    image.src = src;
+  }
+
+  function nextFrame() {
+    if (this.loaded !== true) {
+      return;
+    }
+    var start = this.resolveFrameStart();
+    var stop = this.resolveFrameStop();
+    var current = this.clampFrame(this.currentFrame);
+    var next = current + 1;
+    if (next > stop) {
+      if (this.normalizeBoolean(this.repeat, true)) {
+        next = start;
+      } else {
+        next = stop;
+        this.running = false;
+      }
+    }
+    this.currentFrame = next;
+  }
+
+  function start() {
+    this.running = true;
+  }
+
+  function stop() {
+    this.running = false;
+  }
+
+  onready {
+    this.configureGeometry();
+    this.applyFrameToViewport();
+    this.syncSource();
+  }
+
+  onsourcechanged {
+    this.syncSource();
+  }
+
+  onframeCountchanged {
+    this.configureGeometry();
+    this.applyFrameToViewport();
+  }
+
+  onframeWidthchanged {
+    this.configureGeometry();
+    this.applyFrameToViewport();
+  }
+
+  onframeHeightchanged {
+    this.configureGeometry();
+    this.applyFrameToViewport();
+  }
+
+  onframeStartchanged {
+    this.applyFrameToViewport();
+  }
+
+  onframeStopchanged {
+    this.applyFrameToViewport();
+  }
+
+  onframeDurationchanged {
+    this.refreshTimer();
+  }
+
+  onrunningchanged {
+    this.refreshTimer();
+  }
+
+  oninterpolatechanged {
+    this.applyFrameToViewport();
+  }
+
+  oncurrentFramechanged {
+    this.applyFrameToViewport();
+  }
+}

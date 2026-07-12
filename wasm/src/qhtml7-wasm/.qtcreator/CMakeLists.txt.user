@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 19.0.2, 2026-07-05T21:24:41. -->
+<!-- Written by QtCreator 19.0.2, 2026-07-11T15:27:24. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
-  <value type="QByteArray">{8639fed0-918a-47ef-9e43-aa80678c4851}</value>
+  <value type="QByteArray">{6d6957ca-369a-48fa-af58-560f2c1ee345}</value>
  </data>
  <data>
   <variable>ProjectExplorer.Project.ActiveTarget</variable>
@@ -195,7 +195,7 @@
      <value type="QString" key="ProjectExplorer.RunConfiguration.UniqueId"></value>
      <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
      <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>
-     <value type="QString" key="WASM.WebBrowserSelectionAspect.Browser">firefox</value>
+     <value type="QString" key="WASM.WebBrowserSelectionAspect.Browser"></value>
     </valuemap>
     <value type="qlonglong" key="ProjectExplorer.Target.RunConfigurationCount">1</value>
    </valuemap>
@@ -228,7 +228,7 @@
     <value type="QString" key="ProjectExplorer.RunConfiguration.UniqueId"></value>
     <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
     <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>
-    <value type="QString" key="WASM.WebBrowserSelectionAspect.Browser">firefox</value>
+    <value type="QString" key="WASM.WebBrowserSelectionAspect.Browser"></value>
    </valuemap>
    <value type="qlonglong" key="ProjectExplorer.Target.RunConfigurationCount">1</value>
   </valuemap>

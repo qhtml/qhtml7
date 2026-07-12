@@ -5,6 +5,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core)
 
 qt_standard_project_setup()
 
+set(CMAKE_AUTORCC ON)
+
 qt_add_executable(qhtml7-wasm
     main.cpp
     qhtml_types.hpp qhtml_parser.hpp
@@ -13,6 +15,7 @@ qt_add_executable(qhtml7-wasm
     ../../../lib/quickjs/libregexp.c
     ../../../lib/quickjs/libunicode.c
     ../../../lib/quickjs/quickjs.c
+    resources.qrc
 )
 
 target_include_directories(qhtml7-wasm

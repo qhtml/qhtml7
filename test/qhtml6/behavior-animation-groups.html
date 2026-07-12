@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <base href="../../">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QHTML Behavior q-property-animation Test</title>
+  <script src="../../dist/qhtml-wasm.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    q-html {
+      display: block;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body data-status="pending">
+  <q-html>
+q-component multi-size-behavior-box {
+  q-property widthValue: "80px"
+  q-property heightValue: "40px"
+  q-bind-css { this.component.widthValue this.component.style.width }
+  q-bind-css { this.component.heightValue this.component.style.height }
+  behavior on widthValue {
+    q-property-animation {
+      duration: 900
+      steps: 30
+
+      onstepped {
+        this.component.setAttribute("data-step-count", String(Number(this.component.getAttribute("data-step-count") || 0) + 1));
+        this.component.style.width = css(widthValue, "px");
+      }
+
+      onstopped {
+        this.component.setAttribute("data-ended-count", String(Number(this.component.getAttribute("data-ended-count") || 0) + 1));
+        this.component.style.width = css(widthValue, "px");
+      }
+    }
+  }
+
+  behavior on heightValue {
+    q-property-animation {
+      duration: 900
+      steps: 30
+      from: "40px"
+
+      onstepped(value) {
+        this.component.style.height = css(heightValue, "px");
+      }
+
+      onstopped {
+        this.component.style.height = css(heightValue, "px");
+      }
+    }
+  }
+
+  onready {
+    this.component.style.display = "grid";
+    this.component.style.placeItems = "center";
+    this.component.style.width = "80px";
+    this.component.style.height = "40px";
+    this.component.style.background = "#1d4ed8";
+    this.component.style.color = "#ffffff";
+    this.component.style.borderRadius = "0.5rem";
+    this.component.style.fontWeight = "800";
+    this.component.style.marginBottom = "0.75rem";
+    this.component.widthValue = "280px";
+    this.component.heightValue = "112px";
+  }
+
+  style { display: grid; place-items: center; width: 80px; height: 40px; background: #1d4ed8; color: #ffffff; border-radius: 0.5rem; font-weight: 800; margin-bottom: 0.75rem; }
+  text { multi size }
+}
+
+q-component multi-position-behavior-box {
+  q-property leftValue: "20px"
+  q-property topValue: "320px"
+
+  behavior on leftValue {
+    q-property-animation {
+      duration: 1000
+      steps: 30
+
+      onstepped {
+        this.component.setAttribute("data-step-count", String(Number(this.component.getAttribute("data-step-count") || 0) + 1));
+        this.component.style.left = css(value, "px");
+      }
+
+      onstopped {
+        this.component.setAttribute("data-ended-count", String(Number(this.component.getAttribute("data-ended-count") || 0) + 1));
+        this.component.style.left = css(value, "px");
+      }
+    }
+  }
+
+  behavior on topValue {
+    q-property-animation {
+      duration: 1000
+      steps: 30
+      from: "320px"
+
+      onstepped {
+        this.component.style.top = css(value, "px");
+      }
+
+      onstopped {
+        this.component.style.top = css(value, "px");
+      }
+    }
+  }
+
+  onready {
+    this.component.style.position = "absolute";
+    this.component.style.left = "20px";
+    this.component.style.top = "320px";
+    this.component.style.width = "72px";
+    this.component.style.height = "72px";
+    this.component.style.display = "grid";
+    this.component.style.placeItems = "center";
+    this.component.style.background = "#7c3aed";
+    this.component.style.color = "#ffffff";
+    this.component.style.borderRadius = "999px";
+    this.component.style.fontWeight = "800";
+    this.component.style.boxShadow = "0 18px 40px rgba(0,0,0,.28)";
+    this.component.leftValue = "520px";
+    this.component.topValue = "480px";
+  }
+
+  style { position: absolute; left: 20px; top: 320px; width: 72px; height: 72px; display: grid; place-items: center; background: #7c3aed; color: #ffffff; border-radius: 999px; font-weight: 800; box-shadow: 0 18px 40px rgba(0,0,0,.28); }
+  text { multi xy }
+}
+
+q-component staggered-size-behavior-box {
+  q-property widthValue: "90px"
+  q-property heightValue: "36px"
+
+  behavior on widthValue {
+    q-property-animation {
+      duration: 700
+      steps: 24
+
+      onstepped {
+        this.component.setAttribute("data-step-count", String(Number(this.component.getAttribute("data-step-count") || 0) + 1));
+        this.component.style.width = css(value, "px");
+      }
+
+      onstopped {
+        this.component.setAttribute("data-ended-count", String(Number(this.component.getAttribute("data-ended-count") || 0) + 1));
+        this.component.style.width = css(value, "px");
+      }
+    }
+  }
+
+  behavior on heightValue {
+    q-property-animation {
+      duration: 700
+      steps: 24
+      from: "36px"
+
+      onstepped {
+        this.component.style.height = css(value, "px");
+      }
+
+      onstopped {
+        this.component.style.height = css(value, "px");
+      }
+    }
+  }
+
+  onready {
+    this.component.style.display = "grid";
+    this.component.style.placeItems = "center";
+    this.component.style.width = "90px";
+    this.component.style.height = "36px";
+    this.component.style.background = "#0f766e";
+    this.component.style.color = "#ffffff";
+    this.component.style.borderRadius = "0.5rem";
+    this.component.style.fontWeight = "800";
+    this.component.style.marginBottom = "0.75rem";
+    this.component.widthValue = "260px";
+    this.component.heightValue = "104px";
+  }
+
+  style { display: grid; place-items: center; width: 90px; height: 36px; background: #0f766e; color: #ffffff; border-radius: 0.5rem; font-weight: 800; margin-bottom: 0.75rem; }
+  text { staggered size }
+}
+
+q-component staggered-shape-behavior-box {
+  q-property opacityValue: 0.25
+  q-property radiusValue: "0px"
+
+  behavior on opacityValue {
+    q-property-animation {
+      duration: 700
+      steps: 24
+
+      onstepped {
+        this.component.setAttribute("data-step-count", String(Number(this.component.getAttribute("data-step-count") || 0) + 1));
+        this.component.style.opacity = String(value);
+      }
+
+      onstopped {
+        this.component.setAttribute("data-ended-count", String(Number(this.component.getAttribute("data-ended-count") || 0) + 1));
+        this.component.style.opacity = String(value);
+      }
+    }
+  }
+
+  behavior on radiusValue {
+    q-property-animation {
+      duration: 700
+      steps: 24
+      from: "0px"
+
+      onstepped {
+        this.component.style.borderRadius = css(value, "px");
+      }
+
+      onstopped {
+        this.component.style.borderRadius = css(value, "px");
+      }
+    }
+  }
+
+  onready {
+    this.component.style.display = "grid";
+    this.component.style.placeItems = "center";
+    this.component.style.width = "170px";
+    this.component.style.height = "54px";
+    this.component.style.background = "#d97706";
+    this.component.style.color = "#ffffff";
+    this.component.style.opacity = "0.25";
+    this.component.style.borderRadius = "0px";
+    this.component.style.fontWeight = "800";
+    this.component.opacityValue = 1;
+    this.component.radiusValue = "42px";
+  }
+
+  style { display: grid; place-items: center; width: 170px; height: 54px; background: #d97706; color: #ffffff; opacity: 0.25; border-radius: 0px; font-weight: 800; }
+  text { staggered shape }
+}
+
+q-component queued-width-behavior-box {
+  q-property width: "100px"
+
+  q-bind-css { this.component.width this.component.style.width }
+
+  behavior on width {
+    q-animation-queue {
+      q-property-animation {
+        to: "40px"
+        duration: 500
+        steps: 20
+      }
+
+      q-property-animation {
+        from: "40px"
+        duration 600
+        steps: 24
+      }
+    }
+  }
+
+  onwidthchanged(value) {
+    this.component.setAttribute("data-width-changed-count", String(Number(this.component.getAttribute("data-width-changed-count") || 0) + 1));
+    this.component.setAttribute("data-final-width", String(value));
+  }
+
+  onready {
+    this.component.style.display = "grid";
+    this.component.style.placeItems = "center";
+    this.component.style.width = "100px";
+    this.component.style.height = "54px";
+    this.component.style.background = "#be123c";
+    this.component.style.color = "#ffffff";
+    this.component.style.borderRadius = "0.5rem";
+    this.component.style.fontWeight = "800";
+    this.component.width = "280px";
+  }
+
+  style { display: grid; place-items: center; width: 100px; height: 54px; background: #be123c; color: #ffffff; border-radius: 0.5rem; font-weight: 800; margin-bottom: 0.75rem; }
+  text { queued width }
+}
+
+section.behavior-animation-stage {
+  style { position: relative; min-height: 100vh; overflow: hidden; padding: 1.25rem; box-sizing: border-box; }
+
+  header {
+    style { position: relative; z-index: 2; max-width: 48rem; margin-bottom: 1rem; }
+    h1 { text { behavior q-property-animation } }
+    p {
+      style { color: #cbd5e1; line-height: 1.5; }
+      text { Five behavior-driven cases exercise q-property-animation on size, position, shape, queue, and per-step hook behavior. }
+    }
+  }
+
+  multi-size-behavior-box multiSizeBox { }
+  staggered-size-behavior-box staggeredSizeBox { }
+  staggered-shape-behavior-box staggeredShapeBox { }
+  queued-width-behavior-box queuedWidthBox { }
+  multi-position-behavior-box multiPositionBox { }
+}
+  </q-html>
+  <script>
+    setTimeout(function runBehaviorAnimationTest() {
+      var multiSize = document.querySelector("multi-size-behavior-box");
+      var multiPosition = document.querySelector("multi-position-behavior-box");
+      var staggeredSize = document.querySelector("staggered-size-behavior-box");
+      var staggeredShape = document.querySelector("staggered-shape-behavior-box");
+      var queuedWidth = document.querySelector("queued-width-behavior-box");
+      var boxes = [multiSize, multiPosition, staggeredSize, staggeredShape, queuedWidth];
+      var ok = !!(
+        boxes.every(Boolean) &&
+        multiSize.style.width === "280px" &&
+        multiSize.style.height === "112px" &&
+        multiPosition.style.left === "520px" &&
+        multiPosition.style.top === "480px" &&
+        staggeredSize.style.width === "260px" &&
+        staggeredSize.style.height === "104px" &&
+        Number(staggeredShape.style.opacity || 0) === 1 &&
+        staggeredShape.style.borderRadius === "42px" &&
+        queuedWidth.style.width === "280px" &&
+        Number(queuedWidth.getAttribute("data-width-changed-count") || 0) === 1 &&
+        boxes.slice(0, 4).every(function(box) { return Number(box.getAttribute("data-step-count") || 0) > 0; }) &&
+        boxes.slice(0, 4).every(function(box) { return Number(box.getAttribute("data-ended-count") || 0) >= 1; })
+      );
+      document.body.dataset.status = ok ? "pass" : "fail";
+    }, 2600);
+  </script>
+</body>
+</html>

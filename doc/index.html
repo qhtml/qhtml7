@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QHTML Wiki</title>
+  <link rel="icon" href="data:," />
+  <script src="../dist/qhtml-wasm.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      min-width: 0;
+      overflow-x: hidden;
+      background-color: #000000;
+    }
+
+    q-html {
+      display: block;
+      width: 100%;
+      min-width: 0;
+    }
+  </style>
+</head>
+<body>
+  <q-html version="6">
+q-import {  ../wasm/src/qhtml7-wasm/resources/qhtml6/q-components/q-hud.qhtml }
+hud-container myhud {
+  accent: "#8aa7c2"
+  softAccent: "#b7a3bc"
+  warn: "#ff4a22"
+  yellow: "#d5a13b"
+  cyan: "#29d7d7"
+
+  topHeight: "120px"
+  bottomHeight: "78px"
+  leftOverhang: "20px"
+  rightOverhang: "78px"
+
+  centerBackground: "rgba(17, 24, 39, 0.35)"
+  centerRadius: "0px"
+  contentPadding: "0px"
+
+  content {
+hud-system mysys {
+  panelWidth: "78vw"
+  defaultUrl: "01-quick-start/index.html"
+
+  buttons {
+    hud-button {
+      label: "01 QUICK START"
+      url: "01-quick-start/index.html"
+      accent: "#6ea8ff"
+      warn: "#ff7a18"
+    }
+
+    hud-button {
+      label: "02 CORE SYNTAX"
+      url: "02-core-syntax/index.html"
+      accent: "#6ee7ff"
+      warn: "#facc15"
+    }
+
+    hud-button {
+      label: "03 COMPONENTS"
+      url: "03-components/index.html"
+      accent: "#93c5fd"
+      warn: "#fb7185"
+    }
+
+    hud-button {
+      label: "04 STYLE THEME"
+      url: "04-styles-and-themes/index.html"
+      accent: "#67e8f9"
+      warn: "#f97316"
+    }
+
+    hud-button {
+      label: "05 Q-SCRIPT STATE"
+      url: "05-state-with-q-script/index.html"
+      accent: "#a7f3d0"
+      warn: "#f59e0b"
+    }
+
+    hud-button {
+      label: "06 Q-SCRIPT"
+      url: "06-q-script/index.html"
+      accent: "#7dd3fc"
+      warn: "#fb923c"
+    }
+
+    hud-button {
+      label: "07 INLINE EXPR"
+      url: "07-inline-expressions/index.html"
+      accent: "#c4b5fd"
+      warn: "#f87171"
+    }
+
+    hud-button {
+      label: "08 SIGNALS"
+      url: "08-signals/index.html"
+      accent: "#5eead4"
+      warn: "#facc15"
+    }
+
+    hud-button {
+      label: "09 STATE MACHINE"
+      url: "09-state-machines/index.html"
+      accent: "#bae6fd"
+      warn: "#fb7185"
+    }
+
+    hud-button {
+      label: "10 QDOM API"
+      url: "10-qdom-api/index.html"
+      accent: "#93c5fd"
+      warn: "#f97316"
+    }
+
+    hud-button {
+      label: "11 PARTICLES"
+      url: "11-particle-emitter/index.html"
+      accent: "#a5f3fc"
+      warn: "#ff7a18"
+    }
+
+    hud-button {
+      label: "12 DEBUG TIPS"
+      url: "12-debug-tips/index.html"
+      accent: "#bfdbfe"
+      warn: "#facc15"
+    }
+
+    hud-button {
+      label: "13 TAG LIBRARIES"
+      url: "13-optional-tag-libraries/index.html"
+      accent: "#99f6e4"
+      warn: "#fb923c"
+    }
+
+    hud-button {
+      label: "14 MODULE READMES"
+      url: "14-module-readmes/index.html"
+      accent: "#ddd6fe"
+      warn: "#f97316"
+    }
+
+    hud-button {
+      label: "15 ESCAPES"
+      url: "15-escape-sequences/index.html"
+      accent: "#67e8f9"
+      warn: "#fb7185"
+    }
+
+    hud-button {
+      label: "16 Q-VID HUD"
+      url: "16-q-vid-hud/index.html"
+      accent: "#86efac"
+      warn: "#ff7a18"
+    }
+
+    hud-button {
+      label: "17 FETCH HTML"
+      url: "17-fetch-html/index.html"
+      accent: "#a7f3d0"
+      warn: "#fb923c"
+    }
+
+    hud-button {
+      label: "TRY IT YOURSELF"
+      url: "try-it-yourself/index.html"
+      accent: "#86efac"
+      warn: "#ff7a18"
+    }
+  }
+}
+} }
+  </q-html>
+</body>
+</html>
