@@ -1323,6 +1323,11 @@
       /\bthis\s*\.\s*component\s*\./.test(text);
   }
 
+  function requestQHTML6LegacyQDomFallback(rootElement, methodName) {
+    const error = new Error(`QHTML6 legacy qdom().${methodName}() requested`);
+    return reportQHTMLRuntimeError(rootElement, error, rootElement && (rootElement.__qhtmlRegistry || rootElement.qhtmlComponentRegistry) || null);
+  }
+
   function createQHTMLDomFacade(rootElement) {
     return {
       tree: rootElement ? rootElement.qhtmlDomTree || null : null,
@@ -1331,6 +1336,18 @@
           ? rootElement.querySelector(String(selector || ""))
           : null;
         return createQHTMLDomSelection(rootElement, element);
+      },
+      slot() {
+        if (requestQHTML6LegacyQDomFallback(rootElement, "slot")) {
+          return "";
+        }
+        throw new TypeError("this.qdom(...).slot is not a function");
+      },
+      slots() {
+        if (requestQHTML6LegacyQDomFallback(rootElement, "slots")) {
+          return [];
+        }
+        throw new TypeError("this.qdom(...).slots is not a function");
       }
     };
   }
@@ -6823,7 +6840,7 @@
           .catch((fallbackError) => {
             replaceWithQHTMLError(this, source, fallbackError);
           });
-        return createQHTMLDomFacade(null);
+        return createQHTMLDomFacade(this);
       }
       return createQHTMLDomFacade(this);
     }
@@ -7081,7 +7098,7 @@
           .catch((fallbackError) => {
             replaceWithQHTMLError(this, source, fallbackError);
           });
-        return null;
+        return createQHTMLDomFacade(this);
       }
       return createQHTMLDomFacade(this);
     }
