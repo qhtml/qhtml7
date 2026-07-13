@@ -1,0 +1,28 @@
+q-import { styles.qhtml }
+q-import { property-sheet.qhtml }
+q-import { player.qhtml }
+q-import { team.qhtml }
+q-import { tile.qhtml }
+q-import { square.qhtml }
+q-import { wall.qhtml }
+q-import { entrance.qhtml }
+q-import { exit.qhtml }
+q-import { path.qhtml }
+q-import { pathfinder.qhtml }
+q-import { path-worker.qhtml }
+q-import { entity.qhtml }
+q-import { enemy.qhtml }
+q-import { gun.qhtml }
+q-import { tower.qhtml }
+q-import { projectile.qhtml }
+q-import { particle-tank-muzzle-blast.qhtml }
+q-import { particle-machine-gun.qhtml }
+q-import { flame-blast.qhtml }
+q-import { particle-fireball.qhtml }
+q-import { map.qhtml }
+q-import { board.qhtml }
+q-import { game.qhtml }
+
+q-component td-main {
+  td-game game { }
+}

@@ -30,7 +30,7 @@ extern "C" {
 }
 #endif
 
-inline constexpr const char QHTML_VERSION[] = "v7.3.4";
+inline constexpr const char QHTML_VERSION[] = "v7.3.6";
 inline constexpr int QHTML_QUICKJS_SIZE_BUDGET_BYTES = 614400;
 
 inline std::string qhtmlVersionJs()

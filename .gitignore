@@ -2,3 +2,4 @@ wasm/src/build/*
 wasm/src/qhtml7-wasm/.qtcreator/*
 .*
 js/*.zip
+tmp/*

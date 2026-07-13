@@ -1,0 +1,19 @@
+q-component td-particle-tank-muzzle-blast {
+  q-property x: 0px
+  q-property y: 0px
+  q-property size: 18px
+  q-property opacity: 1
+
+  div {
+    class: "td-projectile"
+    x: this.x
+    y: this.y
+    width: this.size
+    height: this.size
+    opacity: this.opacity
+    img.td-fill {
+      src: "assets/particles/particleA.png"
+      alt: "blast"
+    }
+  }
+}

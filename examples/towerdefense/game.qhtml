@@ -1,0 +1,53 @@
+q-component td-game {
+  q-property level: 1
+  q-property money: 4000
+  q-property health: 10
+  q-property gunStoreDisplay: none
+  q-property upgradeStoreDisplay: none
+  q-signal levelChanged(level)
+  q-signal moneyChanged(money)
+
+  td-property-sheet props { }
+  td-player defender {
+    isDefender: true
+    isAttacker: false
+    money: 4000
+    health: 10
+  }
+  td-player attacker {
+    isDefender: false
+    isAttacker: true
+    money: 4000
+    health: 10
+  }
+
+  function awardDefenders(amount) {
+    this.money = Number(this.money) + Number(amount);
+    this.defender.money = this.money;
+    this.moneyChanged(this.money);
+  }
+
+  function nextLevel() {
+    this.level = Number(this.level) + 1;
+    this.levelChanged(this.level);
+  }
+
+  tdTheme {
+    section.td-root {
+      div.td-hud {
+        span { text { Money: $${this.money} } }
+        span { text { Level: ${this.level} } }
+        span { text { Health: ${this.health} } }
+        span { text { TowerDefenseVS QHTML7 Port } }
+      }
+
+      td-board board {
+        game: this
+      }
+
+      td-gun-store.td-store { }
+
+      td-upgrade-store.td-store { }
+    }
+  }
+}

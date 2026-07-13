@@ -1,0 +1,26 @@
+q-component td-projectile {
+  q-property projectileId: ""
+  q-property type: 1
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 12px
+  q-property height: 12px
+  q-property rotation: 0
+  q-property opacity: 1
+  q-property duration: 150
+
+  div {
+    class: "td-projectile"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+    opacity: this.opacity
+    transform: "rotate(${this.rotation}deg)"
+    transitionDuration: "${this.duration}ms"
+    img.td-fill {
+      src: "assets/projectiles/${this.type}.png"
+      alt: "projectile"
+    }
+  }
+}

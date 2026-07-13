@@ -1,0 +1,14 @@
+q-component td-wall {
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 50px
+  q-property height: 50px
+
+  div {
+    class: "td-tile wall"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+  }
+}

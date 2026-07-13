@@ -1,0 +1,28 @@
+q-component td-entity {
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 50px
+  q-property height: 50px
+  q-property speed: 800
+  q-property rotation: 0
+  q-property opacity: 1
+  q-property completed: false
+  q-property path: []
+  q-property pathIndex: 0
+  q-property entityIndex: 0
+  q-signal completedPath(entityIndex)
+  q-signal killed(entityIndex)
+  q-signal calloutPosition(oldPos, newPos)
+
+  function center() {
+    return { x: parseFloat(this.x) + parseFloat(this.width) * 0.5, y: parseFloat(this.y) + parseFloat(this.height) * 0.5 };
+  }
+
+  function angleTo(cx, cy, ex, ey) {
+    var dy = Number(ey) - Number(cy);
+    var dx = Number(ex) - Number(cx);
+    var theta = Math.atan2(dy, dx);
+    theta *= 180 / Math.PI;
+    return 360 + theta;
+  }
+}

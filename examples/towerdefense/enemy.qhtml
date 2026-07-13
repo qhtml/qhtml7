@@ -1,0 +1,26 @@
+q-component td-enemy {
+  q-property enemyId: ""
+  q-property type: 1
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 50px
+  q-property height: 50px
+  q-property speed: 800
+  q-property rotation: 0
+  q-property opacity: 1
+
+  div {
+    class: "td-entity"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+    opacity: this.opacity
+    transform: "rotate(${this.rotation}deg)"
+    transitionDuration: "${this.speed}ms"
+    img.td-fill {
+      src: "assets/attackers/${this.type}.png"
+      alt: "enemy"
+    }
+  }
+}

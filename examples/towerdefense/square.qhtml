@@ -1,0 +1,27 @@
+q-component td-square {
+  q-property tileId: ""
+  q-property game: null
+  q-property row: 0
+  q-property col: 0
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 50px
+  q-property height: 50px
+  q-property selected: false
+  q-property buildable: false
+  q-signal tileSelected(selected)
+
+  function selectFromBoard() {
+    this.game.selectTile(this.tileId);
+    this.tileSelected(this.selected);
+  }
+
+  div {
+    class: "td-tile square ${this.selected ? 'selected' : ''} ${this.buildable ? 'buildable' : 'blocked'}"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+    onclick { this.selectFromBoard(); }
+  }
+}

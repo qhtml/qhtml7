@@ -1,0 +1,20 @@
+q-component td-flame-blast {
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 36px
+  q-property height: 18px
+  q-property rotation: 0
+
+  div {
+    class: "td-projectile"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+    transform: "rotate(${this.rotation}deg)"
+    img.td-fill {
+      src: "assets/particles/particleflame.png"
+      alt: "flame"
+    }
+  }
+}

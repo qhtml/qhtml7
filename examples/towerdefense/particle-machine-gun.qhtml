@@ -1,0 +1,20 @@
+q-component td-particle-machine-gun {
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 24px
+  q-property height: 8px
+  q-property rotation: 0
+
+  div {
+    class: "td-projectile"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+    transform: "rotate(${this.rotation}deg)"
+    img.td-fill {
+      src: "assets/particles/tracer.png"
+      alt: "tracer"
+    }
+  }
+}

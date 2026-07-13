@@ -1,11 +1,11 @@
-# QHTML7 - v7.3.5
+# QHTML7 - v7.3.6
 
 QHTML7 is a declarative UI language for building HTML, custom elements, reusable components, themed interfaces, signals, slots, data-driven loops, layouts, and component libraries with a compact block syntax.
 
 It is designed around a simple idea: describe the interface as a tree of objects, let named objects become reusable, and keep component structure readable enough that the source still feels like the UI.
 
 ```html
-<script src="dist/qhtml-wasm.js"></script>
+<script src="/dist/qhtml.js"></script>
 
 <q-html>
   div.app-shell {
@@ -34,13 +34,23 @@ This README focuses on the language surface and declarative runtime behavior. It
 
 ## Quick Start
 
+### Installation
+
+Copy the contents of `dist/` to the `dist/` directory on your web server, then include the QHTML entry point in any page that uses QHTML:
+
+```html
+<script src="/dist/qhtml.js"></script>
+```
+
+The entry point loads the QHTML7 WebAssembly runtime and compatibility routing files from the same `dist/` directory.
+
 Load the QHTML runtime, then place QHTML inside a `<q-html>` element.
 
 ```html
 <!doctype html>
 <html>
 <head>
-  <script src="dist/qhtml-wasm.js"></script>
+  <script src="/dist/qhtml.js"></script>
 </head>
 <body>
   <q-html>

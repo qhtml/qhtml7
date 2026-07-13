@@ -1,0 +1,68 @@
+q-worker td-path-worker {
+  q-property revision: 0
+  q-signal pathCalculated(result)
+
+  function key(row, col) {
+    return String(row) + "," + String(col);
+  }
+
+  function calculate(grid, rows, cols, entrances, exits, revision) {
+    this.revision = revision;
+    var result = { revision: revision, blocked: false, paths: {} };
+    for (var i = 0; i < entrances.length; i += 1) {
+      var path = this.findPath(grid, rows, cols, entrances[i], exits[0]);
+      if (path.length < 3) {
+        result.blocked = true;
+      }
+      result.paths[this.key(entrances[i].row, entrances[i].col)] = path;
+    }
+    this.pathCalculated(result);
+    return result;
+  }
+
+  function neighbors(grid, rows, cols, tile) {
+    var out = [];
+    var offsets = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (var i = 0; i < offsets.length; i += 1) {
+      var row = Number(tile.row) + offsets[i][0];
+      var col = Number(tile.col) + offsets[i][1];
+      if (row >= 0 && col >= 0 && row < rows && col < cols && grid[this.key(row, col)] === true) {
+        out.push({ row: row, col: col });
+      }
+    }
+    return out;
+  }
+
+  function findPath(grid, rows, cols, start, end) {
+    var open = [start];
+    var came = {};
+    var seen = {};
+    seen[this.key(start.row, start.col)] = true;
+    while (open.length > 0) {
+      var current = open.shift();
+      if (current.row === end.row && current.col === end.col) {
+        return this.reconstruct(came, current);
+      }
+      var neighbors = this.neighbors(grid, rows, cols, current);
+      for (var i = 0; i < neighbors.length; i += 1) {
+        var k = this.key(neighbors[i].row, neighbors[i].col);
+        if (seen[k] !== true) {
+          seen[k] = true;
+          came[k] = current;
+          open.push(neighbors[i]);
+        }
+      }
+    }
+    return [start];
+  }
+
+  function reconstruct(came, current) {
+    var out = [current];
+    var cur = current;
+    while (came[this.key(cur.row, cur.col)] !== undefined) {
+      cur = came[this.key(cur.row, cur.col)];
+      out.unshift(cur);
+    }
+    return out;
+  }
+}

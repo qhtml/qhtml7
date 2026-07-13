@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML7 Layout Builder</title>
+  <script src="q-editor.js"></script>
+  <script src="../dist/qhtml.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --lb-bg: #eef2f7;
+      --lb-panel: #ffffff;
+      --lb-line: #cbd5e1;
+      --lb-line-soft: #e2e8f0;
+      --lb-text: #0f172a;
+      --lb-muted: #64748b;
+      --lb-active: #2563eb;
+      --lb-danger: #b91c1c;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--lb-bg);
+      color: var(--lb-text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .lb-preview-host {
+      display: block;
+      min-width: 75vw;
+      min-height: 75vh;
+    }
+
+    .lb-preview-host q-html7,
+    .lb-preview-host q-html {
+      display: block;
+      width: 100%;
+      min-height: 75vh;
+    }
+
+    .lb-preview-host [qhtml-layout] {
+      outline: 1px solid rgba(148, 163, 184, 0.72);
+      outline-offset: -1px;
+      transition: outline-color 120ms ease, outline-width 120ms ease, background-color 120ms ease;
+    }
+
+    .lb-preview-host [data-lb-active="1"] {
+      outline: 3px solid var(--lb-active);
+      outline-offset: -3px;
+      background-color: rgba(37, 99, 235, 0.04);
+    }
+
+    .lb-context-menu,
+    .lb-submenu {
+      position: fixed;
+      z-index: 1000;
+      min-width: 168px;
+      padding: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+    }
+
+    .lb-context-menu[hidden],
+    .lb-submenu[hidden] {
+      display: none;
+    }
+
+    .lb-menu-item {
+      width: 100%;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #0f172a;
+      padding: 0 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .lb-menu-item:hover,
+    .lb-menu-item:focus-visible {
+      background: #eff6ff;
+      outline: none;
+    }
+
+    .lb-menu-item.lb-danger {
+      color: var(--lb-danger);
+    }
+
+    .lb-menu-separator {
+      height: 1px;
+      margin: 6px 4px;
+      background: #e2e8f0;
+    }
+
+    .lb-chevron {
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    dialog.lb-dialog {
+      width: min(980px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 0;
+      box-shadow: 0 28px 70px rgba(15, 23, 42, 0.26);
+    }
+
+    dialog.lb-dialog::backdrop {
+      background: rgba(15, 23, 42, 0.42);
+    }
+
+    .lb-dialog-header,
+    .lb-dialog-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+
+    .lb-dialog-actions {
+      justify-content: flex-end;
+      border-top: 1px solid #e2e8f0;
+      border-bottom: 0;
+    }
+
+    .lb-dialog-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .lb-dialog-body {
+      padding: 16px;
+      background: #ffffff;
+    }
+
+    .lb-dialog q-editor {
+      min-height: 54vh;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .lb-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .lb-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .lb-field label {
+      color: #475569;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .lb-field input,
+    .lb-field select {
+      min-height: 38px;
+      box-sizing: border-box;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      background: #ffffff;
+      color: #0f172a;
+    }
+
+    .lb-button {
+      min-height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 0 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .lb-button:hover {
+      background: #f8fafc;
+    }
+
+    .lb-button.primary {
+      border-color: #2563eb;
+      background: #2563eb;
+      color: #ffffff;
+    }
+
+    .lb-button.danger {
+      border-color: #fecaca;
+      color: var(--lb-danger);
+    }
+  </style>
+</head>
+<body>
+  <q-html version="7">
+q-style lbApp {
+  min-height: 100vh
+  width: 100%
+  box-sizing: border-box
+  padding: 18px
+}
+
+q-style lbTitlebar {
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 12px
+  padding: 14px 16px
+  border: 1px solid #cbd5e1
+  border-radius: 10px 10px 0 0
+  background: #ffffff
+}
+
+q-style lbTitle {
+  margin: 0
+  font-size: 20px
+  line-height: 1.2
+  font-weight: 850
+}
+
+q-style lbSubtitle {
+  margin: 0
+  color: #64748b
+  font-size: 13px
+}
+
+q-style lbToolbar {
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 10px
+  border-left: 1px solid #cbd5e1
+  border-right: 1px solid #cbd5e1
+  border-bottom: 1px solid #cbd5e1
+  background: #f8fafc
+}
+
+q-style lbToolbarButton {
+  min-height: 36px
+  border: 1px solid #cbd5e1
+  border-radius: 8px
+  background: #ffffff
+  color: #0f172a
+  padding: 0 14px
+  font-weight: 700
+  cursor: pointer
+}
+
+q-style lbStatus {
+  margin-left: auto
+  color: #64748b
+  font-size: 13px
+}
+
+q-style lbCanvas {
+  min-width: 75vw
+  min-height: 75vh
+  border-left: 1px solid #cbd5e1
+  border-right: 1px solid #cbd5e1
+  border-bottom: 1px solid #cbd5e1
+  border-radius: 0 0 10px 10px
+  background: #ffffff
+  overflow: auto
+  padding: 16px
+  box-sizing: border-box
+}
+
+q-style lbPreviewMount {
+  min-width: 75vw
+  min-height: 75vh
+  background: linear-gradient(90deg, rgba(226,232,240,.55) 1px, transparent 1px), linear-gradient(180deg, rgba(226,232,240,.55) 1px, transparent 1px)
+  background-size: 24px 24px
+}
+
+q-theme layoutBuilderTheme {
+  section.layout-builder-app { lbApp }
+  div.layout-builder-titlebar { lbTitlebar }
+  h1.layout-builder-title { lbTitle }
+  p.layout-builder-subtitle { lbSubtitle }
+  div.layout-builder-toolbar { lbToolbar }
+  button.layout-builder-tool-button { lbToolbarButton }
+  span.layout-builder-status { lbStatus }
+  main.layout-builder-canvas { lbCanvas }
+  div.layout-preview-mount { lbPreviewMount }
+}
+
+layoutBuilderTheme {
+  section.layout-builder-app {
+    div.layout-builder-titlebar {
+      div {
+        h1.layout-builder-title { text { QHTML7 Layout Builder } }
+        p.layout-builder-subtitle { text { Build q-layout, q-row, and q-col structures visually. } }
+      }
+    }
+
+    div.layout-builder-toolbar {
+      button.layout-builder-tool-button {
+        id: "lbNew"
+        type: "button"
+        text { New }
+      }
+      button.layout-builder-tool-button {
+        id: "lbSave"
+        type: "button"
+        text { Save }
+      }
+      button.layout-builder-tool-button {
+        id: "lbOpen"
+        type: "button"
+        text { Open }
+      }
+      span.layout-builder-status {
+        id: "lbStatus"
+        text { Ready }
+      }
+    }
+
+    main.layout-builder-canvas {
+      id: "layoutCanvas"
+      div.layout-preview-mount {
+        id: "layoutPreviewMount"
+      }
+    }
+  }
+}
+  </q-html>
+
+  <input id="lbOpenFile" type="file" accept=".qhtml,.txt,text/plain" hidden>
+
+  <div id="lbMenu" class="lb-context-menu" hidden>
+    <button class="lb-menu-item" type="button" data-menu-open="add">Add... <span class="lb-chevron">›</span></button>
+    <button class="lb-menu-item" type="button" data-action="edit">Edit...</button>
+    <button class="lb-menu-item" type="button" data-action="properties">Properties...</button>
+    <div class="lb-menu-separator"></div>
+    <button class="lb-menu-item lb-danger" type="button" data-action="delete">Delete...</button>
+  </div>
+
+  <div id="lbAddMenu" class="lb-submenu" hidden>
+    <button class="lb-menu-item" type="button" data-placement-kind="q-row">Row... <span class="lb-chevron">›</span></button>
+    <button class="lb-menu-item" type="button" data-placement-kind="q-col">Column... <span class="lb-chevron">›</span></button>
+    <button class="lb-menu-item" type="button" data-placement-kind="q-layout">Layout... <span class="lb-chevron">›</span></button>
+    <div class="lb-menu-separator"></div>
+    <button class="lb-menu-item" type="button" data-action="add-qhtml">QHTML</button>
+  </div>
+
+  <div id="lbPlacementMenu" class="lb-submenu" hidden>
+    <button class="lb-menu-item" type="button" data-placement="before">Before</button>
+    <button class="lb-menu-item" type="button" data-placement="after">After</button>
+    <button class="lb-menu-item" type="button" data-placement="child">as Child</button>
+    <div class="lb-menu-separator"></div>
+    <button class="lb-menu-item" type="button" data-placement="replace">Replace</button>
+  </div>
+
+  <dialog id="lbEditorDialog" class="lb-dialog">
+    <div class="lb-dialog-header">
+      <h2 id="lbEditorTitle" class="lb-dialog-title">Edit QHTML</h2>
+      <button id="lbEditorClose" class="lb-button" type="button">Close</button>
+    </div>
+    <div class="lb-dialog-body">
+      <q-editor id="lbEditor" auto-format="1"></q-editor>
+    </div>
+    <div class="lb-dialog-actions">
+      <button id="lbEditorCancel" class="lb-button" type="button">Cancel</button>
+      <button id="lbEditorSave" class="lb-button primary" type="button">Save</button>
+    </div>
+  </dialog>
+
+  <dialog id="lbPropertiesDialog" class="lb-dialog">
+    <div class="lb-dialog-header">
+      <h2 class="lb-dialog-title">Layout Properties</h2>
+      <button id="lbPropertiesClose" class="lb-button" type="button">Close</button>
+    </div>
+    <div class="lb-dialog-body">
+      <div class="lb-form-grid">
+        <div class="lb-field">
+          <label for="lbPropType">Type</label>
+          <select id="lbPropType">
+            <option value="q-layout">q-layout</option>
+            <option value="q-row">q-row</option>
+            <option value="q-col">q-col</option>
+          </select>
+        </div>
+        <div class="lb-field">
+          <label for="lbPropName">Name</label>
+          <input id="lbPropName" type="text" placeholder="optionalName">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropWidth">Width</label>
+          <input id="lbPropWidth" type="text" placeholder="100%">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropHeight">Height</label>
+          <input id="lbPropHeight" type="text" placeholder="row: 10vh, col: auto">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropFlex">Flex</label>
+          <input id="lbPropFlex" type="text" placeholder="1 1 0">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropGap">Gap</label>
+          <input id="lbPropGap" type="text" placeholder="12px">
+        </div>
+      </div>
+    </div>
+    <div class="lb-dialog-actions">
+      <button id="lbPropertiesCancel" class="lb-button" type="button">Cancel</button>
+      <button id="lbPropertiesSave" class="lb-button primary" type="button">Save</button>
+    </div>
+  </dialog>
+
+  <script>
+(() => {
+  "use strict";
+
+  let root = null;
+  let previewHost = null;
+  let activeId = "";
+  let menuTargetId = "";
+  let pendingPlacementKind = "";
+  let editorMode = "";
+  let editorTargetId = "";
+  let editorOriginal = "";
+  let nodeCounter = 0;
+
+  const DEFAULT_QHTML = 'div { padding: "18px"; text { Edit this QHTML content. } }';
+  const menus = [];
+
+  function nextId() {
+    nodeCounter += 1;
+    return "lb-node-" + Date.now().toString(36) + "-" + nodeCounter.toString(36);
+  }
+
+  function createNode(type, children, options) {
+    const opts = options || {};
+    const nodeChildren = Array.isArray(children) ? children.slice() : [];
+    if (opts.label !== false && (type === "q-row" || type === "q-col")) {
+      const label = {
+        id: nextId(),
+        type: "qhtml",
+        name: "",
+        props: {},
+        source: type === "q-row" ? "text { row }" : "text { col }",
+        children: []
+      };
+      nodeChildren.unshift(label);
+    }
+    return {
+      id: nextId(),
+      type: type,
+      name: "",
+      props: defaultPropsFor(type),
+      source: type === "qhtml" ? DEFAULT_QHTML : "",
+      children: nodeChildren
+    };
+  }
+
+  function defaultPropsFor(type) {
+    if (type === "q-layout") {
+      return { width: "100%", height: "100%", gap: "12px" };
+    }
+    if (type === "q-row") {
+      return { width: "100%", height: "10vh", flex: "0 0 auto", gap: "12px" };
+    }
+    if (type === "q-col") {
+      return { width: "10vw", height: "auto", flex: "0 0 auto", gap: "12px" };
+    }
+    return {};
+  }
+
+  function buildDefaultTree() {
+    return createNode("q-layout", [
+      createNode("q-row", [
+        createNode("q-col", [
+          createNode("qhtml", [])
+        ])
+      ])
+    ]);
+  }
+
+  function escapeQhtmlString(value) {
+    return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function indent(level) {
+    return "  ".repeat(level);
+  }
+
+  function nodeHeader(node) {
+    return node.name ? node.type + " " + node.name : node.type;
+  }
+
+  function propsToQHTML(node, level) {
+    const lines = [];
+    Object.keys(node.props || {}).forEach((key) => {
+      const value = String(node.props[key] || "").trim();
+      if (value) {
+        lines.push(indent(level) + key + ': "' + escapeQhtmlString(value) + '"');
+      }
+    });
+    lines.push(indent(level) + 'data-layout-id: "' + escapeQhtmlString(node.id) + '"');
+    return lines.join("\n");
+  }
+
+  function modelToQHTML(node, level) {
+    const depth = Number(level) || 0;
+    if (node.type === "qhtml") {
+      return String(node.source || "").split("\n").map((line) => indent(depth) + line).join("\n");
+    }
+
+    const lines = [indent(depth) + nodeHeader(node) + " {"];
+    const propText = propsToQHTML(node, depth + 1);
+    if (propText) {
+      lines.push(propText);
+    }
+    node.children.forEach((child) => {
+      const childText = modelToQHTML(child, depth + 1);
+      if (childText.trim()) {
+        lines.push(childText);
+      }
+    });
+    lines.push(indent(depth) + "}");
+    return lines.join("\n");
+  }
+
+  function setStatus(text) {
+    const status = document.getElementById("lbStatus");
+    if (status) {
+      status.textContent = text;
+    }
+  }
+
+  function renderPreview() {
+    if (!previewHost) {
+      return;
+    }
+    const source = modelToQHTML(root, 0);
+    previewHost.qhtmlSource = source;
+    if (typeof previewHost.fromQHTML === "function") {
+      previewHost.fromQHTML(source);
+    } else if (window.QHTML7 && window.QHTML7.runtime && typeof window.QHTML7.runtime.mountElement === "function") {
+      previewHost.textContent = source;
+      window.QHTML7.runtime.mountElement(previewHost);
+    } else {
+      previewHost.textContent = source;
+    }
+    window.setTimeout(refreshOutlines, 0);
+  }
+
+  function refreshOutlines() {
+    const mount = document.getElementById("layoutPreviewMount");
+    if (!mount) {
+      return;
+    }
+    mount.querySelectorAll("[qhtml-layout]").forEach((item) => {
+      item.removeAttribute("data-lb-active");
+    });
+    if (activeId) {
+      const active = mount.querySelector('[data-layout-id="' + CSS.escape(activeId) + '"]');
+      if (active) {
+        active.setAttribute("data-lb-active", "1");
+      }
+    }
+  }
+
+  function findNodeById(id, start, parent) {
+    const current = start || root;
+    if (!current) {
+      return null;
+    }
+    if (current.id === id) {
+      return { node: current, parent: parent || null };
+    }
+    for (let i = 0; i < current.children.length; i += 1) {
+      const found = findNodeById(id, current.children[i], current);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  function currentTarget() {
+    return findNodeById(menuTargetId || activeId) || { node: root, parent: null };
+  }
+
+  function insertNode(kind, placement) {
+    const found = currentTarget();
+    const target = found.node || root;
+    const parent = found.parent;
+    const next = createNode(kind, []);
+
+    if (placement === "child") {
+      target.children.push(next);
+    } else if (placement === "replace") {
+      if (parent) {
+        const index = parent.children.indexOf(target);
+        parent.children.splice(index, 1, next);
+      } else {
+        root = next;
+      }
+    } else if ((placement === "before" || placement === "after") && parent) {
+      const index = parent.children.indexOf(target);
+      parent.children.splice(index + (placement === "after" ? 1 : 0), 0, next);
+    } else {
+      target.children.push(next);
+    }
+
+    activeId = next.id;
+    hideMenus();
+    renderPreview();
+    setStatus(kind + " added");
+  }
+
+  function deleteActiveNode() {
+    const found = currentTarget();
+    if (!found.node) {
+      return;
+    }
+    if (!found.parent) {
+      root = buildDefaultTree();
+      activeId = root.id;
+    } else {
+      const index = found.parent.children.indexOf(found.node);
+      found.parent.children.splice(index, 1);
+      activeId = found.parent.id;
+    }
+    hideMenus();
+    renderPreview();
+    setStatus("Deleted");
+  }
+
+  function openEditor(mode, targetId, source) {
+    const dialog = document.getElementById("lbEditorDialog");
+    const title = document.getElementById("lbEditorTitle");
+    const editor = document.getElementById("lbEditor");
+    editorMode = mode;
+    editorTargetId = targetId || "";
+    editorOriginal = String(source || "");
+    title.textContent = mode === "add-qhtml" ? "Add QHTML" : "Edit QHTML";
+    if (typeof editor.setQhtmlSource === "function") {
+      editor.setQhtmlSource(editorOriginal);
+    } else {
+      editor.textContent = editorOriginal;
+    }
+    dialog.showModal();
+    hideMenus();
+  }
+
+  function editorValue() {
+    const editor = document.getElementById("lbEditor");
+    if (typeof editor.getQhtmlSource === "function") {
+      return editor.getQhtmlSource();
+    }
+    return editor.textContent || "";
+  }
+
+  function saveEditor() {
+    const value = editorValue();
+    if (editorMode === "add-qhtml") {
+      const target = currentTarget().node || root;
+      const next = createNode("qhtml", []);
+      next.source = value;
+      target.children.push(next);
+      activeId = target.id;
+    } else {
+      const found = findNodeById(editorTargetId);
+      if (found && found.node) {
+        const parsed = parseLayoutSource(value);
+        if (parsed && parsed.type !== "qhtml") {
+          replaceNode(found.node, parsed);
+          activeId = parsed.id;
+        } else {
+          found.node.type = "qhtml";
+          found.node.props = {};
+          found.node.source = value;
+          found.node.children = [];
+          activeId = found.node.id;
+        }
+      }
+    }
+    closeEditor(true);
+    renderPreview();
+    setStatus("Saved editor changes");
+  }
+
+  function replaceNode(oldNode, newNode) {
+    const found = findNodeById(oldNode.id);
+    if (!found || !found.parent) {
+      root = newNode;
+      return;
+    }
+    const index = found.parent.children.indexOf(oldNode);
+    found.parent.children.splice(index, 1, newNode);
+  }
+
+  function closeEditor(force) {
+    const dialog = document.getElementById("lbEditorDialog");
+    if (!force && editorValue() !== editorOriginal) {
+      const keep = window.confirm("Keep changes before closing?");
+      if (keep) {
+        saveEditor();
+        return;
+      }
+    }
+    dialog.close();
+    editorMode = "";
+    editorTargetId = "";
+    editorOriginal = "";
+  }
+
+  function openProperties() {
+    const found = currentTarget();
+    const node = found.node || root;
+    document.getElementById("lbPropType").value = node.type === "qhtml" ? "q-layout" : node.type;
+    document.getElementById("lbPropName").value = node.name || "";
+    document.getElementById("lbPropWidth").value = node.props.width || "";
+    document.getElementById("lbPropHeight").value = node.props.height || "";
+    document.getElementById("lbPropFlex").value = node.props.flex || "";
+    document.getElementById("lbPropGap").value = node.props.gap || "";
+    document.getElementById("lbPropertiesDialog").showModal();
+    hideMenus();
+  }
+
+  function saveProperties() {
+    const found = currentTarget();
+    const node = found.node || root;
+    const nextType = document.getElementById("lbPropType").value;
+    node.type = nextType;
+    node.name = document.getElementById("lbPropName").value.trim();
+    node.props = defaultPropsFor(nextType);
+    node.props.width = document.getElementById("lbPropWidth").value.trim();
+    node.props.height = document.getElementById("lbPropHeight").value.trim();
+    node.props.flex = document.getElementById("lbPropFlex").value.trim();
+    node.props.gap = document.getElementById("lbPropGap").value.trim();
+    document.getElementById("lbPropertiesDialog").close();
+    renderPreview();
+    setStatus("Properties updated");
+  }
+
+  function exportFile() {
+    const blob = new Blob([modelToQHTML(root, 0) + "\n"], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "layout.qhtml";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Exported layout.qhtml");
+  }
+
+  function openFile(file) {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      const source = String(reader.result || "");
+      const parsed = parseLayoutSource(source);
+      root = parsed || buildDefaultTree();
+      activeId = root.id;
+      renderPreview();
+      setStatus("Opened " + file.name);
+    });
+    reader.readAsText(file);
+  }
+
+  function getActiveSource() {
+    const found = currentTarget();
+    return modelToQHTML(found.node || root, 0);
+  }
+
+  function handleCanvasPointer(event) {
+    const mount = document.getElementById("layoutPreviewMount");
+    if (!mount) {
+      return;
+    }
+    const element = event.target.closest ? event.target.closest("[data-layout-id]") : null;
+    activeId = element && mount.contains(element) ? element.getAttribute("data-layout-id") : root.id;
+    refreshOutlines();
+  }
+
+  function showMenu(menu, x, y) {
+    hideMenus();
+    menu.hidden = false;
+    menu.style.left = Math.min(x, window.innerWidth - menu.offsetWidth - 8) + "px";
+    menu.style.top = Math.min(y, window.innerHeight - menu.offsetHeight - 8) + "px";
+  }
+
+  function showSubmenu(menu, sourceButton) {
+    const rect = sourceButton.getBoundingClientRect();
+    menu.hidden = false;
+    menu.style.left = Math.min(rect.right + 4, window.innerWidth - menu.offsetWidth - 8) + "px";
+    menu.style.top = Math.min(rect.top, window.innerHeight - menu.offsetHeight - 8) + "px";
+  }
+
+  function hideMenus() {
+    menus.forEach((menu) => {
+      menu.hidden = true;
+    });
+  }
+
+  function bindMenus() {
+    const menu = document.getElementById("lbMenu");
+    const addMenu = document.getElementById("lbAddMenu");
+    const placementMenu = document.getElementById("lbPlacementMenu");
+    menus.push(menu, addMenu, placementMenu);
+
+    menu.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) {
+        return;
+      }
+      const action = button.getAttribute("data-action");
+      const open = button.getAttribute("data-menu-open");
+      if (open === "add") {
+        showSubmenu(addMenu, button);
+      } else if (action === "edit") {
+        const target = currentTarget().node || root;
+        openEditor("edit", target.id, getActiveSource());
+      } else if (action === "properties") {
+        openProperties();
+      } else if (action === "delete") {
+        deleteActiveNode();
+      }
+    });
+
+    addMenu.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) {
+        return;
+      }
+      const kind = button.getAttribute("data-placement-kind");
+      const action = button.getAttribute("data-action");
+      if (kind) {
+        pendingPlacementKind = kind;
+        showSubmenu(placementMenu, button);
+      } else if (action === "add-qhtml") {
+        openEditor("add-qhtml", menuTargetId, "");
+      }
+    });
+
+    placementMenu.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) {
+        return;
+      }
+      insertNode(pendingPlacementKind, button.getAttribute("data-placement"));
+      pendingPlacementKind = "";
+    });
+
+    document.addEventListener("click", (event) => {
+      const insideMenu = menus.some((item) => item.contains(event.target));
+      if (!insideMenu) {
+        hideMenus();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        hideMenus();
+      }
+    });
+  }
+
+  function bindDialogs() {
+    document.getElementById("lbEditorSave").addEventListener("click", saveEditor);
+    document.getElementById("lbEditorCancel").addEventListener("click", () => closeEditor(false));
+    document.getElementById("lbEditorClose").addEventListener("click", () => closeEditor(false));
+    document.getElementById("lbEditorDialog").addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeEditor(false);
+    });
+
+    document.getElementById("lbPropertiesSave").addEventListener("click", saveProperties);
+    document.getElementById("lbPropertiesCancel").addEventListener("click", () => {
+      document.getElementById("lbPropertiesDialog").close();
+    });
+    document.getElementById("lbPropertiesClose").addEventListener("click", () => {
+      document.getElementById("lbPropertiesDialog").close();
+    });
+  }
+
+  function bindToolbar() {
+    document.getElementById("lbNew").addEventListener("click", () => {
+      root = buildDefaultTree();
+      activeId = root.id;
+      renderPreview();
+      setStatus("New layout");
+    });
+    document.getElementById("lbSave").addEventListener("click", exportFile);
+    document.getElementById("lbOpen").addEventListener("click", () => {
+      document.getElementById("lbOpenFile").click();
+    });
+    document.getElementById("lbOpenFile").addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        openFile(file);
+      }
+      event.target.value = "";
+    });
+  }
+
+  function bindCanvas() {
+    const canvas = document.getElementById("layoutCanvas");
+    canvas.addEventListener("mousemove", handleCanvasPointer);
+    canvas.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      handleCanvasPointer(event);
+      menuTargetId = activeId || root.id;
+      showMenu(document.getElementById("lbMenu"), event.clientX, event.clientY);
+    });
+  }
+
+  function stripComments(source) {
+    return String(source || "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  }
+
+  function findMatchingBrace(source, openIndex) {
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    for (let i = openIndex; i < source.length; i += 1) {
+      const ch = source[i];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  function parseLayoutSource(source) {
+    const cleaned = stripComments(source);
+    const match = /\b(q-layout|q-row|q-col)\b\s*([A-Za-z_][\w-]*)?\s*\{/.exec(cleaned);
+    if (!match) {
+      const qhtmlNode = createNode("qhtml", []);
+      qhtmlNode.source = source;
+      return qhtmlNode;
+    }
+    return parseLayoutAt(cleaned, match.index);
+  }
+
+  function parseLayoutAt(source, start) {
+    const header = /\b(q-layout|q-row|q-col)\b\s*([A-Za-z_][\w-]*)?\s*\{/.exec(source.slice(start));
+    if (!header) {
+      return null;
+    }
+    const type = header[1];
+    const name = header[2] || "";
+    const open = start + header.index + header[0].lastIndexOf("{");
+    const close = findMatchingBrace(source, open);
+    const body = close >= 0 ? source.slice(open + 1, close) : "";
+    const node = createNode(type, [], { label: false });
+    node.name = name;
+    parseProps(body, node);
+    parseChildren(body, node);
+    return node;
+  }
+
+  function topLevelText(body) {
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    let out = "";
+    for (let i = 0; i < body.length; i += 1) {
+      const ch = body[i];
+      if (quote) {
+        if (depth === 0) {
+          out += ch;
+        }
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        if (depth === 0) {
+          out += ch;
+        }
+      } else if (ch === "{") {
+        depth += 1;
+        if (depth === 1) {
+          out += "\n";
+        }
+      } else if (ch === "}") {
+        depth = Math.max(0, depth - 1);
+        if (depth === 0) {
+          out += "\n";
+        }
+      } else if (depth === 0) {
+        out += ch;
+      }
+    }
+    return out;
+  }
+
+  function stripPropertyLines(source) {
+    return String(source || "")
+      .replace(/^\s*[A-Za-z_][\w-]*\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)\s*;?/gm, "")
+      .trim();
+  }
+
+  function parseProps(body, node) {
+    const propertySource = topLevelText(body);
+    const propRe = /^\s*([A-Za-z_][\w-]*)\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)/gm;
+    let match;
+    while ((match = propRe.exec(propertySource))) {
+      const key = match[1];
+      let value = match[2] || "";
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\'/g, "'");
+      }
+      if (key === "data-layout-id") {
+        node.id = value || nextId();
+      } else {
+        node.props[key] = value;
+      }
+    }
+  }
+
+  function parseChildren(body, node) {
+    let cursor = 0;
+    const childRe = /\b(q-layout|q-row|q-col)\b\s*([A-Za-z_][\w-]*)?\s*\{/g;
+    let match;
+    while ((match = childRe.exec(body))) {
+      const before = stripPropertyLines(body.slice(cursor, match.index));
+      if (before) {
+        const qhtmlNode = createNode("qhtml", []);
+        qhtmlNode.source = before;
+        node.children.push(qhtmlNode);
+      }
+      const open = match.index + match[0].lastIndexOf("{");
+      const close = findMatchingBrace(body, open);
+      if (close < 0) {
+        break;
+      }
+      const parsed = parseLayoutAt(body, match.index);
+      if (parsed) {
+        node.children.push(parsed);
+      }
+      cursor = close + 1;
+      childRe.lastIndex = cursor;
+    }
+    const tail = body.slice(cursor).trim();
+    const cleanedTail = stripPropertyLines(tail);
+    if (cleanedTail) {
+      const qhtmlNode = createNode("qhtml", []);
+      qhtmlNode.source = cleanedTail;
+      node.children.push(qhtmlNode);
+    }
+  }
+
+  function createPreviewHost() {
+    const mount = document.getElementById("layoutPreviewMount");
+    previewHost = document.createElement("q-html7");
+    previewHost.id = "layoutPreview";
+    previewHost.className = "lb-preview-host";
+    mount.innerHTML = "";
+    mount.appendChild(previewHost);
+  }
+
+  function init() {
+    if (previewHost) {
+      return;
+    }
+    root = buildDefaultTree();
+    activeId = root.id;
+    createPreviewHost();
+    bindToolbar();
+    bindCanvas();
+    bindMenus();
+    bindDialogs();
+    renderPreview();
+  }
+
+  if (document.getElementById("layoutPreviewMount")) {
+    init();
+  } else {
+    document.addEventListener("QHTMLContentLoaded", init, { once: true });
+  }
+})();
+  </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+q-style tdRootStyle {
+  width: 100vw
+  min-height: 100vh
+  box-sizing: border-box
+  padding: 14px
+  background: #020403
+  color: #0aec28
+  font-family: Consolas, "Courier New", monospace
+}
+
+q-style tdHudStyle {
+  width: 100%
+  min-height: 34px
+  display: flex
+  align-items: center
+  gap: 22px
+  box-sizing: border-box
+  padding: 6px 10px
+  border: 1px solid rgba(10, 236, 40, 0.36)
+  background: rgba(0, 0, 0, 0.72)
+  color: #0aec28
+  text-shadow: 0 0 8px rgba(10, 236, 40, 0.64)
+}
+
+q-style tdStageStyle {
+  position: relative
+  width: 1500px
+  height: 1000px
+  max-width: calc(100vw - 28px)
+  max-height: calc(100vh - 160px)
+  overflow: auto
+  background: #000000
+  border: 1px solid rgba(10, 236, 40, 0.28)
+  transform: perspective(1300px) rotateX(20deg)
+  transform-origin: 50% 0%
+}
+
+q-style tdBoardSurfaceStyle {
+  position: relative
+  width: 1500px
+  height: 1000px
+  background: #000000
+}
+
+q-style tdStoreStyle {
+  position: fixed
+  left: 14px
+  right: 14px
+  bottom: 14px
+  z-index: 900
+  align-items: center
+  gap: 12px
+  min-height: 82px
+  box-sizing: border-box
+  padding: 14px
+  border: 1px solid rgba(10, 236, 40, 0.48)
+  background: rgba(5, 42, 12, 0.94)
+  color: #d1fae5
+}
+
+q-style tdButtonStyle {
+  min-height: 44px
+  border: 1px solid rgba(10, 236, 40, 0.64)
+  background: rgba(10, 236, 40, 0.16)
+  color: #d1fae5
+  padding: 0 18px
+  font-weight: 800
+  cursor: pointer
+}
+
+q-style tdTileStyle {
+  position: absolute
+  box-sizing: border-box
+  border: 1px solid #f9f0f0
+  background: #000000
+}
+
+q-style tdTileSquareStyle { background: #000000 }
+q-style tdTileWallStyle { background: #707070 }
+q-style tdTileEntranceStyle { background: #087d28 }
+q-style tdTileExitStyle { background: #b91c1c }
+q-style tdTileSelectedStyle { background: #ffffff }
+q-style tdTileBuildableStyle { border-color: darkGreen }
+q-style tdTileBlockedStyle { border-color: darkRed }
+
+q-style tdEntityStyle {
+  position: absolute
+  box-sizing: border-box
+  z-index: 105
+  transition-property: left, top, opacity, transform
+  transition-timing-function: linear
+}
+
+q-style tdGunStyle {
+  position: absolute
+  box-sizing: border-box
+  border: 2px solid #f9f0f0
+  background: #000000
+  z-index: 120
+}
+
+q-style tdProjectileStyle {
+  position: absolute
+  z-index: 300
+  pointer-events: none
+  transition-property: left, top, opacity, transform
+  transition-timing-function: linear
+}
+
+q-style tdImageFillStyle {
+  width: 100%
+  height: 100%
+  object-fit: contain
+  display: block
+}
+
+q-theme tdTheme {
+  section.td-root { tdRootStyle }
+  div.td-hud { tdHudStyle }
+  div.td-stage { tdStageStyle }
+  div.td-board-surface { tdBoardSurfaceStyle }
+  div.td-store { tdStoreStyle }
+  button.td-button { tdButtonStyle }
+  div.td-tile { tdTileStyle }
+  div.td-tile.square { tdTileSquareStyle }
+  div.td-tile.wall { tdTileWallStyle }
+  div.td-tile.entrance { tdTileEntranceStyle }
+  div.td-tile.exit { tdTileExitStyle }
+  div.td-tile.selected { tdTileSelectedStyle }
+  div.td-tile.buildable { tdTileBuildableStyle }
+  div.td-tile.blocked { tdTileBlockedStyle }
+  div.td-entity { tdEntityStyle }
+  div.td-gun { tdGunStyle }
+  div.td-projectile { tdProjectileStyle }
+  img.td-fill { tdImageFillStyle }
+}

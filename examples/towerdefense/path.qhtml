@@ -1,0 +1,15 @@
+q-component td-path {
+  q-property nodes: []
+
+  function appendNode(row, col) {
+    this.nodes.push({ row: row, col: col });
+  }
+
+  function clearPath() {
+    this.nodes = [];
+  }
+
+  function cloneNodes() {
+    return this.nodes.slice();
+  }
+}

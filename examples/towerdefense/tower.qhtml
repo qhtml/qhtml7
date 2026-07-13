@@ -1,0 +1,30 @@
+q-component td-tower {
+  q-property gunId: ""
+  q-property type: 1
+  q-property row: 0
+  q-property col: 0
+  q-property range: 150
+  q-property damage: 1
+  q-property reload: 1000
+  q-signal upgraded(kind, value)
+
+  function applyGun(gun) {
+    this.gunId = gun.id;
+    this.type = gun.type;
+    this.row = gun.row;
+    this.col = gun.col;
+    this.range = gun.range;
+    this.damage = gun.damage;
+    this.reload = gun.reload;
+  }
+
+  function upgradeRange(multiplier) {
+    this.range = Math.round(Number(this.range) * Number(multiplier));
+    this.upgraded("range", this.range);
+  }
+
+  function upgradeDamage(multiplier) {
+    this.damage = Math.round(Number(this.damage) * Number(multiplier));
+    this.upgraded("damage", this.damage);
+  }
+}

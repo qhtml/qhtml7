@@ -1,0 +1,17 @@
+q-component td-particle-fireball {
+  q-property x: 0px
+  q-property y: 0px
+  q-property size: 28px
+
+  div {
+    class: "td-projectile"
+    x: this.x
+    y: this.y
+    width: this.size
+    height: this.size
+    img.td-fill {
+      src: "assets/particles/rocketbacklit.png"
+      alt: "fireball"
+    }
+  }
+}

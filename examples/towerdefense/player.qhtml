@@ -1,0 +1,13 @@
+q-component td-player {
+  q-property money: 4000
+  q-property health: 10
+  q-property isDefender: true
+  q-property isAttacker: false
+  q-signal moneyChanged(money)
+  q-signal healthChanged(health)
+
+  function award(amount) {
+    this.money = Number(this.money) + Number(amount);
+    this.moneyChanged(this.money);
+  }
+}

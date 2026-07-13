@@ -1,0 +1,39 @@
+q-component td-map {
+  q-property rowCount: 20
+  q-property colCount: 30
+  q-property tileWidth: 50
+  q-property tileHeight: 50
+  q-signal placeWall(row, col)
+  q-signal placeEntrance(row, col)
+  q-signal placeExit(row, col)
+  q-signal placeSquare(row, col)
+
+  function createBlankMap() {
+    for (var row = 0; row < this.rowCount; row += 1) {
+      for (var col = 0; col < this.colCount; col += 1) {
+        var placed = false;
+        if (row === 0 || col === 0 || row === this.rowCount - 1 || col === this.colCount - 1) {
+          if (row === 0 && col % 8 === 1) {
+            this.placeEntrance(row, col);
+            placed = true;
+          }
+          if ((row === 0 && (col % 8 !== 1 || col % 8 === 2)) || col === 0 || col === this.colCount - 1 || (row === this.rowCount - 1 && col !== Math.round(this.rowCount * 0.5))) {
+            this.placeWall(row, col);
+            placed = true;
+          }
+          if (row === this.rowCount - 1 && col === Math.round(this.rowCount * 0.5)) {
+            this.placeExit(row, col);
+            placed = true;
+          }
+        }
+        if (placed === false && (((col * this.colCount) + row) % 17) === 0) {
+          this.placeWall(row, col);
+          placed = true;
+        }
+        if (placed === false) {
+          this.placeSquare(row, col);
+        }
+      }
+    }
+  }
+}

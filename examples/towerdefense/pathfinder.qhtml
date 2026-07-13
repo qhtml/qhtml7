@@ -1,0 +1,61 @@
+q-component td-pathfinder {
+  function key(row, col) {
+    return String(row) + "," + String(col);
+  }
+
+  function heuristic(a, b) {
+    return Math.abs(Number(a.row) - Number(b.row)) + Math.abs(Number(a.col) - Number(b.col));
+  }
+
+  function findPath(board, start, end) {
+    var open = [start];
+    var cameFrom = {};
+    var gScore = {};
+    var fScore = {};
+    var startKey = this.key(start.row, start.col);
+    gScore[startKey] = 0;
+    fScore[startKey] = this.heuristic(start, end);
+
+    while (open.length > 0) {
+      var bestIndex = 0;
+      var bestScore = 99999999;
+      for (var i = 0; i < open.length; i += 1) {
+        var score = fScore[this.key(open[i].row, open[i].col)];
+        if (score <= bestScore) {
+          bestScore = score;
+          bestIndex = i;
+        }
+      }
+      var current = open.splice(bestIndex, 1)[0];
+      if (current.row === end.row && current.col === end.col) {
+        return this.reconstruct(cameFrom, current);
+      }
+      var neighbors = board.neighborsFor(current);
+      for (var n = 0; n < neighbors.length; n += 1) {
+        var neighbor = neighbors[n];
+        var nKey = this.key(neighbor.row, neighbor.col);
+        var cKey = this.key(current.row, current.col);
+        var tentative = Number(gScore[cKey]) + 1;
+        if (gScore[nKey] === undefined || tentative < Number(gScore[nKey])) {
+          cameFrom[nKey] = current;
+          gScore[nKey] = tentative;
+          fScore[nKey] = tentative + this.heuristic(neighbor, end);
+          if (open.indexOf(neighbor) < 0) {
+            open.push(neighbor);
+          }
+        }
+      }
+    }
+    return [start];
+  }
+
+  function reconstruct(cameFrom, current) {
+    var out = [current];
+    var cur = current;
+    while (cameFrom[this.key(cur.row, cur.col)] !== undefined) {
+      cur = cameFrom[this.key(cur.row, cur.col)];
+      out.unshift(cur);
+    }
+    return out;
+  }
+}

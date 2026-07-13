@@ -1,0 +1,30 @@
+q-component td-property-sheet {
+  q-property gunRange: { 1: 150, 2: 150, 3: 145 }
+  q-property gunRate: { 1: 10, 2: 4, 3: 3 }
+  q-property gunReload: { 1: 1000, 2: 150, 3: 40 }
+  q-property gunDamage: { 1: 4200, 2: 3, 3: 100 }
+  q-property gunSplashDamage: { 1: 3000, 2: 2, 3: 80 }
+  q-property gunSplashDistance: { 1: 20, 2: 10, 3: 50 }
+  q-property enemySpeed: { 1: 800, 2: 600, 3: 700, 4: 650 }
+  q-property enemyHealth: { 1: 750, 2: 450, 3: 600, 4: 700 }
+  q-property enemyCost: { 1: 50, 2: 50, 3: 50, 4: 50 }
+
+  function gunProps(type) {
+    return {
+      range: this.gunRange[type],
+      rate: this.gunRate[type],
+      reload: this.gunReload[type],
+      damage: this.gunDamage[type],
+      splashDamage: this.gunSplashDamage[type],
+      splashDistance: this.gunSplashDistance[type]
+    };
+  }
+
+  function enemyProps(type) {
+    return {
+      speed: this.enemySpeed[type],
+      health: this.enemyHealth[type],
+      cost: this.enemyCost[type]
+    };
+  }
+}

@@ -1,0 +1,3 @@
+q-component td-team {
+  q-property side: "defender"
+}

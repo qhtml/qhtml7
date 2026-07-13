@@ -1,0 +1,30 @@
+q-component td-gun {
+  q-property gunId: ""
+  q-property game: null
+  q-property type: 1
+  q-property x: 0px
+  q-property y: 0px
+  q-property width: 50px
+  q-property height: 50px
+  q-property rotation: 0
+  q-property selected: false
+
+  function selectGun() {
+    this.game.selectGun(this.gunId);
+  }
+
+  div {
+    class: "td-gun ${this.selected ? 'selected' : ''}"
+    x: this.x
+    y: this.y
+    width: this.width
+    height: this.height
+    onclick { this.selectGun(); }
+    img.td-fill {
+      src: "assets/guns/${this.type}.png"
+      alt: "gun"
+      transform: "rotate(${this.rotation}deg)"
+      transitionDuration: "200ms"
+    }
+  }
+}
