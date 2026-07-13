@@ -21,6 +21,21 @@
   globalScope.QHTML7_SCRIPT_BASE = base;
   globalScope.QHTML6_SCRIPT_URL = globalScope.QHTML6_SCRIPT_URL || qhtml6Url;
 
+  (function hideUnprocessedQHTMLHosts() {
+    const hidden = new WeakSet();
+    document.querySelectorAll("q-html").forEach((item) => {
+      hidden.add(item);
+      item.style.display = "none";
+    });
+    document.addEventListener("QHTMLContentLoaded", function restoreQHTMLHosts() {
+      document.querySelectorAll("q-html").forEach((item) => {
+        if (hidden.has(item)) {
+          item.style.removeProperty("display");
+        }
+      });
+    });
+  })();
+
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const existing = Array.from(document.scripts || []).find((script) => script.src === src);
