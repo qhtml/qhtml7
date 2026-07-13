@@ -6,8 +6,11 @@
   const ELEMENT_NAME_7 = "q-html7";
   const ELEMENT_NAME_6 = "q-html6";
   const ELEMENT_NAME_ERROR = "q-html-error";
-  const QHTML6_RESOURCE_PATH = ":/resources/qhtml6/qhtml.js";
   const QHTML_VERSION = "v7.3.4";
+  const currentScript = document.currentScript;
+  const QHTML7_RUNTIME_BASE = globalScope.QHTML7_SCRIPT_BASE ||
+    globalScope.QHTML_SCRIPT_BASE ||
+    (currentScript && currentScript.src ? new URL(".", currentScript.src).href : new URL("./", document.baseURI).href);
   const QHTML_IMPORT_MAX_PER_RESOURCE_DEFAULT = 100;
   const QHTML_CONTENT_LOADED_EVENT = "QHTMLContentLoaded";
   const QHTML_ROOT_SELECTOR = `${ELEMENT_NAME},${ELEMENT_NAME_7}`;
@@ -1467,99 +1470,24 @@
     };
   }
 
-  function patchQHTML6RuntimeSource(source) {
-    return String(source || "")
-      .replace(
-        "async function loadImportSource(url, options) {",
-        "async function loadImportSource(url, options) {\n" +
-          "    if (global.__qhtml6LoadImportSourceFromResource) {\n" +
-          "      const resourceSource = global.__qhtml6LoadImportSourceFromResource(url, options || {});\n" +
-          "      if (resourceSource !== null && typeof resourceSource !== \"undefined\") {\n" +
-          "        return normalizeImportedSource(resourceSource);\n" +
-          "      }\n" +
-          "    }"
-      )
-      .replace(
-        "function unmountWithinNode(node) {\n    if (!node || node.nodeType !== 1) {",
-        "function unmountWithinNode(node) {\n    if (node && node.__qhtmlPromotingToQHTML === true) {\n      return;\n    }\n    if (!node || node.nodeType !== 1) {"
-      )
-      .replace(
-        "disconnectedCallback() {\n        runtimeApi.unmountQHtmlElement(this);\n      }",
-        "disconnectedCallback() {\n        if (this.__qhtmlPromotingToQHTML === true) {\n          return;\n        }\n        runtimeApi.unmountQHtmlElement(this);\n      }"
-      )
-      .replace(/QHtml/g, "QHtml6")
-      .replace(/QHTML_VERSION/g, "QHTML6_VERSION")
-      .replace(/QModel/g, "QModel6")
-      .replace(/QArray/g, "QArray6")
-      .replace(/QMap/g, "QMap6")
-      .replace(/QCallback/g, "QCallback6")
-      .replace(/QSignal/g, "QSignal6")
-      .replace(/QProperty/g, "QProperty6")
-      .replace(/QComponentInstance/g, "QComponentInstance6")
-      .replace(/QVar/g, "QVar6")
-      .replace(/QCssValue/g, "QCssValue6")
-      .replace(/QCSSValue/g, "QCSSValue6");
-  }
-
-  function qhtml6ResourceImportPath(url, options) {
-    const candidates = [];
-    const addCandidate = (value) => {
-      const text = String(value || "").trim();
-      if (text) {
-        candidates.push(text);
-      }
-    };
-    addCandidate(options && options.path);
-    addCandidate(url);
-
-    for (const candidate of candidates) {
-      const normalized = candidate.replace(/\\/g, "/").split("?")[0].split("#")[0];
-      const componentMatch = normalized.match(/(?:^|\/)(?:dist\/)?q-components\/([^/]+)$/);
-      if (componentMatch && componentMatch[1]) {
-        return `:/resources/qhtml6/q-components/${componentMatch[1]}`;
-      }
-      const aggregateMatch = normalized.match(/(?:^|\/)(?:dist\/)?q-components\.qhtml$/);
-      if (aggregateMatch) {
-        return ":/resources/qhtml6/q-components.qhtml";
-      }
-    }
-    return "";
-  }
-
-  function qhtml6LoadImportSourceFromResource(url, options) {
-    const resourcePath = qhtml6ResourceImportPath(url, options || {});
-    if (!resourcePath) {
-      return null;
-    }
-    const source = qhtmlResourceText(resourcePath);
-    return source == null || String(source).length === 0 ? null : String(source);
-  }
-
   function loadQHTML6Runtime() {
     if (globalScope.__qhtml6FallbackRuntimePromise) {
       return globalScope.__qhtml6FallbackRuntimePromise;
     }
     globalScope.__qhtml6FallbackRuntimePromise = new Promise((resolve, reject) => {
-      const source = qhtmlResourceText(QHTML6_RESOURCE_PATH);
-      if (!source) {
-        reject(new Error(`QHTML6 resource not found: ${QHTML6_RESOURCE_PATH}`));
+      if (globalScope.QHtml6) {
+        resolve(globalScope.QHtml6);
         return;
       }
-
-      globalScope.__qhtml6LoadImportSourceFromResource = qhtml6LoadImportSourceFromResource;
-      const blob = new Blob([patchQHTML6RuntimeSource(source)], { type: "text/javascript" });
-      const blobUrl = URL.createObjectURL(blob);
       const script = document.createElement("script");
       script.async = false;
       script.onload = function onQHTML6Loaded() {
-        URL.revokeObjectURL(blobUrl);
         resolve(globalScope.QHtml6 || null);
       };
       script.onerror = function onQHTML6Error() {
-        URL.revokeObjectURL(blobUrl);
         reject(new Error("QHTML6 fallback script failed to load."));
       };
-      script.src = blobUrl;
+      script.src = globalScope.QHTML6_SCRIPT_URL || new URL("qhtml6/qhtml.js", QHTML7_RUNTIME_BASE).href;
       document.head.appendChild(script);
     });
     return globalScope.__qhtml6FallbackRuntimePromise;

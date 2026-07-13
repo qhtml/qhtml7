@@ -13,6 +13,21 @@ var Module;
 
   const base = new URL(".", currentScript.src).href;
 
+  if (globalScope.QHTML_ENTRYPOINT_EXECUTED !== true &&
+      globalScope.QHTML_JS_ENTRYPOINT_EXECUTED !== true) {
+    const entryScript = document.createElement("script");
+    entryScript.src = base + "qhtml.js";
+    entryScript.async = false;
+    entryScript.onerror = () => {
+      throw new Error("qhtml-wasm.js direct load failed to delegate to qhtml.js");
+    };
+    if (currentScript.parentNode) {
+      currentScript.parentNode.removeChild(currentScript);
+    }
+    document.head.appendChild(entryScript);
+    return;
+  }
+
   if (globalScope.QHTML7Ready) {
     return;
   }
