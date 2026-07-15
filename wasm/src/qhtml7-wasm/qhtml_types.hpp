@@ -186,6 +186,8 @@ class QHTMLSignalBus;
 class QHTMLComponentSlot;
 class QHTMLComponentInstance;
 class QHTMLComponentInstanceSlot;
+class QHTMLProperty;
+class QHTMLPropertyAssignment;
 class QHTMLWorker;
 class QHTMLStyle;
 class QHTMLTheme;
@@ -570,10 +572,13 @@ public:
         }
     }
 
-    void setPropertyJs(const std::string &key, const std::string &value)
+    void setPropertyTextJs(const std::string &key, const std::string &value)
     {
-        setProperty(QString::fromStdString(key), QString::fromStdString(value));
+        setPropertyValue(QString::fromStdString(key), QString::fromStdString(value));
     }
+
+    bool setPropertyValue(const QString &key, const QString &value);
+    bool setPropertyJs(const std::string &key, emscripten::val value);
 
     QString property(const QString &key) const { return qhtmlProperties.value(key); }
     std::string propertyJs(const std::string &key) const
@@ -1724,6 +1729,11 @@ protected:
         QStringList declarations;
         declarations << QStringLiteral("display:flex");
         declarations << QStringLiteral("flex-direction:") + m_direction;
+        if (m_direction == QStringLiteral("row")) {
+            declarations << QStringLiteral("flex-wrap:") + assignmentValue(QStringLiteral("flexWrap"),
+                                                                            assignmentValue(QStringLiteral("wrap"), QStringLiteral("wrap")));
+            declarations << QStringLiteral("align-items:") + assignmentValue(QStringLiteral("alignItems"), QStringLiteral("stretch"));
+        }
         declarations << QStringLiteral("box-sizing:border-box");
         declarations << QStringLiteral("min-width:0");
         declarations << QStringLiteral("min-height:0");
@@ -1731,14 +1741,21 @@ protected:
         if (keyword() == QStringLiteral("q-layout")) {
             declarations << QStringLiteral("width:") + assignmentValue(QStringLiteral("width"), QStringLiteral("100%"));
             declarations << QStringLiteral("height:") + assignmentValue(QStringLiteral("height"), QStringLiteral("100%"));
+        } else if (keyword() == QStringLiteral("q-col") && parentIsRowLayout()) {
+            declarations << QStringLiteral("flex:") + assignmentValue(QStringLiteral("flex"), defaultFlexValue());
+            declarations << QStringLiteral("height:") + assignmentValue(QStringLiteral("height"), QStringLiteral("100%"));
+            declarations << QStringLiteral("min-width:") + responsiveColumnMinWidth();
+            declarations << QStringLiteral("max-width:100%");
         } else {
-            declarations << QStringLiteral("flex:") + assignmentValue(QStringLiteral("flex"), QStringLiteral("1 1 0"));
+            declarations << QStringLiteral("flex:") + assignmentValue(QStringLiteral("flex"), defaultFlexValue());
             declarations << QStringLiteral("width:") + assignmentValue(QStringLiteral("width"), QStringLiteral("100%"));
             declarations << QStringLiteral("height:") + assignmentValue(QStringLiteral("height"), QStringLiteral("100%"));
         }
 
         appendOptionalDeclaration(declarations, QStringLiteral("gap"));
-        appendOptionalDeclaration(declarations, QStringLiteral("align-items"), QStringLiteral("alignItems"));
+        if (m_direction != QStringLiteral("row")) {
+            appendOptionalDeclaration(declarations, QStringLiteral("align-items"), QStringLiteral("alignItems"));
+        }
         appendOptionalDeclaration(declarations, QStringLiteral("justify-content"), QStringLiteral("justifyContent"));
         appendOptionalDeclaration(declarations, QStringLiteral("overflow"));
         appendOptionalDeclaration(declarations, QStringLiteral("padding"));
@@ -1753,6 +1770,13 @@ protected:
             QStringLiteral("width"),
             QStringLiteral("height"),
             QStringLiteral("flex"),
+            QStringLiteral("flexWrap"),
+            QStringLiteral("flex-wrap"),
+            QStringLiteral("wrap"),
+            QStringLiteral("minColWidth"),
+            QStringLiteral("min-col-width"),
+            QStringLiteral("minWidth"),
+            QStringLiteral("min-width"),
             QStringLiteral("gap"),
             QStringLiteral("alignItems"),
             QStringLiteral("align-items"),
@@ -1795,6 +1819,13 @@ protected:
             QStringLiteral("width"),
             QStringLiteral("height"),
             QStringLiteral("flex"),
+            QStringLiteral("flexwrap"),
+            QStringLiteral("flex-wrap"),
+            QStringLiteral("wrap"),
+            QStringLiteral("mincolwidth"),
+            QStringLiteral("min-col-width"),
+            QStringLiteral("minwidth"),
+            QStringLiteral("min-width"),
             QStringLiteral("gap"),
             QStringLiteral("alignitems"),
             QStringLiteral("align-items"),
@@ -1848,9 +1879,90 @@ protected:
         }
     }
 
+    bool parentIsRowLayout() const
+    {
+        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(parent());
+        return layoutParent && layoutParent->direction() == QStringLiteral("row");
+    }
+
+    QString responsiveColumnBasis() const
+    {
+        QString basis = assignmentValue(QStringLiteral("basis"));
+        if (basis.isEmpty()) {
+            basis = assignmentValue(QStringLiteral("flexBasis"));
+        }
+        if (basis.isEmpty()) {
+            basis = assignmentValue(QStringLiteral("flex-basis"));
+        }
+        if (basis.isEmpty()) {
+            basis = assignmentValue(QStringLiteral("width"));
+        }
+        if (basis.isEmpty()) {
+            basis = QStringLiteral("0");
+        }
+        return basis;
+    }
+
+    QString responsiveColumnMinWidth() const
+    {
+        QString minWidth = assignmentValue(QStringLiteral("minWidth"));
+        if (minWidth.isEmpty()) {
+            minWidth = assignmentValue(QStringLiteral("min-width"));
+        }
+        if (minWidth.isEmpty()) {
+            minWidth = parentRowColumnMinWidth();
+        }
+        if (minWidth.isEmpty()) {
+            return QStringLiteral("max-content");
+        }
+        return QStringLiteral("min(100%, ") + minWidth + QStringLiteral(")");
+    }
+
+    QString parentRowColumnMinWidth() const
+    {
+        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(parent());
+        if (!layoutParent) {
+            return QString();
+        }
+        QString minWidth = layoutParent->assignmentValue(QStringLiteral("minColWidth"));
+        if (minWidth.isEmpty()) {
+            minWidth = layoutParent->assignmentValue(QStringLiteral("min-col-width"));
+        }
+        return minWidth;
+    }
+
+    QString defaultFlexValue() const
+    {
+        if (keyword() == QStringLiteral("q-col") && parentIsRowLayout()) {
+            const QString basis = responsiveColumnBasis();
+            return QStringLiteral("1 1 ") + basis;
+        }
+        return QStringLiteral("1 1 0");
+    }
+
     QString itemStyle() const
     {
+        if (m_direction == QStringLiteral("row")) {
+            const QString minWidth = rowChildMinWidth();
+            const QString basis = minWidth == QStringLiteral("max-content") ? QStringLiteral("0") : minWidth;
+            return QStringLiteral("flex:1 1 ") + basis +
+                   QStringLiteral(";min-width:") + minWidth +
+                   QStringLiteral(";max-width:100%;min-height:0;box-sizing:border-box;");
+        }
         return QStringLiteral("flex:1 1 0;min-width:0;min-height:0;box-sizing:border-box;");
+    }
+
+    QString rowChildMinWidth() const
+    {
+        QString minWidth = assignmentValue(QStringLiteral("minColWidth"));
+        if (minWidth.isEmpty()) {
+            minWidth = assignmentValue(QStringLiteral("min-col-width"));
+        }
+        if (minWidth.isEmpty()) {
+            minWidth = QStringLiteral("max-content");
+            return minWidth;
+        }
+        return QStringLiteral("min(100%, ") + minWidth + QStringLiteral(")");
     }
 
     QString renderLayoutChildren(const QHTMLNode *contextNode) const
@@ -1955,6 +2067,8 @@ protected:
         QStringList declarations;
         declarations << QStringLiteral("display:flex");
         declarations << QStringLiteral("flex-direction:row");
+        declarations << QStringLiteral("flex-wrap:wrap");
+        declarations << QStringLiteral("align-items:stretch");
         declarations << QStringLiteral("box-sizing:border-box");
         declarations << QStringLiteral("min-width:0");
         declarations << QStringLiteral("min-height:0");
@@ -1970,10 +2084,10 @@ protected:
         declarations << QStringLiteral("display:flex");
         declarations << QStringLiteral("flex-direction:column");
         declarations << QStringLiteral("box-sizing:border-box");
-        declarations << QStringLiteral("min-width:0");
+        declarations << QStringLiteral("min-width:max-content");
         declarations << QStringLiteral("min-height:0");
         declarations << QStringLiteral("flex:1 1 0");
-        declarations << QStringLiteral("width:100%");
+        declarations << QStringLiteral("max-width:100%");
         declarations << QStringLiteral("height:100%");
         return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
     }
@@ -8421,6 +8535,166 @@ inline QString qhtmlJsonValueToQHTMLSource(const QJsonValue &value)
         return QStringLiteral("null");
     }
     return QString();
+}
+
+inline QString qhtmlJsValueToQHTMLPropertySource(emscripten::val value)
+{
+    if (value.isUndefined()) {
+        return QStringLiteral("undefined");
+    }
+    if (value.isNull()) {
+        return QStringLiteral("null");
+    }
+
+    const std::string type = value.typeOf().as<std::string>();
+    if (type == std::string("string")) {
+        return QHTMLNode::sourceQuote(QString::fromStdString(value.as<std::string>()));
+    }
+    if (type == std::string("number")) {
+        const double number = value.as<double>();
+        const qint64 rounded = qRound64(number);
+        if (qAbs(number - double(rounded)) < 0.000000000001) {
+            return QString::number(rounded);
+        }
+        return QString::number(number, 'g', 15);
+    }
+    if (type == std::string("boolean")) {
+        return value.as<bool>() ? QStringLiteral("true") : QStringLiteral("false");
+    }
+    if (type == std::string("object")) {
+        emscripten::val qhtmlNameMember = value[std::string("qhtmlName")];
+        if (!qhtmlNameMember.isUndefined() && qhtmlNameMember.typeOf().as<std::string>() == std::string("function")) {
+            const QString objectName = QString::fromStdString(value.call<std::string>("qhtmlName")).trimmed();
+            if (!objectName.isEmpty()) {
+                return objectName;
+            }
+        }
+        emscripten::val qhtmlUUIDMember = value[std::string("qhtmlUUID")];
+        if (!qhtmlUUIDMember.isUndefined() && qhtmlUUIDMember.typeOf().as<std::string>() == std::string("function")) {
+            return QHTMLNode::sourceQuote(QString::fromStdString(value.call<std::string>("qhtmlUUID")));
+        }
+    }
+
+    const std::string json = emscripten::val::global("JSON").call<std::string>("stringify", value);
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(QByteArray::fromStdString(json), &parseError);
+    if (parseError.error == QJsonParseError::NoError) {
+        if (document.isObject()) {
+            return qhtmlJsonValueToQHTMLSource(QJsonValue(document.object()));
+        }
+        if (document.isArray()) {
+            return qhtmlJsonValueToQHTMLSource(QJsonValue(document.array()));
+        }
+    }
+    return QString::fromStdString(json);
+}
+
+inline bool QHTMLNode::setPropertyValue(const QString &key, const QString &value)
+{
+    const QString name = key.trimmed();
+    if (name.isEmpty()) {
+        return false;
+    }
+
+    QHTMLNode *directTarget = nullptr;
+    int directTargetIndex = -1;
+    QVector<int> duplicateIndexes;
+    QSet<QString> visited;
+    for (int i = 0; i < childCount(); ++i) {
+        QHTMLNode *child = childAt(i);
+        if (!child || child->qhtmlName() != name || visited.contains(child->qhtmlUUID())) {
+            continue;
+        }
+        QHTMLProperty *propertyNode = dynamic_cast<QHTMLProperty *>(child);
+        QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+        if (!propertyNode && !assignment) {
+            continue;
+        }
+        visited.insert(child->qhtmlUUID());
+
+        if (!directTarget) {
+            directTarget = child;
+            directTargetIndex = i;
+            continue;
+        }
+        if (dynamic_cast<QHTMLProperty *>(directTarget) && assignment) {
+            duplicateIndexes.append(i);
+            continue;
+        }
+        if (propertyNode && dynamic_cast<QHTMLPropertyAssignment *>(directTarget)) {
+            duplicateIndexes.append(directTargetIndex);
+            directTarget = child;
+            directTargetIndex = i;
+            continue;
+        }
+        duplicateIndexes.append(i);
+    }
+
+    std::sort(duplicateIndexes.begin(), duplicateIndexes.end(), std::greater<int>());
+    for (int index : duplicateIndexes) {
+        delete takeChildAt(index);
+    }
+
+    if (directTarget) {
+        if (QHTMLProperty *propertyNode = dynamic_cast<QHTMLProperty *>(directTarget)) {
+            propertyNode->setValue(value);
+        } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(directTarget)) {
+            assignment->setValue(value);
+        }
+        updateObjectReference(name, directTarget);
+        setProperty(name, value);
+        return true;
+    }
+
+    QSet<QString> referenceVisited;
+    QHTMLReference *reference = resolve(name);
+    if (reference && !referenceVisited.contains(reference->qhtmlUUID())) {
+        referenceVisited.insert(reference->qhtmlUUID());
+        if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(reference)) {
+            assignment->setValue(value);
+            setProperty(name, value);
+            return true;
+        }
+        if (QHTMLProperty *propertyNode = dynamic_cast<QHTMLProperty *>(reference)) {
+            propertyNode->setValue(value);
+            setProperty(name, value);
+            return true;
+        }
+    }
+
+    QHTMLNode *parentNode = parent();
+    QSet<QString> parentVisited;
+    while (parentNode && !parentVisited.contains(parentNode->qhtmlUUID())) {
+        parentVisited.insert(parentNode->qhtmlUUID());
+        if (QHTMLReference *parentReference = parentNode->resolve(name)) {
+            if (!referenceVisited.contains(parentReference->qhtmlUUID())) {
+                if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(parentReference)) {
+                    assignment->setValue(value);
+                    setProperty(name, value);
+                    return true;
+                }
+                if (QHTMLProperty *propertyNode = dynamic_cast<QHTMLProperty *>(parentReference)) {
+                    propertyNode->setValue(value);
+                    setProperty(name, value);
+                    return true;
+                }
+            }
+        }
+        parentNode = parentNode->parent();
+    }
+
+    QHash<QString, QString> attributes;
+    attributes.insert(QStringLiteral("value"), value);
+    QHTMLPropertyAssignment *assignment = new QHTMLPropertyAssignment(name, attributes);
+    appendChild(assignment);
+    updateObjectReference(name, assignment);
+    setProperty(name, value);
+    return true;
+}
+
+inline bool QHTMLNode::setPropertyJs(const std::string &key, emscripten::val value)
+{
+    return setPropertyValue(QString::fromStdString(key), qhtmlJsValueToQHTMLPropertySource(value));
 }
 
 inline QJsonObject qhtmlPropertyValueObject(const QString &source)

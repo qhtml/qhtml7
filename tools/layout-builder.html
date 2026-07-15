@@ -413,8 +413,8 @@ layoutBuilderTheme {
           <input id="lbPropName" type="text" placeholder="optionalName">
         </div>
         <div class="lb-field">
-          <label for="lbPropWidth">Width</label>
-          <input id="lbPropWidth" type="text" placeholder="100%">
+          <label for="lbPropWidth">Width / Basis</label>
+          <input id="lbPropWidth" type="text" placeholder="row: 100%, col: 10vw">
         </div>
         <div class="lb-field">
           <label for="lbPropHeight">Height</label>
@@ -427,6 +427,23 @@ layoutBuilderTheme {
         <div class="lb-field">
           <label for="lbPropGap">Gap</label>
           <input id="lbPropGap" type="text" placeholder="12px">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropMinWidth">Min Width</label>
+          <input id="lbPropMinWidth" type="text" placeholder="col: max-content">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropMinColWidth">Min Column Width</label>
+          <input id="lbPropMinColWidth" type="text" placeholder="row: max-content">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropWrap">Wrap</label>
+          <select id="lbPropWrap">
+            <option value="">default</option>
+            <option value="wrap">wrap</option>
+            <option value="nowrap">nowrap</option>
+            <option value="wrap-reverse">wrap-reverse</option>
+          </select>
         </div>
       </div>
     </div>
@@ -490,9 +507,70 @@ layoutBuilderTheme {
       return { width: "100%", height: "10vh", flex: "0 0 auto", gap: "12px" };
     }
     if (type === "q-col") {
-      return { width: "10vw", height: "auto", flex: "0 0 auto", gap: "12px" };
+      return { width: "10vw", height: "auto", gap: "12px" };
     }
     return {};
+  }
+
+  function normalizedPropsFor(type, props) {
+    const defaults = defaultPropsFor(type);
+    const next = Object.assign({}, props || {});
+    Object.keys(next).forEach((key) => {
+      if (!String(next[key] || "").trim()) {
+        delete next[key];
+      }
+    });
+
+    if (type === "q-layout") {
+      if (!next.width) {
+        next.width = defaults.width;
+      }
+      if (!next.height) {
+        next.height = defaults.height;
+      }
+      if (!next.gap) {
+        next.gap = defaults.gap;
+      }
+    } else if (type === "q-row") {
+      if (!next.width) {
+        next.width = defaults.width;
+      }
+      if (!next.height) {
+        next.height = defaults.height;
+      }
+      if (!next.flex) {
+        next.flex = defaults.flex;
+      }
+      if (!next.gap) {
+        next.gap = defaults.gap;
+      }
+    } else if (type === "q-col") {
+      if (next.flex === "0 0 auto") {
+        delete next.flex;
+      }
+      if (!next.width) {
+        next.width = defaults.width;
+      }
+      if (!next.height) {
+        next.height = defaults.height;
+      }
+      if (!next.gap) {
+        next.gap = defaults.gap;
+      }
+    }
+
+    return next;
+  }
+
+  function normalizeTree(node) {
+    if (!node) {
+      return null;
+    }
+    if (node.type !== "qhtml") {
+      node.props = normalizedPropsFor(node.type, node.props);
+    }
+    node.children = (node.children || []).map(normalizeTree).filter(Boolean);
+    return node;
   }
 
   function buildDefaultTree() {
@@ -519,8 +597,22 @@ layoutBuilderTheme {
 
   function propsToQHTML(node, level) {
     const lines = [];
-    Object.keys(node.props || {}).forEach((key) => {
-      const value = String(node.props[key] || "").trim();
+    const props = normalizedPropsFor(node.type, node.props);
+    const orderedKeys = [
+      "width",
+      "height",
+      "flex",
+      "gap",
+      "minWidth",
+      "minColWidth",
+      "wrap"
+    ];
+    const keys = orderedKeys.concat(Object.keys(props).filter((key) => !orderedKeys.includes(key)).sort());
+    keys.forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(props, key)) {
+        return;
+      }
+      const value = String(props[key] || "").trim();
       if (value) {
         lines.push(indent(level) + key + ': "' + escapeQhtmlString(value) + '"');
       }
@@ -530,6 +622,7 @@ layoutBuilderTheme {
   }
 
   function modelToQHTML(node, level) {
+    normalizeTree(node);
     const depth = Number(level) || 0;
     if (node.type === "qhtml") {
       return String(node.source || "").split("\n").map((line) => indent(depth) + line).join("\n");
@@ -739,12 +832,16 @@ layoutBuilderTheme {
   function openProperties() {
     const found = currentTarget();
     const node = found.node || root;
+    node.props = normalizedPropsFor(node.type, node.props);
     document.getElementById("lbPropType").value = node.type === "qhtml" ? "q-layout" : node.type;
     document.getElementById("lbPropName").value = node.name || "";
     document.getElementById("lbPropWidth").value = node.props.width || "";
     document.getElementById("lbPropHeight").value = node.props.height || "";
     document.getElementById("lbPropFlex").value = node.props.flex || "";
     document.getElementById("lbPropGap").value = node.props.gap || "";
+    document.getElementById("lbPropMinWidth").value = node.props.minWidth || node.props["min-width"] || "";
+    document.getElementById("lbPropMinColWidth").value = node.props.minColWidth || node.props["min-col-width"] || "";
+    document.getElementById("lbPropWrap").value = node.props.wrap || node.props.flexWrap || node.props["flex-wrap"] || "";
     document.getElementById("lbPropertiesDialog").showModal();
     hideMenus();
   }
@@ -755,11 +852,19 @@ layoutBuilderTheme {
     const nextType = document.getElementById("lbPropType").value;
     node.type = nextType;
     node.name = document.getElementById("lbPropName").value.trim();
-    node.props = defaultPropsFor(nextType);
-    node.props.width = document.getElementById("lbPropWidth").value.trim();
-    node.props.height = document.getElementById("lbPropHeight").value.trim();
-    node.props.flex = document.getElementById("lbPropFlex").value.trim();
-    node.props.gap = document.getElementById("lbPropGap").value.trim();
+    const props = Object.assign({}, node.props || {});
+    props.width = document.getElementById("lbPropWidth").value.trim();
+    props.height = document.getElementById("lbPropHeight").value.trim();
+    props.flex = document.getElementById("lbPropFlex").value.trim();
+    props.gap = document.getElementById("lbPropGap").value.trim();
+    props.minWidth = document.getElementById("lbPropMinWidth").value.trim();
+    props.minColWidth = document.getElementById("lbPropMinColWidth").value.trim();
+    props.wrap = document.getElementById("lbPropWrap").value.trim();
+    delete props["min-width"];
+    delete props["min-col-width"];
+    delete props.flexWrap;
+    delete props["flex-wrap"];
+    node.props = normalizedPropsFor(nextType, props);
     document.getElementById("lbPropertiesDialog").close();
     renderPreview();
     setStatus("Properties updated");
