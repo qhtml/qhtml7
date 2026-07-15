@@ -1,4 +1,4 @@
-# QHTML7 - v7.3.6
+# QHTML7 - v7.3.7
 
 QHTML7 is a declarative UI language for building HTML, custom elements, reusable components, themed interfaces, signals, slots, data-driven loops, layouts, and component libraries with a compact block syntax.
 

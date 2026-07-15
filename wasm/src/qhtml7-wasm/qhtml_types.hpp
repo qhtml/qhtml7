@@ -30,7 +30,7 @@ extern "C" {
 }
 #endif
 
-inline constexpr const char QHTML_VERSION[] = "v7.3.6";
+inline constexpr const char QHTML_VERSION[] = "v7.3.7";
 inline constexpr int QHTML_QUICKJS_SIZE_BUDGET_BYTES = 614400;
 
 inline std::string qhtmlVersionJs()
@@ -195,6 +195,7 @@ class QHTMLCanvas;
 class QHTMLVideo;
 class QHTMLVideoAsset;
 class QHTMLVideoPlayer;
+class QHTMLParticleEmitter;
 class QHTMLNode;
 class QHTMLJavaScriptRuntime;
 
@@ -6305,6 +6306,96 @@ private:
     QString m_tagName;
 };
 
+class QHTMLParticleEmitter final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLParticleEmitter(const QString &keyword = QStringLiteral("particle-emitter"),
+                                  const QString &name = QString(),
+                                  const QHash<QString, QString> &attributes = {})
+        : QHTMLTypedNode(keyword, name, attributes),
+          m_tagName(QStringLiteral("particle-emitter"))
+    {
+        setQHTMLType(QStringLiteral("QHTMLParticleEmitter"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("particle-emitter"));
+    }
+
+    QString tagName() const { return m_tagName; }
+    std::string tagNameJs() const { return m_tagName.toStdString(); }
+
+    QString assignmentValue(const QString &name, const QString &fallback = QString()) const
+    {
+        const QString lowerName = name.toLower();
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (assignment && assignment->qhtmlName().toLower() == lowerName) {
+                return stripQuotes(assignment->value().trimmed());
+            }
+        }
+        const QString attributeValue = attributes().value(name);
+        return attributeValue.isEmpty() ? fallback : stripQuotes(attributeValue);
+    }
+
+    std::string assignmentValueJs(const std::string &name) const
+    {
+        return assignmentValue(QString::fromStdString(name)).toStdString();
+    }
+
+    QString renderHtml() const override
+    {
+        QString out = QStringLiteral("<") + m_tagName +
+                      QStringLiteral(" qhtml-particle-emitter=\"1\" qhtml-node=\"") +
+                      escapeAttribute(qhtmlUUID()) + QStringLiteral("\"");
+        const QString nodeName = qhtmlName().trimmed();
+        if (!nodeName.isEmpty()) {
+            out += QStringLiteral(" name=\"") + escapeAttribute(nodeName) + QStringLiteral("\"");
+        }
+
+        QSet<QString> written;
+        const QStringList attributeKeys = attributes().keys();
+        for (const QString &key : attributeKeys) {
+            const QString value = attributes().value(key);
+            if (!key.trimmed().isEmpty() && !value.isEmpty()) {
+                out += QStringLiteral(" ") + key + QStringLiteral("=\"") +
+                       escapeAttribute(stripQuotes(value)) + QStringLiteral("\"");
+                written.insert(key.toLower());
+            }
+        }
+        for (QHTMLNode *child : children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment || assignment->qhtmlName().isEmpty()) {
+                continue;
+            }
+            const QString key = assignment->qhtmlName();
+            if (written.contains(key.toLower())) {
+                continue;
+            }
+            out += QStringLiteral(" ") + key + QStringLiteral("=\"") +
+                   escapeAttribute(stripQuotes(assignment->value())) + QStringLiteral("\"");
+            written.insert(key.toLower());
+        }
+        out += QStringLiteral("></") + m_tagName + QStringLiteral(">");
+        return out;
+    }
+
+private:
+    static QString stripQuotes(QString value)
+    {
+        value = value.trimmed();
+        if (value.size() >= 2) {
+            const QChar first = value.at(0);
+            const QChar last = value.at(value.size() - 1);
+            if ((first == QLatin1Char('"') && last == QLatin1Char('"')) ||
+                (first == QLatin1Char('\'') && last == QLatin1Char('\'')) ||
+                (first == QLatin1Char('`') && last == QLatin1Char('`'))) {
+                return value.mid(1, value.size() - 2);
+            }
+        }
+        return value;
+    }
+
+    QString m_tagName;
+};
+
 class QHTMLConnect final : public QHTMLTypedNode
 {
 public:
@@ -7949,7 +8040,8 @@ inline void qhtmlCollectStandaloneHtmlScript(const QHTMLNode *node, QStringList 
         dynamic_cast<const QHTMLComponentInstance *>(node) ||
         dynamic_cast<const QHTMLLayout *>(node) ||
         dynamic_cast<const QHTMLCanvas *>(node) ||
-        dynamic_cast<const QHTMLVideo *>(node)) {
+        dynamic_cast<const QHTMLVideo *>(node) ||
+        dynamic_cast<const QHTMLParticleEmitter *>(node)) {
         qhtmlAppendStandaloneHtmlNodeBootstrap(node, lines);
     }
 
@@ -8050,7 +8142,8 @@ inline void qhtmlApplyStandaloneHtmlIdsForNode(const QHTMLNode *node, QString &h
                (dynamic_cast<const QHTMLDomElement *>(node) ||
                 dynamic_cast<const QHTMLLayout *>(node) ||
                 dynamic_cast<const QHTMLCanvas *>(node) ||
-                dynamic_cast<const QHTMLVideo *>(node))) {
+                dynamic_cast<const QHTMLVideo *>(node) ||
+                dynamic_cast<const QHTMLParticleEmitter *>(node))) {
         QString eventAttributes;
         for (QHTMLNode *child : node->children()) {
             if (const QHTMLEventHandler *handler = dynamic_cast<const QHTMLEventHandler *>(child)) {
@@ -8836,6 +8929,8 @@ inline QHTMLNode *QHTMLNode::nodeFromJsonObject(const QJsonObject &object, QHTML
         node = new QHTMLCanvas(name, attributes);
     } else if (type == QStringLiteral("QHTMLVideo")) {
         node = new QHTMLVideo(keyword.isEmpty() ? QStringLiteral("q-video") : keyword, name, attributes);
+    } else if (type == QStringLiteral("QHTMLParticleEmitter")) {
+        node = new QHTMLParticleEmitter(keyword.isEmpty() ? QStringLiteral("particle-emitter") : keyword, name, attributes);
     } else if (type == QStringLiteral("QHTMLLayout")) {
         node = new QHTMLLayout(keyword.isEmpty() ? QStringLiteral("q-layout") : keyword, name, attributes);
     } else if (type == QStringLiteral("QHTMLRowLayout")) {

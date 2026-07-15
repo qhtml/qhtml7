@@ -428,6 +428,10 @@ private:
             qhtmlKeyword == QStringLiteral("native-vid-player")) {
             return new QHTMLVideo(qhtmlKeyword, qhtmlName, m_attributes);
         }
+        if (qhtmlKeyword == QStringLiteral("particle-emitter") ||
+            qhtmlKeyword == QStringLiteral("q-particle-emitter")) {
+            return new QHTMLParticleEmitter(qhtmlKeyword, qhtmlName, m_attributes);
+        }
         if (qhtmlKeyword == QStringLiteral("q-layout")) {
             return new QHTMLLayout(qhtmlKeyword, qhtmlName, m_attributes);
         }
@@ -2709,6 +2713,9 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     class_<QHTMLVideo, base<QHTMLTypedNode>>("QHTMLVideo")
         .function("tagName", &QHTMLVideo::tagNameJs)
         .function("assignmentValue", &QHTMLVideo::assignmentValueJs);
+    class_<QHTMLParticleEmitter, base<QHTMLTypedNode>>("QHTMLParticleEmitter")
+        .function("tagName", &QHTMLParticleEmitter::tagNameJs)
+        .function("assignmentValue", &QHTMLParticleEmitter::assignmentValueJs);
     class_<QHTMLComponentSlot, base<QHTMLTypedNode>>("QHTMLComponentSlot");
     class_<QHTMLSlotDefault, base<QHTMLTypedNode>>("QHTMLSlotDefault");
     class_<QHTMLStyle, base<QHTMLTypedNode>>("QHTMLStyle")

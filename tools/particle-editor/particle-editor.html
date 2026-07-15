@@ -3,40 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Particle Emitter Editor</title>
+  <title>QHTML7 Particle Emitter Editor</title>
   <style>
-    :root {
-      --bg: #0b1020;
-      --panel: rgba(15, 23, 42, 0.96);
-      --surface-2: #1f2937;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --line: rgba(148, 163, 184, 0.28);
-      --accent: #22c55e;
-      --shadow: 0 3vh 9vh rgba(0, 0, 0, 0.42);
-      --radius: 1.4vw;
-      --stage-w: 70vw;
-      --stage-h: 70vh;
-      --sidebar-w: 20vw;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
     html,
     body {
       width: 100%;
-      height: 100%;
+      min-height: 100%;
       margin: 0;
-      overflow: hidden;
       background:
-        radial-gradient(circle at 15% 15%, rgba(34, 197, 94, 0.16), transparent 28%),
-        radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.14), transparent 26%),
-        linear-gradient(135deg, #020617, var(--bg));
-      color: var(--text);
+        radial-gradient(circle at 15% 12%, rgba(34, 197, 94, 0.16), transparent 28%),
+        radial-gradient(circle at 82% 18%, rgba(56, 189, 248, 0.13), transparent 30%),
+        linear-gradient(135deg, #020617, #0b1020);
+      color: #e5e7eb;
       font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-      font-size: clamp(14px, 0.95vw, 18px);
     }
 
     button,
@@ -46,548 +25,974 @@
       font: inherit;
     }
 
-    button {
-      cursor: pointer;
-    }
-
-    .app {
-      height: 100%;
-      display: grid;
-      grid-template-columns: minmax(17rem, var(--sidebar-w)) 1fr;
-      gap: 1.2vw;
-      padding: 1.2vw;
-    }
-
-    .sidebar {
-      min-width: 0;
-      display: grid;
-      grid-template-rows: auto auto 1fr;
-      gap: 1vh;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .sidebar-head {
-      display: grid;
-      gap: 0.6vh;
-      padding: 1.2vw;
-      border-bottom: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(34, 197, 94, 0.13), transparent);
-    }
-
-    .title {
-      margin: 0;
-      font-size: clamp(1.15rem, 1.35vw, 1.6rem);
-      font-weight: 900;
-    }
-
-    .subtitle {
-      margin: 0;
-      color: var(--muted);
-      font-size: clamp(0.85rem, 0.85vw, 1rem);
-      line-height: 1.45;
-    }
-
-    .toolbar {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.7vw;
-      padding: 0 1.2vw;
-    }
-
-    .tool-btn,
-    .dialog-btn {
-      min-height: 5vh;
-      border: 1px solid var(--line);
-      border-radius: 0.75vw;
-      background: var(--surface-2);
-      color: var(--text);
-      font-weight: 850;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5vw;
-    }
-
-    .tool-btn.primary,
-    .dialog-btn.primary {
-      background: var(--accent);
-      color: #04130a;
-      border-color: rgba(255, 255, 255, 0.18);
-      box-shadow: 0 1.4vh 4vh rgba(34, 197, 94, 0.24);
-    }
-
-    .dialog-btn.danger {
-      background: rgba(239, 68, 68, 0.18);
-      color: #fecaca;
-      border-color: rgba(239, 68, 68, 0.5);
-      margin-right: auto;
-    }
-
-    .emitter-list-wrap {
-      min-height: 0;
-      padding: 0 1.2vw 1.2vw;
-      overflow: auto;
-    }
-
-    .emitter-list-label {
-      margin: 0 0 0.7vh;
-      color: var(--muted);
-      font-size: clamp(0.75rem, 0.75vw, 0.9rem);
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .emitter-list {
-      display: flex;
-      flex-wrap: wrap;
-      align-content: start;
-      gap: 0.55vw;
-    }
-
-    .emitter-chip {
-      min-height: 4.2vh;
-      max-width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(15, 23, 42, 0.8);
-      color: var(--text);
-      padding: 0 0.8vw;
-      font-size: clamp(0.82rem, 0.82vw, 1rem);
-      font-weight: 800;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5vw;
-    }
-
-    .emitter-chip.is-selected {
-      color: #04130a;
-      background: var(--accent);
-      border-color: transparent;
-    }
-
-    .emitter-chip .dot {
-      width: 0.55rem;
-      height: 0.55rem;
-      border-radius: 999px;
-      background: currentColor;
-      opacity: 0.75;
-    }
-
-    .workspace {
-      min-width: 0;
-      min-height: 0;
-      display: grid;
-      place-items: center;
-      overflow: auto;
-      padding: 1.2vw;
-    }
-
-    .stage-shell {
-      display: grid;
-      gap: 1vh;
-    }
-
-    .stage-label {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 1vw;
-      color: var(--muted);
-      font-size: clamp(0.85rem, 0.85vw, 1rem);
-    }
-
-    .stage-label strong {
-      color: var(--text);
-    }
-
-    #particle-stage {
-      position: relative;
-      width: var(--stage-w);
-      height: var(--stage-h);
-      min-width: 32vw;
-      min-height: 42vh;
-      overflow: hidden;
-      border-radius: 1.8vw;
-      border: 1px solid rgba(148, 163, 184, 0.35);
-      background:
-        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-        radial-gradient(circle at 50% 100%, rgba(34, 197, 94, 0.16), transparent 45%),
-        linear-gradient(180deg, #020617, #0f172a);
-      background-size: 2vw 2vw, 2vw 2vw, 100% 100%, 100% 100%;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 3vh 9vh rgba(0, 0, 0, 0.38);
-    }
-
-    .stage-empty {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      pointer-events: none;
-      color: rgba(226, 232, 240, 0.4);
-      font-weight: 800;
-      text-align: center;
-      padding: 2vw;
-    }
-
-    #particle-stage.has-emitters .stage-empty {
-      display: none;
-    }
-
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 10000;
-      display: none;
-      place-items: center;
-      background: rgba(2, 6, 23, 0.72);
-      backdrop-filter: blur(1vw);
-      padding: 2vh 2vw;
-    }
-
-    .modal-backdrop.is-open {
-      display: grid;
-    }
-
-    .dialog {
-      width: min(94vw, 88rem);
-      height: min(92vh, 58rem);
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-      overflow: hidden;
-      border-radius: 1.5vw;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-    }
-
-    .dialog.small {
-      width: min(84vw, 70rem);
-      height: min(82vh, 46rem);
-    }
-
-    .dialog form {
-      min-height: 0;
-      display: grid;
-      grid-template-rows: minmax(0, 1fr) auto;
-      overflow: hidden;
-    }
-
-    .dialog-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1vw;
-      padding: 1.2vh 1.4vw;
-      border-bottom: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent);
-    }
-
-    .dialog-title {
-      margin: 0;
-      font-size: clamp(1.15rem, 1.35vw, 1.65rem);
-    }
-
-    .x-btn {
-      width: 2.7rem;
-      height: 2.7rem;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 0.8vw;
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.05);
-      font-size: 1.6rem;
-      line-height: 1;
-    }
-
-    .dialog-body {
-      min-height: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 1.2vw;
-      overscroll-behavior: contain;
-    }
-
-    .dialog-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.75vw;
-      padding: 1vh 1.4vw;
-      border-top: 1px solid var(--line);
-      flex-wrap: wrap;
-    }
-
-    .form-grid {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      gap: 1vw;
-    }
-
     .field-group {
-      border: 1px solid var(--line);
-      border-radius: 0.8vw;
-      padding: 1vw;
-      background: rgba(15, 23, 42, 0.6);
-      display: flex;
-      flex-direction: column;
-      gap: 0.75vh;
-      flex: 1 1 clamp(18rem, 25vw, 30rem);
+      min-width: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 14px;
+      background: rgba(2, 6, 23, 0.28);
+      box-sizing: border-box;
     }
 
-    .field-group.double,
-    .field-group.full {
-      flex-basis: clamp(26rem, 38vw, 48rem);
+    .field-group-double {
+      grid-column: span 2;
+    }
+
+    .field-group-full {
+      grid-column: 1 / -1;
     }
 
     .group-title {
-      margin: 0;
-      color: #dbeafe;
-      font-size: clamp(0.86rem, 0.9vw, 1.05rem);
+      grid-column: 1 / -1;
+      padding: 0;
+      color: #e5e7eb;
+      font-size: 13px;
       font-weight: 900;
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
 
-    .field-row {
-      display: flex;
-      align-items: center;
-      gap: 0.8vw;
-    }
-
-    .field-row label {
-      flex: 0 0 42%;
-      color: var(--muted);
-      font-size: clamp(0.86rem, 0.9vw, 1.05rem);
-      font-weight: 800;
-      overflow-wrap: anywhere;
-    }
-
-    .field-row input,
-    .field-row select,
-    .field-row textarea {
-      width: 100%;
-      min-height: 4.4vh;
-      border: 1px solid rgba(148, 163, 184, 0.28);
-      border-radius: 0.65vw;
-      background: rgba(2, 6, 23, 0.74);
-      color: var(--text);
-      padding: 0.7vh 0.8vw;
-      outline: none;
-    }
-
-    .field-row input[type="checkbox"] {
-      width: auto;
-      min-height: auto;
-      transform: scale(1.15);
-    }
-
-    .field-row input[type="color"] {
-      padding: 0.25rem;
-      height: 4.4vh;
-    }
-
-    .field-row input:focus,
-    .field-row textarea:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 0.25rem rgba(34, 197, 94, 0.14);
-    }
-
-    .src-row input {
-      min-width: 0;
-    }
-
-    .file-btn {
-      min-height: 4.4vh;
-      padding: 0 0.8vw;
-      border-radius: 0.65vw;
-      border: 1px solid var(--line);
-      background: var(--surface-2);
-      color: var(--text);
-      font-weight: 800;
-      white-space: nowrap;
-    }
-
-    .hidden-file {
-      display: none;
-    }
-
-    .export-textarea {
-      width: 100%;
-      height: min(60vh, 38rem);
-      resize: vertical;
-      border: 1px solid var(--line);
-      border-radius: 0.9vw;
-      background: #020617;
-      color: #d1fae5;
-      padding: 1vw;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: clamp(0.85rem, 0.82vw, 1rem);
-      line-height: 1.45;
-      outline: none;
-      white-space: pre;
-      overflow: auto;
-    }
-
-    .export-options {
+    .field {
       display: grid;
-      gap: 0.8vh;
-      margin-top: 1vh;
+      gap: 6px;
     }
 
-    .option-row {
-      display: flex;
-      align-items: center;
-      gap: 0.7vw;
-      color: var(--muted);
-      font-size: clamp(0.9rem, 0.9vw, 1.05rem);
-      font-weight: 800;
+    .field-label {
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 850;
     }
 
-    .option-row input {
-      transform: scale(1.1);
+    .editor-input {
+      width: 100%;
+      min-width: 0;
+      min-height: 38px;
+      box-sizing: border-box;
+      border: 1px solid rgba(148, 163, 184, 0.30);
+      border-radius: 9px;
+      background: rgba(2, 6, 23, 0.68);
+      color: #e5e7eb;
+      padding: 8px 10px;
     }
 
-    .copy-icon {
-      width: 1.2rem;
-      height: 1.2rem;
-      display: block;
-    }
-
-    .toast {
-      position: fixed;
-      left: 50%;
-      bottom: 2.4vh;
-      z-index: 20000;
-      transform: translateX(-50%) translateY(2vh);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 160ms ease, transform 160ms ease;
-      padding: 1vh 1vw;
-      border-radius: 999px;
-      background: var(--accent);
-      color: #04130a;
-      font-weight: 900;
-      box-shadow: 0 1.5vh 4vh rgba(0, 0, 0, 0.35);
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
-    @media (max-width: 900px) {
-      html,
-      body {
-        overflow: auto;
-      }
-
-      :root {
-        --sidebar-w: 100vw;
-        --stage-w: 92vw;
-        --stage-h: 62vh;
-      }
-
-      .app {
-        min-height: 100%;
-        grid-template-columns: 1fr;
-        padding: 2vw;
-      }
-
-      .workspace {
-        overflow: visible;
-      }
-
-      #particle-stage {
-        min-width: 0;
-      }
-
-      .dialog,
-      .dialog.small {
-        width: 96vw;
-        height: 92vh;
-        border-radius: 3vw;
-      }
-
-      .form-grid {
-        gap: 1.5vh;
-      }
-
-      .field-group,
-      .field-group.double,
-      .field-group.full {
-        flex-basis: 100%;
-        border-radius: 2vw;
-        padding: 2.2vw;
-      }
-
-      .field-row {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .field-row label {
-        flex-basis: auto;
-      }
+    textarea.editor-input {
+      min-height: 84px;
+      resize: vertical;
+      grid-column: 1 / -1;
     }
   </style>
-<script src="../../dist/qhtml-wasm.js"></script>
-<script src="../../dist/particle-emitter.js"></script>
+  <script src="../../dist/qhtml-wasm.js"></script>
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <header class="sidebar-head"><h1 class="title">Particle Editor</h1><p class="subtitle">Create, tune, import sprite images, and export live <code>particle-emitter</code> markup.</p></header>
-      <div class="toolbar"><button id="new-emitter-btn" class="tool-btn primary" type="button">New Emitter</button><button id="export-btn" class="tool-btn" type="button">Export</button></div>
-      <section class="emitter-list-wrap"><p class="emitter-list-label">Emitters</p><div id="emitter-list" class="emitter-list"></div></section>
-    </aside>
-    <main class="workspace"><section class="stage-shell"><div class="stage-label"><strong>Live Stage</strong><span>70vw × 70vh preview container</span></div><div id="particle-stage" aria-label="particle preview stage"><div class="stage-empty">Create an emitter to start previewing particles.</div></div></section></main>
-  </div>
-  <div id="editor-modal" class="modal-backdrop" aria-hidden="true"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="editor-title"><header class="dialog-header"><h2 id="editor-title" class="dialog-title">Emitter</h2><button class="x-btn" data-close="editor" type="button" aria-label="Close">×</button></header><form id="emitter-form"><div class="dialog-body"><div id="form-fields" class="form-grid"></div><input id="sprite-file" class="hidden-file" type="file" accept="image/*"></div><footer class="dialog-footer"><button id="delete-emitter-btn" class="dialog-btn danger" type="button">Delete</button><button class="dialog-btn" data-close="editor" type="button">Cancel</button><button class="dialog-btn primary" type="submit">Apply</button></footer></form></section></div>
-  <div id="export-modal" class="modal-backdrop" aria-hidden="true"><section class="dialog small" role="dialog" aria-modal="true" aria-labelledby="export-title"><header class="dialog-header"><h2 id="export-title" class="dialog-title">Export Particle Emitters</h2><button class="x-btn" data-close="export" type="button" aria-label="Close">×</button></header><div class="dialog-body"><textarea id="export-text" class="export-textarea" spellcheck="false"></textarea><div class="export-options"><label class="option-row"><input id="export-wrap-qhtml" type="checkbox" checked>Include &lt;q-html&gt; wrapper</label><label class="option-row"><input id="export-include-container" type="checkbox" checked>Include parent div container</label></div></div><footer class="dialog-footer"><button id="copy-export-btn" class="dialog-btn primary" type="button" title="Copy to clipboard"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h10v12H8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><path d="M6 16H4V4h12v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Copy</button><button class="dialog-btn" data-close="export" type="button">Close</button></footer></section></div>
-  <div id="toast" class="toast">Copied</div>
-  <script>
-    (function(){"use strict";
-      const DEFAULT_PARTICLE_SRC="assets/particle.png";
-      const FIELD_GROUPS=[
-        {title:"Identity",className:"field-group",fields:[{attr:"emitter-name",label:"Name",type:"text",value:"Emitter"},{attr:"id",label:"Element ID",type:"text",value:""},{attr:"running",label:"Running",type:"checkbox",value:"true"},{attr:"qhtml-unsynced",label:"QHTML Unsynced",type:"text",value:"1"}]},
-        {title:"Sprite / Image",className:"field-group double",fields:[{attr:"src",label:"Image src",type:"src",value:DEFAULT_PARTICLE_SRC},{attr:"mask",label:"Sprite mask",type:"src",value:""},{attr:"emitter-mask",label:"Emitter mask",type:"src",value:""},{attr:"color",label:"Tint Color",type:"color",value:"#08c473"},{attr:"color-opacity",label:"Tint Opacity",type:"number",value:"0.28",step:"0.01",min:"0",max:"1"}]},
-        {title:"Emission",className:"field-group",fields:[{attr:"emitrate",label:"Emit Rate",type:"number",value:"74",step:"1"},{attr:"interval",label:"Interval",type:"number",value:"10",step:"1"},{attr:"maxactiveparticles",label:"Max Active",type:"number",value:"166",step:"1"},{attr:"maxactiveparticlesvariation",label:"Max Active Variation",type:"number",value:"18",step:"1"}]},
-        {title:"Lifetime",className:"field-group",fields:[{attr:"lifetime",label:"Lifetime",type:"number",value:"700",step:"1"},{attr:"lifetimevariation",label:"Lifetime Variation",type:"number",value:"90",step:"1"}]},
-        {title:"Position",className:"field-group",fields:[{attr:"x",label:"X",type:"number",value:"110",step:"1"},{attr:"y",label:"Y",type:"number",value:"114",step:"1"},{attr:"width",label:"Emitter Width",type:"number",value:"0",step:"1",min:"0"},{attr:"height",label:"Emitter Height",type:"number",value:"0",step:"1",min:"0"},{attr:"xvariation",label:"X Variation",type:"number",value:"845",step:"1"},{attr:"yvariation",label:"Y Variation",type:"number",value:"20",step:"1"}]},
-        {title:"Velocity",className:"field-group",fields:[{attr:"xvelocity",label:"X Velocity",type:"number",value:"0",step:"0.01"},{attr:"yvelocity",label:"Y Velocity",type:"number",value:"-1.75",step:"0.01"},{attr:"xvelocityvariation",label:"X Velocity Variation",type:"number",value:"0",step:"0.01"},{attr:"yvelocityvariation",label:"Y Velocity Variation",type:"number",value:"0.04",step:"0.01"}]},
-        {title:"Acceleration",className:"field-group",fields:[{attr:"xacceleration",label:"X Acceleration",type:"number",value:"0",step:"0.0001"},{attr:"yacceleration",label:"Y Acceleration",type:"number",value:"0.0028",step:"0.0001"},{attr:"xaccelerationvariation",label:"X Accel Variation",type:"number",value:"0",step:"0.0001"},{attr:"yaccelerationvariation",label:"Y Accel Variation",type:"number",value:"0.005",step:"0.0001"}]},
-        {title:"Size",className:"field-group",fields:[{attr:"startsize",label:"Start Size",type:"number",value:"25",step:"1"},{attr:"endsize",label:"End Size",type:"number",value:"1",step:"1"},{attr:"startsizevariation",label:"Start Size Variation",type:"number",value:"7",step:"1"},{attr:"endsizevariation",label:"End Size Variation",type:"number",value:"5",step:"1"}]},
-        {title:"Opacity",className:"field-group",fields:[{attr:"startopacity",label:"Start Opacity",type:"number",value:"0.5",step:"0.01",min:"0",max:"1"},{attr:"endopacity",label:"End Opacity",type:"number",value:"0.02",step:"0.01",min:"0",max:"1"},{attr:"startopacityvariation",label:"Start Opacity Variation",type:"number",value:"0.16",step:"0.01",min:"0",max:"1"},{attr:"endopacityvariation",label:"End Opacity Variation",type:"number",value:"0.02",step:"0.01",min:"0",max:"1"}]},
-        {title:"Element Style",className:"field-group full",fields:[{attr:"style",label:"Style",type:"textarea",value:"position: absolute; inset: 0px; display: block; pointer-events: none; overflow: hidden; z-index: 1;"}]}
-      ];
-      const EXPORT_ATTR_NAMES={
-        id:"id",running:"running",src:"src",mask:"mask","emitter-mask":"emitterMask",color:"color","color-opacity":"colorOpacity",style:"style",
-        emitrate:"emitRate",interval:"interval",maxactiveparticles:"maxActiveParticles",maxactiveparticlesvariation:"maxActiveParticlesVariation",
-        lifetime:"lifetime",lifetimevariation:"lifetimeVariation",
-        x:"x",y:"y",width:"width",height:"height",xvariation:"xVariation",yvariation:"yVariation",
-        xvelocity:"xVelocity",yvelocity:"yVelocity",xvelocityvariation:"xVelocityVariation",yvelocityvariation:"yVelocityVariation",
-        xacceleration:"xAcceleration",yacceleration:"yAcceleration",xaccelerationvariation:"xAccelerationVariation",yaccelerationvariation:"yAccelerationVariation",
-        startsize:"startSize",endsize:"endSize",startsizevariation:"startSizeVariation",endsizevariation:"endSizeVariation",
-        startopacity:"startOpacity",endopacity:"endOpacity",startopacityvariation:"startOpacityVariation",endopacityvariation:"endOpacityVariation"
-      };
-      class Dom{static byId(id){return document.getElementById(id)}static el(tagName,attrs,children){const node=document.createElement(tagName);Object.entries(attrs||{}).forEach(([key,value])=>{if(key==="className")node.className=value;else if(key==="text")node.textContent=value;else if(key.startsWith("on")&&typeof value==="function")node.addEventListener(key.slice(2).toLowerCase(),value);else if(value!==null&&value!==undefined)node.setAttribute(key,String(value))});(children||[]).forEach(child=>{if(child===null||child===undefined)return;node.appendChild(typeof child==="string"?document.createTextNode(child):child)});return node}}
-      class Toast{constructor(node){this.node=node;this.timer=0}show(message){this.node.textContent=message;this.node.classList.add("show");clearTimeout(this.timer);this.timer=setTimeout(()=>this.node.classList.remove("show"),1400)}}
-      class Modal{constructor(node){this.node=node;this.node.querySelectorAll("[data-close]").forEach(button=>button.addEventListener("click",()=>this.close()));this.node.addEventListener("pointerdown",event=>{if(event.target===this.node)this.close()})}open(){this.node.classList.add("is-open");this.node.setAttribute("aria-hidden","false")}close(){this.node.classList.remove("is-open");this.node.setAttribute("aria-hidden","true")}}
-      class FieldRegistry{constructor(groups){this.groups=groups;this.fields=groups.flatMap(group=>group.fields);this.byAttr=new Map(this.fields.map(field=>[field.attr,field]))}defaults(){const result=Object.create(null);this.fields.forEach(field=>{result[field.attr]=field.value});return result}attrs(){return this.fields.map(field=>field.attr)}}
-      class ParticleEmitterFactory{constructor(registry){this.registry=registry;this.counter=0}nextName(){this.counter+=1;return `emitterName${this.counter}`}nextId(){return `particle-emitter-${Date.now()}-${this.counter+1}`}create(attrs){const emitter=document.createElement("particle-emitter");const data=Object.assign(this.registry.defaults(),attrs||{});if(!data["emitter-name"]||data["emitter-name"]==="Emitter")data["emitter-name"]=this.nextName();if(!data.id)data.id=this.nextId();this.apply(emitter,data);return emitter}read(emitter){const data=this.registry.defaults();this.registry.attrs().forEach(attr=>{if(emitter.hasAttribute(attr))data[attr]=emitter.getAttribute(attr)});return data}apply(emitter,data){this.registry.attrs().forEach(attr=>{const value=data[attr];if(value===null||value===undefined||value===""){if(attr!=="emitter-name"&&attr!=="id")emitter.removeAttribute(attr);return}emitter.setAttribute(attr,String(value))})}}
-      class EmitterList{constructor(node,editor){this.node=node;this.editor=editor;this.selected=null}select(emitter){this.selected=emitter;this.render()}render(){const emitters=this.editor.emitters();this.node.innerHTML="";emitters.forEach(emitter=>{const chip=Dom.el("button",{className:"emitter-chip"+(emitter===this.selected?" is-selected":""),type:"button",onClick:()=>{this.select(emitter);this.editor.openEditor(emitter)}},[Dom.el("span",{className:"dot"}),Dom.el("span",{text:emitter.getAttribute("emitter-name")||emitter.id||"Emitter"})]);this.node.appendChild(chip)})}}
-      class EmitterForm{constructor(node,registry,factory,editor){this.node=node;this.registry=registry;this.factory=factory;this.editor=editor;this.currentEmitter=null;this.mode="create";this.inputs=new Map();this.pendingFileAttr="src";this.fieldsNode=Dom.byId("form-fields");this.fileInput=Dom.byId("sprite-file");this.deleteButton=Dom.byId("delete-emitter-btn");this.build();this.node.addEventListener("submit",event=>{event.preventDefault();this.commit()});this.node.addEventListener("input",event=>{const input=event.target.closest("[data-attr]");if(!input||!this.currentEmitter)return;this.applyLive()});this.fileInput.addEventListener("change",()=>this.importImage());this.deleteButton.addEventListener("click",()=>this.deleteCurrent())}build(){this.fieldsNode.innerHTML="";this.registry.groups.forEach(group=>{const groupNode=Dom.el("fieldset",{className:group.className},[Dom.el("legend",{className:"group-title",text:group.title})]);group.fields.forEach(field=>groupNode.appendChild(this.createField(field)));this.fieldsNode.appendChild(groupNode)})}createField(field){const id=`field-${field.attr}`;let input;if(field.type==="textarea"){input=Dom.el("textarea",{id,"data-attr":field.attr,rows:"3"})}else if(field.type==="checkbox"){input=Dom.el("input",{id,"data-attr":field.attr,type:"checkbox"})}else if(field.type==="src"){input=Dom.el("input",{id,"data-attr":field.attr,type:"text"});const browse=Dom.el("button",{type:"button",className:"file-btn",text:"Browse",onClick:()=>{this.pendingFileAttr=field.attr;this.fileInput.click()}});const row=Dom.el("div",{className:"field-row src-row"},[Dom.el("label",{for:id,text:field.label}),input,browse]);this.inputs.set(field.attr,input);return row}else{input=Dom.el("input",{id,"data-attr":field.attr,type:field.type||"text",step:field.step,min:field.min,max:field.max})}this.inputs.set(field.attr,input);return Dom.el("div",{className:"field-row"},[Dom.el("label",{for:id,text:field.label}),input])}load(emitter,mode){const data=this.factory.read(emitter);this.currentEmitter=emitter;this.mode=mode||"edit";this.inputs.forEach((input,attr)=>{const field=this.registry.byAttr.get(attr);const value=data[attr]??field.value??"";if(input.type==="checkbox")input.checked=value===true||value==="true"||value==="1";else input.value=value});Dom.byId("editor-title").textContent=this.mode==="create"?"New Particle Emitter":"Edit Particle Emitter";this.deleteButton.style.display=this.currentEmitter?"inline-flex":"none"}values(){const data=Object.create(null);this.inputs.forEach((input,attr)=>{data[attr]=input.type==="checkbox"?(input.checked?"true":"false"):input.value});return data}applyLive(){if(!this.currentEmitter)return;this.factory.apply(this.currentEmitter,this.values());this.editor.afterEmitterChanged(this.currentEmitter)}commit(){this.applyLive();this.editor.editorModal.close()}deleteCurrent(){if(!this.currentEmitter)return;this.currentEmitter.remove();this.currentEmitter=null;this.editor.afterEmitterDeleted();this.editor.editorModal.close()}importImage(){const file=this.fileInput.files&&this.fileInput.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{const targetInput=this.inputs.get(this.pendingFileAttr||"src");targetInput.value=String(reader.result||"");this.applyLive();this.fileInput.value=""};reader.readAsDataURL(file)}}
-      class Exporter{constructor(editor,modal,textarea,toast){this.editor=editor;this.modal=modal;this.textarea=textarea;this.toast=toast;this.wrapQHtml=Dom.byId("export-wrap-qhtml");this.includeContainer=Dom.byId("export-include-container");this.wrapQHtml.addEventListener("change",()=>this.refresh());this.includeContainer.addEventListener("change",()=>this.refresh())}open(){this.refresh();this.modal.open();this.textarea.focus();this.textarea.select()}refresh(){this.textarea.value=this.editor.exportQHtml({wrapQHtml:this.wrapQHtml.checked,includeContainer:this.includeContainer.checked})}async copy(){this.refresh();const value=this.textarea.value;try{await navigator.clipboard.writeText(value);this.toast.show("Copied export markup")}catch(error){this.textarea.focus();this.textarea.select();document.execCommand("copy");this.toast.show("Copied export markup")}}}
-      class ParticleEditor{constructor(){this.stage=Dom.byId("particle-stage");this.registry=new FieldRegistry(FIELD_GROUPS);this.factory=new ParticleEmitterFactory(this.registry);this.editorModal=new Modal(Dom.byId("editor-modal"));this.exportModal=new Modal(Dom.byId("export-modal"));this.toast=new Toast(Dom.byId("toast"));this.list=new EmitterList(Dom.byId("emitter-list"),this);this.form=new EmitterForm(Dom.byId("emitter-form"),this.registry,this.factory,this);this.exporter=new Exporter(this,this.exportModal,Dom.byId("export-text"),this.toast);Dom.byId("new-emitter-btn").addEventListener("click",()=>this.newEmitter());Dom.byId("export-btn").addEventListener("click",()=>this.exporter.open());Dom.byId("copy-export-btn").addEventListener("click",()=>this.exporter.copy());this.list.render();this.refreshStageState()}emitters(){return Array.from(this.stage.querySelectorAll(":scope > particle-emitter"))}newEmitter(){const emitter=this.factory.create();this.stage.appendChild(emitter);this.list.select(emitter);this.form.load(emitter,"create");this.editorModal.open();this.afterEmitterChanged(emitter)}openEditor(emitter){this.list.select(emitter);this.form.load(emitter,"edit");this.editorModal.open()}afterEmitterChanged(emitter){this.refreshStageState();this.list.select(emitter);this.list.render();this.exporter.refresh()}afterEmitterDeleted(){this.refreshStageState();this.list.select(null);this.list.render();this.exporter.refresh()}refreshStageState(){this.stage.classList.toggle("has-emitters",this.emitters().length>0)}exportQHtml(options){const settings=Object.assign({wrapQHtml:true,includeContainer:false},options||{});const emitterBlocks=this.emitters().map(emitter=>this.formatEmitterQHtml(emitter));const bodyLines=[];if(settings.includeContainer){bodyLines.push(this.formatContainerStart());emitterBlocks.forEach(block=>block.split("\n").forEach(line=>bodyLines.push(`  ${line}`)));bodyLines.push("}")}else{emitterBlocks.forEach(block=>block.split("\n").forEach(line=>bodyLines.push(line)))}const body=bodyLines.join("\n");return settings.wrapQHtml?["<q-html>",body,"</q-html>"].join("\n"):body}formatContainerStart(){return 'div { style: "position: relative; width: 70vw; height: 70vh; min-width: 420px; min-height: 340px; overflow: hidden;"'}formatEmitterQHtml(emitter){const data=this.factory.read(emitter);const refName=this.sanitizeReferenceName(data["emitter-name"]||emitter.id||"emitter");const lines=[`particle-emitter {`];this.registry.attrs().forEach(attr=>{if(attr==="emitter-name"||attr==="qhtml-unsynced")return;const name=EXPORT_ATTR_NAMES[attr];if(!name)return;const value=data[attr];if(value===undefined||value===null||value==="")return;lines.push(`  ${name}: ${this.formatQHtmlValue(value)}`)});lines.push("}");return lines.join("\n")}formatQHtmlValue(value){const text=String(value);if(/^(true|false)$/i.test(text))return text.toLowerCase();if(text.trim()!==""&&Number.isFinite(Number(text)))return text;return JSON.stringify(text)}sanitizeReferenceName(value){const normalized=String(value||"emitter").replace(/[^A-Za-z0-9_]+/g," ").trim().split(/\s+/).filter(Boolean);if(!normalized.length)return"emitter";const first=normalized[0].replace(/^[^A-Za-z_]+/,"");const parts=[first||"emitter"].concat(normalized.slice(1).map(part=>part.charAt(0).toUpperCase()+part.slice(1)));const joined=parts.join("");return joined||"emitter"}}
-      window.addEventListener("DOMContentLoaded",()=>{window.particleEditor=new ParticleEditor()});
-    }());
-  </script>
+<q-html version="7">
+q-style appRoot {
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 22vw) 1fr;
+  gap: 18px;
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+q-style panel {
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+q-style sidePanel {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 14px;
+  overflow: hidden;
+}
+
+q-style sideHead {
+  padding: 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+q-style titleText {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+q-style subText {
+  margin: 8px 0 0 0;
+  color: #94a3b8;
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+q-style toolbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 20px;
+}
+
+q-style buttonBase {
+  min-height: 42px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+q-style buttonPrimary {
+  background: #22c55e;
+  color: #04130a;
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 14px 38px rgba(34, 197, 94, 0.22);
+}
+
+q-style buttonDanger {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.42);
+}
+
+q-style emitterListWrap {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 10px;
+  overflow: auto;
+  padding: 0 20px 20px 20px;
+}
+
+q-style labelCaps {
+  margin: 0 0 9px 0;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+q-style emitterList {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+q-style emitterChip {
+  min-height: 36px;
+  max-width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #e5e7eb;
+  padding: 0 13px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+q-style selectedChip {
+  color: #04130a;
+  background: #22c55e;
+  border-color: transparent;
+}
+
+q-style workspace {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+q-style stageShell {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 10px;
+}
+
+q-style stageLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+q-style stageStrong {
+  color: #e5e7eb;
+}
+
+q-style stage {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 50% 100%, rgba(34, 197, 94, 0.16), transparent 45%),
+    linear-gradient(180deg, #020617, #0f172a);
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 28px 80px rgba(0, 0, 0, 0.36);
+}
+
+q-style modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(2, 6, 23, 0.74);
+}
+
+q-style modalOpen {
+  display: grid;
+}
+
+q-style dialog {
+  width: min(1180px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+q-style formPanel {
+  min-width: 0;
+  padding: 20px;
+}
+
+q-style formGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+q-style fieldGroup {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+q-style fieldGroupDouble {
+  grid-column: span 2;
+}
+
+q-style fieldGroupFull {
+  grid-column: 1 / -1;
+}
+
+q-style groupTitle {
+  grid-column: 1 / -1;
+  padding: 0;
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+q-style field {
+  display: grid;
+  gap: 6px;
+}
+
+q-style fieldWide {
+  grid-column: 1 / -1;
+}
+
+q-style fieldLabel {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+q-style inputBase {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  border-radius: 9px;
+  background: rgba(2, 6, 23, 0.68);
+  color: #e5e7eb;
+  padding: 8px 10px;
+}
+
+q-style textareaBase {
+  width: 100%;
+  min-height: 214px;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.76);
+  color: #dbeafe;
+  padding: 12px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+q-style exportPanel {
+  min-width: 0;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  width: min(760px, 94vw);
+  max-height: 82vh;
+}
+
+q-style exportActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+q-style mobileRoot {
+  grid-template-columns: 1fr;
+}
+
+q-theme particleEditorTheme {
+  div.app { appRoot }
+  aside.sidebar { panel sidePanel }
+  header.side-head { sideHead }
+  h1.title { titleText }
+  p.subtitle { subText }
+  div.toolbar { toolbar }
+  button.tool { buttonBase }
+  button.primary { buttonPrimary }
+  button.danger { buttonDanger }
+  section.emitter-list-wrap { emitterListWrap }
+  p.label { labelCaps }
+  div.emitter-list { emitterList }
+  button.emitter-chip { emitterChip }
+  button.emitter-chip-selected { selectedChip }
+  main.workspace { workspace }
+  section.stage-shell { stageShell }
+  div.stage-label { stageLabel }
+  strong.stage-name { stageStrong }
+  div.stage { stage }
+  div.modal-backdrop { modalBackdrop }
+  div.modal-open { modalOpen }
+  div.dialog { dialog }
+  div.form-panel { panel formPanel }
+  div.form-grid { formGrid }
+  fieldset.field-group { fieldGroup }
+  fieldset.field-group-double { fieldGroupDouble }
+  fieldset.field-group-full { fieldGroupFull }
+  legend.group-title { groupTitle }
+  label.field { field }
+  label.wide { fieldWide }
+  span.field-label { fieldLabel }
+  input.editor-input { inputBase }
+  textarea.editor-textarea { textareaBase }
+  div.export-panel { panel exportPanel }
+  div.export-actions { exportActions }
+}
+
+q-component particleEditorApp {
+  q-property emitters: q-script { return []; }
+  q-property selectedIndex: -1
+  q-property counter: 0
+
+  function defaultEmitter() {
+    this.counter = this.counter + 1;
+    return {
+      name: "emitter" + this.counter,
+      id: "particle-emitter-" + this.counter,
+      running: "true",
+      src: "../assets/particle.png",
+      mask: "",
+      emittermask: "",
+      color: "#08c473",
+      coloropacity: "0.28",
+      emitrate: "74",
+      interval: "10",
+      maxactiveparticles: "166",
+      maxactiveparticlesvariation: "18",
+      lifetime: "700",
+      lifetimevariation: "90",
+      x: "110",
+      y: "114",
+      width: "0",
+      height: "0",
+      xvariation: "845",
+      yvariation: "20",
+      xvelocity: "0",
+      yvelocity: "-1.75",
+      xvelocityvariation: "0",
+      yvelocityvariation: "0.04",
+      xacceleration: "0",
+      yacceleration: "0.0028",
+      xaccelerationvariation: "0",
+      yaccelerationvariation: "0.005",
+      startsize: "25",
+      endsize: "1",
+      startsizevariation: "7",
+      endsizevariation: "5",
+      startopacity: "0.5",
+      endopacity: "0.02",
+      startopacityvariation: "0.16",
+      endopacityvariation: "0.02",
+      zindex: "1",
+      style: "position: absolute; inset: 0px; display: block; pointer-events: none; overflow: hidden; z-index: 1;"
+    };
+  }
+
+  function stage() {
+    return this.querySelector("#particle-stage");
+  }
+
+  function input(id) {
+    return this.querySelector("#" + id);
+  }
+
+  function fieldValue(id) {
+    return this.input(id).value;
+  }
+
+  function fieldChecked(id) {
+    return this.input(id).checked ? "true" : "false";
+  }
+
+  function setValue(id, value) {
+    this.input(id).value = String(value);
+  }
+
+  function setChecked(id, value) {
+    this.input(id).checked = String(value) == "true";
+  }
+
+  function createEmitterElement(data) {
+    var element = document.createElement("particle-emitter");
+    data.element = element;
+    this.applyEmitterAttributes(data);
+    this.stage().appendChild(element);
+    return element;
+  }
+
+  function fieldDefinitions() {
+    return [
+      { title: "Identity", className: "field-group", fields: [
+        ["Name", "pe-name", "text", "", "", ""],
+        ["Element ID", "pe-id", "text", "", "", ""],
+        ["Running", "pe-running", "checkbox", "", "", ""]
+      ] },
+      { title: "Sprite / Image", className: "field-group field-group-double", fields: [
+        ["Image src", "pe-src", "text", "", "", ""],
+        ["Sprite mask", "pe-mask", "text", "", "", ""],
+        ["Emitter mask", "pe-emittermask", "text", "", "", ""],
+        ["Tint Color", "pe-color", "color", "", "", ""],
+        ["Tint Opacity", "pe-coloropacity", "number", "0.01", "0", "1"]
+      ] },
+      { title: "Emission", className: "field-group", fields: [
+        ["Emit Rate", "pe-emitrate", "number", "1", "", ""],
+        ["Interval", "pe-interval", "number", "1", "", ""],
+        ["Max Active", "pe-maxactiveparticles", "number", "1", "", ""],
+        ["Max Active Variation", "pe-maxactiveparticlesvariation", "number", "1", "", ""]
+      ] },
+      { title: "Lifetime", className: "field-group", fields: [
+        ["Lifetime", "pe-lifetime", "number", "1", "", ""],
+        ["Lifetime Variation", "pe-lifetimevariation", "number", "1", "", ""]
+      ] },
+      { title: "Position", className: "field-group", fields: [
+        ["X", "pe-x", "number", "1", "", ""],
+        ["Y", "pe-y", "number", "1", "", ""],
+        ["Emitter Width", "pe-width", "number", "1", "0", ""],
+        ["Emitter Height", "pe-height", "number", "1", "0", ""],
+        ["X Variation", "pe-xvariation", "number", "1", "", ""],
+        ["Y Variation", "pe-yvariation", "number", "1", "", ""]
+      ] },
+      { title: "Velocity", className: "field-group", fields: [
+        ["X Velocity", "pe-xvelocity", "number", "0.01", "", ""],
+        ["Y Velocity", "pe-yvelocity", "number", "0.01", "", ""],
+        ["X Velocity Variation", "pe-xvelocityvariation", "number", "0.01", "", ""],
+        ["Y Velocity Variation", "pe-yvelocityvariation", "number", "0.01", "", ""]
+      ] },
+      { title: "Acceleration", className: "field-group", fields: [
+        ["X Acceleration", "pe-xacceleration", "number", "0.0001", "", ""],
+        ["Y Acceleration", "pe-yacceleration", "number", "0.0001", "", ""],
+        ["X Accel Variation", "pe-xaccelerationvariation", "number", "0.0001", "", ""],
+        ["Y Accel Variation", "pe-yaccelerationvariation", "number", "0.0001", "", ""]
+      ] },
+      { title: "Size", className: "field-group", fields: [
+        ["Start Size", "pe-startsize", "number", "1", "", ""],
+        ["End Size", "pe-endsize", "number", "1", "", ""],
+        ["Start Size Variation", "pe-startsizevariation", "number", "1", "", ""],
+        ["End Size Variation", "pe-endsizevariation", "number", "1", "", ""]
+      ] },
+      { title: "Opacity", className: "field-group", fields: [
+        ["Start Opacity", "pe-startopacity", "number", "0.01", "0", "1"],
+        ["End Opacity", "pe-endopacity", "number", "0.01", "0", "1"],
+        ["Start Opacity Variation", "pe-startopacityvariation", "number", "0.01", "0", "1"],
+        ["End Opacity Variation", "pe-endopacityvariation", "number", "0.01", "0", "1"]
+      ] },
+      { title: "Element Style", className: "field-group field-group-full", fields: [
+        ["Style", "pe-style", "textarea", "", "", ""],
+        ["Z Index", "pe-zindex", "number", "1", "", ""]
+      ] }
+    ];
+  }
+
+  function buildForm() {
+    var editor = this;
+    var grid = this.querySelector("#particle-form-grid");
+    grid.innerHTML = "";
+    this.fieldDefinitions().forEach(function(group) {
+      var fieldset = document.createElement("fieldset");
+      var legend = document.createElement("legend");
+      fieldset.className = group.className;
+      legend.className = "group-title";
+      legend.textContent = group.title;
+      fieldset.appendChild(legend);
+      group.fields.forEach(function(field) {
+      var label = document.createElement("label");
+      var caption = document.createElement("span");
+      var input = field[2] == "textarea" ? document.createElement("textarea") : document.createElement("input");
+      label.className = "field";
+      caption.className = "field-label";
+      caption.textContent = field[0];
+      input.className = "editor-input";
+      input.id = field[1];
+      if (field[2] != "textarea") {
+        input.type = field[2];
+        input.step = field[3];
+        input.min = field[4];
+        input.max = field[5];
+      }
+      input.oninput = function() { editor.updateSelected(); };
+      input.onchange = function() { editor.updateSelected(); };
+      label.appendChild(caption);
+      label.appendChild(input);
+      fieldset.appendChild(label);
+      });
+      grid.appendChild(fieldset);
+    });
+  }
+
+  function wireForm() {
+    var editor = this;
+    this.querySelectorAll(".editor-input").forEach(function(input) {
+      input.oninput = function() { editor.updateSelected(); };
+      input.onchange = function() { editor.updateSelected(); };
+    });
+  }
+
+  function wireActions() {
+    var editor = this;
+    this.querySelector("#newEmitterButton").addEventListener("click", function() { editor.addEmitter(); });
+    this.querySelector("#deleteEmitterButton").addEventListener("click", function() { editor.deleteSelected(); });
+    this.querySelector("#deleteDialogButton").addEventListener("click", function() { editor.deleteSelected(); });
+    this.querySelector("#exportEmitterButton").addEventListener("click", function() { editor.openExportDialog(); });
+    this.querySelector("#copyExportButton").addEventListener("click", function() { editor.copyExport(); });
+    this.querySelector("#refreshExportButton").addEventListener("click", function() { editor.refreshExport(); });
+    this.querySelector("#closeEditorButton").addEventListener("click", function() { editor.closeEditorDialog(); });
+    this.querySelector("#closeExportButton").addEventListener("click", function() { editor.closeExportDialog(); });
+  }
+
+  function openDialog(id) {
+    this.querySelector("#" + id).style.display = "grid";
+  }
+
+  function closeDialog(id) {
+    this.querySelector("#" + id).style.display = "none";
+  }
+
+  function openEditorDialog() {
+    this.openDialog("editorDialog");
+  }
+
+  function closeEditorDialog() {
+    this.closeDialog("editorDialog");
+  }
+
+  function openExportDialog() {
+    this.refreshExport();
+    this.openDialog("exportDialog");
+  }
+
+  function closeExportDialog() {
+    this.closeDialog("exportDialog");
+  }
+
+  function applyEmitterAttributes(data) {
+    data.element.setAttribute("id", data.id);
+    data.element.setAttribute("running", data.running);
+    data.element.setAttribute("src", data.src);
+    data.element.setAttribute("mask", data.mask);
+    data.element.setAttribute("emittermask", data.emittermask);
+    data.element.setAttribute("color", data.color);
+    data.element.setAttribute("coloropacity", data.coloropacity);
+    data.element.setAttribute("emitrate", data.emitrate);
+    data.element.setAttribute("interval", data.interval);
+    data.element.setAttribute("maxactiveparticles", data.maxactiveparticles);
+    data.element.setAttribute("maxactiveparticlesvariation", data.maxactiveparticlesvariation);
+    data.element.setAttribute("lifetime", data.lifetime);
+    data.element.setAttribute("lifetimevariation", data.lifetimevariation);
+    data.element.setAttribute("x", data.x);
+    data.element.setAttribute("y", data.y);
+    data.element.setAttribute("width", data.width);
+    data.element.setAttribute("height", data.height);
+    data.element.setAttribute("xvariation", data.xvariation);
+    data.element.setAttribute("yvariation", data.yvariation);
+    data.element.setAttribute("xvelocity", data.xvelocity);
+    data.element.setAttribute("yvelocity", data.yvelocity);
+    data.element.setAttribute("xvelocityvariation", data.xvelocityvariation);
+    data.element.setAttribute("yvelocityvariation", data.yvelocityvariation);
+    data.element.setAttribute("xacceleration", data.xacceleration);
+    data.element.setAttribute("yacceleration", data.yacceleration);
+    data.element.setAttribute("xaccelerationvariation", data.xaccelerationvariation);
+    data.element.setAttribute("yaccelerationvariation", data.yaccelerationvariation);
+    data.element.setAttribute("startsize", data.startsize);
+    data.element.setAttribute("endsize", data.endsize);
+    data.element.setAttribute("startsizevariation", data.startsizevariation);
+    data.element.setAttribute("endsizevariation", data.endsizevariation);
+    data.element.setAttribute("startopacity", data.startopacity);
+    data.element.setAttribute("endopacity", data.endopacity);
+    data.element.setAttribute("startopacityvariation", data.startopacityvariation);
+    data.element.setAttribute("endopacityvariation", data.endopacityvariation);
+    data.element.setAttribute("zindex", data.zindex);
+    data.element.setAttribute("style", data.style);
+  }
+
+  function readForm() {
+    var previous = this.emitters[this.selectedIndex];
+    return {
+      name: this.fieldValue("pe-name"),
+      id: this.fieldValue("pe-id"),
+      running: this.fieldChecked("pe-running"),
+      src: this.fieldValue("pe-src"),
+      mask: this.fieldValue("pe-mask"),
+      emittermask: this.fieldValue("pe-emittermask"),
+      color: this.fieldValue("pe-color"),
+      coloropacity: this.fieldValue("pe-coloropacity"),
+      emitrate: this.fieldValue("pe-emitrate"),
+      interval: this.fieldValue("pe-interval"),
+      maxactiveparticles: this.fieldValue("pe-maxactiveparticles"),
+      maxactiveparticlesvariation: this.fieldValue("pe-maxactiveparticlesvariation"),
+      lifetime: this.fieldValue("pe-lifetime"),
+      lifetimevariation: this.fieldValue("pe-lifetimevariation"),
+      x: this.fieldValue("pe-x"),
+      y: this.fieldValue("pe-y"),
+      width: this.fieldValue("pe-width"),
+      height: this.fieldValue("pe-height"),
+      xvariation: this.fieldValue("pe-xvariation"),
+      yvariation: this.fieldValue("pe-yvariation"),
+      xvelocity: this.fieldValue("pe-xvelocity"),
+      yvelocity: this.fieldValue("pe-yvelocity"),
+      xvelocityvariation: this.fieldValue("pe-xvelocityvariation"),
+      yvelocityvariation: this.fieldValue("pe-yvelocityvariation"),
+      xacceleration: this.fieldValue("pe-xacceleration"),
+      yacceleration: this.fieldValue("pe-yacceleration"),
+      xaccelerationvariation: this.fieldValue("pe-xaccelerationvariation"),
+      yaccelerationvariation: this.fieldValue("pe-yaccelerationvariation"),
+      startsize: this.fieldValue("pe-startsize"),
+      endsize: this.fieldValue("pe-endsize"),
+      startsizevariation: this.fieldValue("pe-startsizevariation"),
+      endsizevariation: this.fieldValue("pe-endsizevariation"),
+      startopacity: this.fieldValue("pe-startopacity"),
+      endopacity: this.fieldValue("pe-endopacity"),
+      startopacityvariation: this.fieldValue("pe-startopacityvariation"),
+      endopacityvariation: this.fieldValue("pe-endopacityvariation"),
+      zindex: this.fieldValue("pe-zindex"),
+      style: this.fieldValue("pe-style"),
+      element: previous.element
+    };
+  }
+
+  function writeForm(data) {
+    this.setValue("pe-name", data.name);
+    this.setValue("pe-id", data.id);
+    this.setChecked("pe-running", data.running);
+    this.setValue("pe-src", data.src);
+    this.setValue("pe-mask", data.mask);
+    this.setValue("pe-emittermask", data.emittermask);
+    this.setValue("pe-color", data.color);
+    this.setValue("pe-coloropacity", data.coloropacity);
+    this.setValue("pe-emitrate", data.emitrate);
+    this.setValue("pe-interval", data.interval);
+    this.setValue("pe-maxactiveparticles", data.maxactiveparticles);
+    this.setValue("pe-maxactiveparticlesvariation", data.maxactiveparticlesvariation);
+    this.setValue("pe-lifetime", data.lifetime);
+    this.setValue("pe-lifetimevariation", data.lifetimevariation);
+    this.setValue("pe-x", data.x);
+    this.setValue("pe-y", data.y);
+    this.setValue("pe-width", data.width);
+    this.setValue("pe-height", data.height);
+    this.setValue("pe-xvariation", data.xvariation);
+    this.setValue("pe-yvariation", data.yvariation);
+    this.setValue("pe-xvelocity", data.xvelocity);
+    this.setValue("pe-yvelocity", data.yvelocity);
+    this.setValue("pe-xvelocityvariation", data.xvelocityvariation);
+    this.setValue("pe-yvelocityvariation", data.yvelocityvariation);
+    this.setValue("pe-xacceleration", data.xacceleration);
+    this.setValue("pe-yacceleration", data.yacceleration);
+    this.setValue("pe-xaccelerationvariation", data.xaccelerationvariation);
+    this.setValue("pe-yaccelerationvariation", data.yaccelerationvariation);
+    this.setValue("pe-startsize", data.startsize);
+    this.setValue("pe-endsize", data.endsize);
+    this.setValue("pe-startsizevariation", data.startsizevariation);
+    this.setValue("pe-endsizevariation", data.endsizevariation);
+    this.setValue("pe-startopacity", data.startopacity);
+    this.setValue("pe-endopacity", data.endopacity);
+    this.setValue("pe-startopacityvariation", data.startopacityvariation);
+    this.setValue("pe-endopacityvariation", data.endopacityvariation);
+    this.setValue("pe-zindex", data.zindex);
+    this.setValue("pe-style", data.style);
+  }
+
+  function addEmitter(openEditor) {
+    var data = this.defaultEmitter();
+    this.createEmitterElement(data);
+    this.emitters.push(data);
+    this.selectEmitter(this.emitters.length - 1, openEditor);
+  }
+
+  function selectEmitter(index, openEditor) {
+    this.selectedIndex = index;
+    this.writeForm(this.emitters[index]);
+    this.renderEmitterList();
+    this.refreshExport();
+    if (openEditor == true) {
+      this.openEditorDialog();
+    }
+  }
+
+  function updateSelected() {
+    var data = this.readForm();
+    this.emitters[this.selectedIndex] = data;
+    this.applyEmitterAttributes(data);
+    this.renderEmitterList();
+    this.refreshExport();
+  }
+
+  function deleteSelected() {
+    var data = this.emitters[this.selectedIndex];
+    data.element.remove();
+    this.emitters.splice(this.selectedIndex, 1);
+    if (this.emitters.length == 0) {
+      this.addEmitter(false);
+      return;
+    }
+    this.selectEmitter(0, false);
+  }
+
+  function renderEmitterList() {
+    var editor = this;
+    var list = this.querySelector("#emitter-list");
+    list.innerHTML = "";
+    this.emitters.forEach(function(data, index) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = index == editor.selectedIndex ? "emitter-chip emitter-chip-selected" : "emitter-chip";
+      button.textContent = data.name;
+      button.onclick = function() { editor.selectEmitter(index, true); };
+      list.appendChild(button);
+    });
+  }
+
+  function exportName(name) {
+    var clean = String(name).replace(/[^A-Za-z0-9_]/g, "_");
+    if (clean.charAt(0) >= "0" && clean.charAt(0) <= "9") {
+      clean = "emitter_" + clean;
+    }
+    return clean;
+  }
+
+  function qvalue(value) {
+    var text = String(value);
+    if (text == "true" || text == "false") {
+      return text;
+    }
+    if (text != "" && String(Number(text)) == text) {
+      return text;
+    }
+    return JSON.stringify(text);
+  }
+
+  function appendLine(lines, indent, name, value) {
+    if (String(value) != "") {
+      lines.push(indent + name + ": " + this.qvalue(value));
+    }
+  }
+
+  function emitterToQHTML(data) {
+    var lines = ["particle-emitter " + this.exportName(data.name) + " {"];
+    this.appendLine(lines, "  ", "id", data.id);
+    this.appendLine(lines, "  ", "running", data.running);
+    this.appendLine(lines, "  ", "src", data.src);
+    this.appendLine(lines, "  ", "mask", data.mask);
+    this.appendLine(lines, "  ", "emitterMask", data.emittermask);
+    this.appendLine(lines, "  ", "color", data.color);
+    this.appendLine(lines, "  ", "colorOpacity", data.coloropacity);
+    this.appendLine(lines, "  ", "emitRate", data.emitrate);
+    this.appendLine(lines, "  ", "interval", data.interval);
+    this.appendLine(lines, "  ", "maxActiveParticles", data.maxactiveparticles);
+    this.appendLine(lines, "  ", "maxActiveParticlesVariation", data.maxactiveparticlesvariation);
+    this.appendLine(lines, "  ", "lifetime", data.lifetime);
+    this.appendLine(lines, "  ", "lifetimeVariation", data.lifetimevariation);
+    this.appendLine(lines, "  ", "x", data.x);
+    this.appendLine(lines, "  ", "y", data.y);
+    this.appendLine(lines, "  ", "width", data.width);
+    this.appendLine(lines, "  ", "height", data.height);
+    this.appendLine(lines, "  ", "xVariation", data.xvariation);
+    this.appendLine(lines, "  ", "yVariation", data.yvariation);
+    this.appendLine(lines, "  ", "xVelocity", data.xvelocity);
+    this.appendLine(lines, "  ", "yVelocity", data.yvelocity);
+    this.appendLine(lines, "  ", "xVelocityVariation", data.xvelocityvariation);
+    this.appendLine(lines, "  ", "yVelocityVariation", data.yvelocityvariation);
+    this.appendLine(lines, "  ", "xAcceleration", data.xacceleration);
+    this.appendLine(lines, "  ", "yAcceleration", data.yacceleration);
+    this.appendLine(lines, "  ", "xAccelerationVariation", data.xaccelerationvariation);
+    this.appendLine(lines, "  ", "yAccelerationVariation", data.yaccelerationvariation);
+    this.appendLine(lines, "  ", "startSize", data.startsize);
+    this.appendLine(lines, "  ", "endSize", data.endsize);
+    this.appendLine(lines, "  ", "startSizeVariation", data.startsizevariation);
+    this.appendLine(lines, "  ", "endSizeVariation", data.endsizevariation);
+    this.appendLine(lines, "  ", "startOpacity", data.startopacity);
+    this.appendLine(lines, "  ", "endOpacity", data.endopacity);
+    this.appendLine(lines, "  ", "startOpacityVariation", data.startopacityvariation);
+    this.appendLine(lines, "  ", "endOpacityVariation", data.endopacityvariation);
+    this.appendLine(lines, "  ", "zIndex", data.zindex);
+    this.appendLine(lines, "  ", "style", data.style);
+    lines.push("}");
+    return lines.join(String.fromCharCode(10));
+  }
+
+  function refreshExport() {
+    var editor = this;
+    var blocks = this.emitters.map(function(data) { return editor.emitterToQHTML(data); });
+    var nl = String.fromCharCode(10);
+    var openTag = String.fromCharCode(60) + 'q-html version="7"' + String.fromCharCode(62);
+    var closeTag = String.fromCharCode(60) + '/q-html' + String.fromCharCode(62);
+    this.querySelector("#exportText").value = openTag + nl + blocks.join(nl + nl) + nl + closeTag;
+  }
+
+  function copyExport() {
+    var output = this.querySelector("#exportText");
+    output.focus();
+    output.select();
+    document.execCommand("copy");
+  }
+
+  onReady {
+    this.addEmitter();
+  }
+
+  particleEditorTheme {
+    div.app {
+      aside.sidebar {
+        header.side-head {
+          h1.title { text { Particle Editor } }
+          p.subtitle { text { QHTML7 component state drives live particle-emitter instances and exportable QHTML. } }
+        }
+
+        div.toolbar {
+          button#newEmitterButton.tool.primary {
+            text { New Emitter }
+          }
+          button#deleteEmitterButton.tool.danger {
+            text { Delete }
+          }
+        }
+
+        section.emitter-list-wrap {
+          p.label { text { Emitters } }
+          div.emitter-list {
+            id: "emitter-list"
+          }
+          button#exportEmitterButton.tool {
+            text { Export QHTML }
+          }
+        }
+      }
+
+      main.workspace {
+        section.stage-shell {
+          div.stage-label {
+            strong.stage-name { text { Live Stage } }
+            span { text { Emits from QHTML-owned object data } }
+          }
+          div.stage {
+            id: "particle-stage"
+          }
+        }
+
+        div#editorDialog.modal-backdrop {
+          div.dialog {
+            div.form-panel {
+              p.label { text { Selected Emitter } }
+              div#particle-form-grid.form-grid { }
+              div.export-actions {
+                button#deleteDialogButton.tool.danger {
+                  text { Delete }
+                }
+                button#closeEditorButton.tool {
+                  text { Close }
+                }
+              }
+            }
+          }
+        }
+
+        div#exportDialog.modal-backdrop {
+          div.export-panel {
+            p.label { text { Selected Emitter } }
+            textarea.editor-textarea {
+              id: "exportText"
+              spellcheck: "false"
+            }
+            div.export-actions {
+              button#copyExportButton.tool.primary {
+                text { Copy QHTML }
+              }
+              button#refreshExportButton.tool {
+                text { Refresh }
+              }
+              button#closeExportButton.tool {
+                text { Close }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+particleEditorApp editor { }
+</q-html>
+<script>
+  document.addEventListener("QHTMLContentLoaded", function initializeParticleEditor() {
+    var editor = document.querySelector("particleeditorapp");
+    editor.buildForm();
+    editor.wireForm();
+    editor.wireActions();
+    editor.addEmitter();
+  }, { once: true });
+</script>
 </body>
 </html>

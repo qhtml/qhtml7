@@ -5,7 +5,7 @@ var Module;
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const currentScript = document.currentScript;
-  const QHTML_VERSION = "v7.3.6";
+  const QHTML_VERSION = "v7.3.7";
 
   if (!currentScript || !currentScript.src) {
     throw new Error("qhtml-wasm.js must be loaded from a script URL");
