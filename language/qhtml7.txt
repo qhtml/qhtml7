@@ -826,25 +826,86 @@ q-layout {
 
 layouts can be either named types or anonymous.  Making them anonymous objects will render them in the DOM, but they wqill not be accessible to the QHTML runtime by name, only through the DOM via querySelector().
 
+Layout-builder behavior: tools/layout-builder.html is the reference implementation for manipulating QHTMLLayout, QHTMLLayoutRow, and QHTMLLayoutCol objects from a browser tool. The QHTML view for this tool lives in tools/layout-builder/main.qhtml and the imperative editor logic lives in tools/layout-builder/main.js so the same builder can be embedded into tools/page-builder.html. The JavaScript editor must mutate the QHTML layout object model, preserve the user's declared units, and export by calling the QHTML serialization path instead of rebuilding large strings by hand.
+
+Default layout properties are inherit unless the user explicitly sets them. A new q-layout defaults to width: inherit, height: inherit, gap: inherit, and contains a q-row child. A new q-row defaults to width: 100%, height: 10vh, gap: inherit, and contains the text child `text { row }` so it can be identified visually. A new q-col defaults to width: 10vw, height: inherit, gap: inherit, and contains the text child `text { col }`. Blank property fields in the layout editor are written back as inherit, not as 0px or auto.
+
+The layout editor context menu operates on the deepest highlighted q-layout, q-row, or q-col under the cursor. When the menu opens, highlighting is frozen until the menu closes. Add -> Row, Add -> Column, and Add -> Layout each support Before, After, As Child, and Replace where the operation is valid. Columns can only be inserted as children into rows or layouts. Rows can only be inserted as children into columns or layouts. If a q-col is highlighted, Add -> Column -> As Child is disabled. If a q-row is highlighted, Add -> Row -> As Child is disabled. Edit opens the selected node's QHTML source in q-editor and Save reparses it into the selected object. Delete removes the selected layout object and its layout children.
+
+Dragging in the center of a highlighted layout object moves that object. Dragging near an edge resizes only the dimension represented by that edge. Resize values are allowed to use px internally for pointer math but must be converted back to the unit originally stored on the object: vh remains vh, vw remains vw, percent remains percent, and inherit remains inherit until the user explicitly gives the object a concrete size. Resizing must never convert persistent QHTML layout properties to px merely because the pointer event was measured in pixels.
+
+For q-col children of a q-row, horizontal resizing follows row packing rules. The first visible layout child of a q-row cannot be resized from the left edge. Dragging the left edge of any later q-col toward the left shrinks preceding q-col siblings, nearest siblings included in the shared reduction, while the selected q-col grows. Dragging that left edge toward the right expands preceding q-col siblings nearest-first while the selected q-col shrinks. Width changes must respect minWidth, maxWidth where specified, and the minimum width required by visible content. The editor must not use x offsets for this standard q-col-in-q-row resize case. Dragging the right edge of a q-col under a q-row grows the selected q-col and shrinks following q-col siblings when the row's right boundary would otherwise be exceeded. Following siblings are not given x offsets for this case either; their widths are reduced until their min/content width blocks further resizing.
+
+Columns that share the same q-row parent may not overlap. A q-col's left edge cannot pass the right edge of previous siblings and its right edge cannot pass the left edge of following siblings. When constrained, the resize operation must distribute shrink or growth across eligible sibling columns according to the side being dragged instead of creating overlapping layout geometry.
+
+Rows are treated differently because web pages can extend vertically. A q-row can always be resized vertically. If a q-row is the direct child of a q-col, its horizontal width is constrained to that q-col's width. Otherwise it may resize horizontally under the same general bounds as its parent permits. Dragging the top edge of a q-row upward shrinks previous q-row siblings until they reach min/content height. Dragging the bottom edge grows the selected row and pushes following rows downward. If a parent has an explicit height, the bottom-edge resize is blocked when following rows would exceed the parent unless the selected row is the last row sibling. If the selected q-row is the last sibling, dragging its bottom edge beyond the parent grows ancestor heights along the last-child path so the document can continue downward.
+
+Dropping a dragged q-row, q-col, or q-layout uses the current deepest layout object under the cursor and the side or center region of that target. A center drop prompts with a modal dialog, not a JavaScript prompt, and offers Swap, Replace, or Cancel. Replacing a node that has children must prompt again to delete children or move them into the dropped node. Row-to-row drops use top/bottom for before/after and left/right for inserting as a child at the beginning or end of the target row. Row-to-col drops use top/bottom to add as a child at the start/end of the target column and left/right to create a neighboring column containing the dropped row. Equivalent column operations follow the row/column insertion constraints above.
+
 -------------------------
-25. tools/page-builder.html -- functional overview.  This is the dynamic page builder tool for QHTML7. It features the following separate modules:  palette.qhtml, canvas.qhtml, filemanager.qhtml proxy.qhtml and main.qhtml.
+25. tools/page-builder.html -- functional overview. This is the dynamic page builder tool for QHTML7. The current shell embeds the shared layout builder as the main canvas and loads the default palette through:
 
-main.qhtml -- the main qhtml file that contains import statements for palette.qhtml, filemanager.qhtml and canvas.html.  Also included are q-editor.qhtml and the q-animation-tool.qhtml from the tools directory. main.qhtml handles the general user interface structure. It will have a scrollable sidebar for the palette that can be hidden via button (use q-components/q-sidebar.qhtml if desired but copy it into a file stored under tools/page-builder/ and imported from there. )  Avoid improt any qhtml files from ../* to minimize dependencies from cross-directory folders. The one exception would be ../dist/qhtml-wasm.js which can be loaded as a script from ../dist/ . Anyways, there should be a top area at the top of the main section which is the file manager with a neat q-layout of buttons across the top with a maximum of 3-4 columns (set with columns property).  These buttons should be grouped so that the File buttons are together, then the next set of buttons together, etc.  The buttons should be Load File, Save File | Load Palette, Save Palette, Import Palette Item | Page Info (setting name, author, canonical URL). THere should also be a title that says QHTML7 Page Builder on the left side.
+```
+q-import { page-builder/palette.qhtml }
+```
 
-Now beneath that section, also in the main area to right of the palette sidebar and stretching across the remaining viewport width, we have the canvas. The canvas is imported via page-builder/canvas.qhtml as a q-component named PageBuilderCanvas and instantiated with width set in vw and height set to 100% so that it can grow with the content. By default, the PageBuilderCanvas component will have a single slot with default content containing a q-layout with a q-row and a q-col object  and some text saying "Drop palete items here".  Dropping the palette item onto that slot will open up the replace or insert into slot dialog, which the user can choose from either one. This is canvas.
+The palette module is split into two files. tools/page-builder/palette.qhtml contains QHTML only and must contain q-component definitions only. It must not contain top-level rendered instances, raw JSON runtime data, or string-encoded component definitions as attributes. tools/page-builder/palette.js owns drag and drop events, registry state, slot migration state, and calls into QHTML APIs such as toJSON(), fromJSON(), toQHTML(), fromQHTML(), childList(), and findChildrenByType() as those APIs become available.
 
-Palette items are actually QComponentDefinition instances under the hood and adding them into a slot is just a matter of creating a new QHTMLComponentInstance and adding it as a child to whatever slot the palette item was dropped onto.
+The base palette type is:
 
-Dropping:  dropping a palette item has a few different available choices.. depending on the positioning of where the item is dropped in relation to the item that the mouse is hovering over. It works like this:
+```
+q-component builderPaletteItem { }
+```
 
-- If palette item instance has a parent that is a q-row (QHTMLLayoutRow), if the cursor is closer to the right side then we append the new dragged palette item instance after the one hovered by the cursor, if its closer to the left side then we insert it directly before in the q-row's qhtmlChildren. If the cursor is closer to the center than either side (xpos of 25% - 75% of the width), then the target when dropped is a replace / insert dialog which asks whether to insert into a slot or replace the entire component.
-- The same applied for q-col, only we uss the top and bottom boundaries to determine what the target shall be, either before for top, after for bottom, or insert to slot / replace dialog for center.
-- q-components instances that are children of another q-component instance also are valid targets, so if a canvas component instance has 3 children, then a determination has to be made as to which one the mouse is currently hovered over when drag and dropping, and then depending on if there is a layout or not, providing different highlight options (either highlight left border, top, bottom, right or whole border of the deepest element that contains the mouse cursor while dragging from palette area.)
-- When no layout exists, the only option is insert into slot / replace. If no slote exists, then the options become replace only.
-- There should also be a context menu available via right-click which has options to modify the layout in an area. If you right click on a component in the canvas, and go to Layout Menu, the submenu pops up with: Wrap in Layout, Unwrap Layout and if there is already a layout parent, then the additional options become available:  Add Row, Add Column, set Row Count, set Column Count, set width, set height, and more... clicking on more... will bring up the remaining shortcuts like set backgroundColor, set marginLeft, setPaddingLeft, set x, set y, etc. -- This will allow the user to manipulate layouts manually with some precision and style them to an extent.
-- any QHTMLLayout* based class is also a valid drop target and follows the same highlight and targeting rules as instances do, the only difference is that if a area is empty, the only choice is to add palette item to this specific layout area.  If it is not, then follow the same conventions but instead of adding the palette item as a child of the parent layout, we would be adding it to the target layout itself so we don't run into problems with incorrect drop zones.
+Every concrete palette entry extends this type:
 
-There is also a pencil on the top right that appears when the cursor is over a palette item so we need to track palette items and which objects they are via some attribute or something, the pencil will open up the Edit Dialog which allows the user to manually edit the instance and its slot contents / instantiated properties via a q-editor instance with the source code for the instance populated in it.  Changes to the editor in this dialog after clicking "Save" will be reflected on the canvas immediately for that instance.  Changes to the definition are only possible trough the palette sidebar edit pencil btton next to each palette item, and follow a similar design.
+```
+q-component mySpecialPalette extends builderPaletteItem { }
+```
+
+builderPaletteItem defines common metadata properties including paletteId, canvasInstanceId, definitionName, definitionUUID, displayName, category, description, iconLabel, instanceName, instanceQHTML, and slotNames. This component is metadata for the palette entry and should not be responsible for rendering the palette control.
+
+Rendered palette controls are builderPaletteButton instances. Each palette control must be placed inside a q-layout with a q-col containing exactly one builderPaletteButton for that palette entry. builderPaletteButton renders the fixed-size rectangular button, exposes the same metadata fields needed for display, and implements createInstanceFromType(componentDefinition). Concrete palette buttons override instantiatePaletteItem() and call createInstanceFromType() with the matching builderPaletteItem definition:
+
+```
+q-layout {
+  q-row {
+    q-col {
+      builderPaletteButton mybutton {
+        paletteId: "builder.hero"
+        definitionName: "builderHeroBlock"
+        displayName: "Hero"
+        function instantiatePaletteItem() {
+          return this.createInstanceFromType(builderHeroPaletteItem);
+        }
+      }
+    }
+  }
+}
+```
+
+createInstanceFromType() returns the newly created QHTML instance reference or, while the drag/drop canvas is being wired, the bridge-side instance reference that records the target component definition, palette id, generated canvas instance id, and available slot list. That returned reference is what later drag/drop code appends to qhtmlChildren or to a QHTMLComponentInstanceSlot.
+
+palette.js maintains the browser-side page-builder palette state:
+
+- paletteDefinitions maps paletteId to the QHTMLComponentDefinition name, definition UUID, and current slot list.
+- paletteItems maps paletteId to the rendered palette item component and its metadata.
+- canvasInstances maps canvasInstanceId to the QHTML component instance placed on the canvas.
+- topLevelCanvasItems stores canvas instances that are direct children of q-layout, q-row, or q-col objects.
+- slotPlacements stores components dropped into named slots of other component instances.
+- pendingSlotMigrations stores temporary content while a palette definition changes its available slots.
+
+Slot lists should be discovered from the actual QHTMLComponentDefinition whenever the definition object is available. The JavaScript controller can call definition.childList() and recursively inspect the returned QHTMLNode objects for children whose qhtmlType is QHTMLSlot, QHTMLSlotDefault, or QHTMLComponentSlot. If findChildrenByType("QHTMLSlot") is available, it can be used as the fast path, but childList() remains the canonical object-graph fallback. The explicit slotNames property on builderPaletteItem is only bootstrap metadata for rendered palette cards and should not be treated as more authoritative than the QHTMLComponentDefinition children.
+
+Palette IDs are stable editor identifiers. Definition UUIDs identify the component definition that a palette item instantiates. Canvas instance IDs identify each dropped instance on the page builder canvas. A palette item may create many canvas instances, so canvasInstanceId must never be treated as the same value as paletteId or definitionUUID.
+
+When a palette item is dragged, palette.js places a JSON payload on DataTransfer under application/qhtml-palette+json and also provides text/qhtml-palette-id, text/qhtml-definition-name, text/qhtml-instance, and text/plain fallbacks. The layout builder or page-builder canvas consumes that payload and creates a QHTMLComponentInstance from the referenced QHTMLComponentDefinition. If the drop target is a q-layout, q-row, or q-col, the new component is tracked as a top-level canvas item. If the drop target is a slot inside another QHTMLComponentInstance, the placement is tracked in slotPlacements by owner instance ID and slot name.
+
+Slot migration is required when a palette component definition changes. Before a QHTMLComponentDefinition is replaced, palette.js compares the old slot list to the new slot list. The preferred comparison source is the QHTMLComponentDefinition child graph: call childList(), find QHTMLSlot children, and compare their qhtmlName values. If any slots were removed, every canvas instance using that palette definition is scanned for slotPlacements using those removed slot names. The editor opens a migration dialog listing the removed slots and available new slots. For each affected placement the user chooses a new slot or Delete. During this dialog the old slot content is kept in pendingSlotMigrations. Only after every affected placement has a destination does the actual QHTMLComponentDefinition change happen. Then the stored content is appended to the new slot or removed when Delete was chosen.
+
+The page builder canvas should use the shared layout-builder rules from section 24 for adding, moving, resizing, and deleting q-layout, q-row, and q-col objects. Page content components are inserted into those layout objects as QHTMLComponentInstance children. The builder should prefer QHTML object APIs over string manipulation: inspect with childList(), findChildrenByType(), slots(), toJSON(), and toQHTML(); mutate with append(), remove(), setProperty(), fromJSON(), and fromQHTML(); then ask the QHTML runtime to re-render the affected object.
+
+Default palette components should be declared in palette.qhtml as normal q-component definitions. The palette item definition references the actual canvas component through definitionName and definitionUUID, while the canvas component definition itself is also declared in palette.qhtml. This keeps the component editable as QHTML, avoids storing large escaped QHTML strings in DOM attributes, and lets the same definitions be serialized through the normal QHTMLDomTree APIs.
 
 
 26. Additional implementation for page-builder
@@ -924,3 +985,18 @@ The last thing is going to be .reload() on QHTMLDomTree(). This reload() method 
 ---------
 
 27. Highlighting - whenever an area is under the mouse that is a QComponentInstanceSlot type, it should have the borderColor property set as blue.
+
+
+---------
+
+Page Builder TODO
+
+- Improve palette drag/drop polish now that the basic path works:
+  palette button -> createInstanceFromType() -> scoped definition import -> layout canvas drop/render.
+- Add drop indicators for palette item dragging. Valid targets should visibly show whether the item will append, insert before/after, replace, or insert into a slot.
+- Add valid target detection for palette item drops. The drop controller should distinguish q-layout, q-row, q-col, QHTMLComponentInstance, and QHTMLComponentInstanceSlot targets and reject invalid targets cleanly.
+- Add slot drop support. Dropping onto a component slot should append the created QHTMLComponentInstance into the QHTMLComponentInstanceSlot instead of only appending source into the layout model.
+- Add cleaner button and floating clone styling. Palette buttons should be visually compact, stable in size, and easy to scan; the drag clone should be clearly detached from the sidebar without obscuring the target area.
+- Add component-instance editing after drop. A dropped component instance should be selectable and editable through q-editor using its toQHTML()/fromQHTML() path.
+- Add definition editing from the palette. Editing a palette component definition should use childList()/findChildrenByType("QHTMLSlot") to detect slot changes and run the slot migration flow before replacing the definition.
+- Add persistent page-builder save/load once palette drops, layout edits, and slot placements all round-trip through QHTML object APIs rather than ad hoc DOM state.

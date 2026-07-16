@@ -30,7 +30,7 @@ extern "C" {
 }
 #endif
 
-inline constexpr const char QHTML_VERSION[] = "v7.3.7";
+inline constexpr const char QHTML_VERSION[] = "v7.3.8";
 inline constexpr int QHTML_QUICKJS_SIZE_BUDGET_BYTES = 614400;
 
 inline std::string qhtmlVersionJs()
@@ -448,6 +448,40 @@ public:
             if (QHTMLNode *child = qhtmlChildren.value(i, nullptr)) {
                 out.append(child);
             }
+        }
+        return out;
+    }
+
+    emscripten::val childListJs() const
+    {
+        emscripten::val out = emscripten::val::array();
+        const QVector<QHTMLNode *> localChildren = children();
+        for (int i = 0; i < localChildren.size(); ++i) {
+            out.set(i, localChildren.at(i));
+        }
+        return out;
+    }
+
+    void collectChildrenByType(const QString &typeName, QVector<QHTMLNode *> &out) const
+    {
+        for (QHTMLNode *child : children()) {
+            if (!child) {
+                continue;
+            }
+            if (child->qhtmlType() == typeName) {
+                out.append(child);
+            }
+            child->collectChildrenByType(typeName, out);
+        }
+    }
+
+    emscripten::val findChildrenByTypeJs(const std::string &typeName) const
+    {
+        emscripten::val out = emscripten::val::array();
+        QVector<QHTMLNode *> matches;
+        collectChildrenByType(QString::fromStdString(typeName), matches);
+        for (int i = 0; i < matches.size(); ++i) {
+            out.set(i, matches.at(i));
         }
         return out;
     }

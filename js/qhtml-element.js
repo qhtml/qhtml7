@@ -6,7 +6,7 @@
   const ELEMENT_NAME_7 = "q-html7";
   const ELEMENT_NAME_6 = "q-html6";
   const ELEMENT_NAME_ERROR = "q-html-error";
-  const QHTML_VERSION = "v7.3.7";
+  const QHTML_VERSION = "v7.3.8";
   const currentScript = document.currentScript;
   const QHTML7_RUNTIME_BASE = globalScope.QHTML7_SCRIPT_BASE ||
     globalScope.QHTML_SCRIPT_BASE ||

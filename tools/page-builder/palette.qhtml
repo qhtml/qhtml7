@@ -1,122 +1,383 @@
-q-component page-builder-palette {
-  aside.pb-sidebar {
-    div.pb-sidebar-head {
-      h2 { text { Palette } }
-      p { text { Drag definitions into the canvas. Pencil edits the component definition. } }
+q-component builderPaletteItem {
+  q-property paletteId: "builder.palette.item"
+  q-property canvasInstanceId: ""
+  q-property definitionName: "builderBlock"
+  q-property definitionUUID: ""
+  q-property displayName: "Palette Item"
+  q-property category: "Blocks"
+  q-property description: "Reusable QHTML block"
+  q-property iconLabel: "+"
+  q-property instanceName: "builderBlockInstance"
+  q-property instanceQHTML: ""
+  q-property slotNames: "content"
+}
+
+q-component builderPaletteButton {
+  q-property paletteId: "builder.palette.item"
+  q-property definitionName: "builderBlock"
+  q-property definitionUUID: ""
+  q-property displayName: "Palette Item"
+  q-property category: "Blocks"
+  q-property description: "Reusable QHTML block"
+  q-property iconLabel: "+"
+  q-property instanceName: "builderBlockInstance"
+  q-property slotNames: "content"
+  q-property canvasInstanceId: ""
+
+  q-signal paletteInstanceCreated(instance)
+  q-signal paletteEditRequested(paletteId, definitionName)
+  q-signal paletteSelected(paletteId, definitionName)
+
+  function createInstanceFromType(componentDefinition) {
+    return window.QHTMLPageBuilderPalette.createInstanceFromType(this, componentDefinition);
+  }
+
+  function instantiatePaletteItem() {
+    return this.createInstanceFromType(builderPaletteItem);
+  }
+
+  function selectPaletteItem(event) {
+    window.QHTMLPageBuilderPalette.selectButton(this, event);
+    this.paletteSelected(this.paletteId, this.definitionName);
+  }
+
+  function requestPaletteEdit(event) {
+    window.QHTMLPageBuilderPalette.requestButtonEdit(this, event);
+    this.paletteEditRequested(this.paletteId, this.definitionName);
+  }
+
+  function clickPaletteButton(event) {
+    var instance = this.instantiatePaletteItem();
+    this.paletteInstanceCreated(instance);
+    window.QHTMLPageBuilderPalette.previewInstance(this, instance, event);
+  }
+
+  function beginPalettePointerDrag(event) {
+    window.QHTMLPageBuilderPalette.beginButtonPointerDrag(this, event);
+  }
+
+  button.builder-palette-button {
+    type: "button"
+    data-builder-palette-button: "1"
+    data-palette-id: "${this.paletteId}"
+    data-definition-name: "${this.definitionName}"
+    data-definition-uuid: "${this.definitionUUID}"
+    data-slot-names: "${this.slotNames}"
+    onpointerdown { this.component.beginPalettePointerDrag(event); }
+    onclick {
+      this.component.selectPaletteItem(event);
     }
 
-    q-palette-toolbox {
-      docked: "true"
-      title: "Blocks"
+    span.builder-palette-icon {
+      text { ${this.iconLabel} }
+    }
 
-      q-palette-toolbox-button {
-        name: "New Component"
-        component: "pbCustomBlock"
-        data-pb-create-component: "true"
-        div.pb-palette-preview.new-component {
-          h3 { text { New } }
-          p { text { q-component } }
+    span.builder-palette-name {
+      text { ${this.displayName} }
+    }
+
+    span.builder-palette-description {
+      text { ${this.description} }
+    }
+  }
+}
+
+q-component builderHeroPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.hero"
+  q-property definitionName: "builderHeroBlock"
+  q-property definitionUUID: "builder-definition-hero"
+  q-property displayName: "Hero"
+  q-property category: "Sections"
+  q-property description: "Headline, supporting copy, and actions"
+  q-property iconLabel: "H"
+  q-property instanceName: "heroBlock"
+  q-property slotNames: "heroTitle,heroSubtitle,heroActions,heroContent"
+}
+
+q-component builderFeatureCardPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.feature-card"
+  q-property definitionName: "builderFeatureCard"
+  q-property definitionUUID: "builder-definition-feature-card"
+  q-property displayName: "Feature Card"
+  q-property category: "Cards"
+  q-property description: "Icon, title, body, and nested content"
+  q-property iconLabel: "C"
+  q-property instanceName: "featureCard"
+  q-property slotNames: "featureIcon,featureTitle,featureBody,featureContent"
+}
+
+q-component builderTwoColumnPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.two-column"
+  q-property definitionName: "builderTwoColumnBlock"
+  q-property definitionUUID: "builder-definition-two-column"
+  q-property displayName: "Two Column"
+  q-property category: "Layouts"
+  q-property description: "Balanced left and right content areas"
+  q-property iconLabel: "2"
+  q-property instanceName: "twoColumnBlock"
+  q-property slotNames: "leftTitle,leftBody,rightTitle,rightBody"
+}
+
+q-component builderCalloutPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.callout"
+  q-property definitionName: "builderCalloutBlock"
+  q-property definitionUUID: "builder-definition-callout"
+  q-property displayName: "Callout"
+  q-property category: "Sections"
+  q-property description: "Highlighted message with optional details"
+  q-property iconLabel: "!"
+  q-property instanceName: "calloutBlock"
+  q-property slotNames: "calloutLabel,calloutBody,calloutContent"
+}
+
+q-component builderButtonRowPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.button-row"
+  q-property definitionName: "builderButtonRow"
+  q-property definitionUUID: "builder-definition-button-row"
+  q-property displayName: "Button Row"
+  q-property category: "Actions"
+  q-property description: "Primary and secondary action area"
+  q-property iconLabel: "B"
+  q-property instanceName: "buttonRow"
+  q-property slotNames: "buttonRowActions,buttonRowContent"
+}
+
+q-component builderHtmlPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.html"
+  q-property definitionName: "builderHtmlBlock"
+  q-property definitionUUID: "builder-definition-html"
+  q-property displayName: "HTML Block"
+  q-property category: "Content"
+  q-property description: "Raw HTML embed with a QHTML footer slot"
+  q-property iconLabel: "<>"
+  q-property instanceName: "htmlBlock"
+  q-property slotNames: "htmlBlockLabel,htmlBlockContent,htmlBlockFooter"
+}
+
+q-component builderFormPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.form"
+  q-property definitionName: "builderFormBlock"
+  q-property definitionUUID: "builder-definition-form"
+  q-property displayName: "Form"
+  q-property category: "Forms"
+  q-property description: "Name, email, and submit controls"
+  q-property iconLabel: "F"
+  q-property instanceName: "formBlock"
+  q-property slotNames: "formContents"
+}
+
+q-component builderHeroBlock {
+  section.builder-hero-block {
+    h1 { slot heroTitle { text { Launch faster } } }
+    p { slot heroSubtitle { text { Compose QHTML pages visually. } } }
+    div.builder-actions { slot heroActions { button { text { Get started } } } }
+    div.builder-content-slot { slot heroContent { text { Add supporting content. } } }
+  }
+}
+
+q-component builderFeatureCard {
+  article.builder-feature-card {
+    span.builder-feature-icon { slot featureIcon { text { * } } }
+    h3 { slot featureTitle { text { Feature title } } }
+    p { slot featureBody { text { Explain the benefit clearly. } } }
+    div.builder-content-slot { slot featureContent { text { Add nested content. } } }
+  }
+}
+
+q-component builderTwoColumnBlock {
+  section.builder-two-column-block {
+    q-layout {
+      width: "inherit"
+      height: "inherit"
+      q-row {
+        width: "inherit"
+        height: "inherit"
+        q-col {
+          width: "inherit"
+          height: "inherit"
+          h3 { slot leftTitle { text { Left heading } } }
+          p { slot leftBody { text { Left column body. } } }
         }
-      }
-
-      q-palette-toolbox-button {
-        name: "Hero"
-        component: "pbHeroBlock"
-        qhtml: "q-component pbHeroBlock { section.pb-hero-block { h1 { slot heroTitle { text { Launch Faster } } } p { slot heroSubtitle { text { Compose visually and export QHTML. } } } button.pb-demo-button { slot heroButtonText { text { Start Building } } } q-layout { data-pb-slot: heroContent; width: 100%; q-row { q-col { slot heroContent { text { Add hero content here. } } } } } } }"
-        instance-qhtml: "pbHeroBlock heroBlock { heroTitle { text { Your title here } } heroSubtitle { text { Lorem ipsum dolor sit amet. } } heroButtonText { text { Get Started } } heroContent { text { Hero details or nested blocks. } } }"
-        div.pb-palette-preview.hero {
-          h3 { text { Hero } }
-          p { text { Headline, copy, CTA } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Feature Card"
-        component: "pbFeatureCard"
-        qhtml: "q-component pbFeatureCard { article.pb-feature-card { h3 { slot featureCardTitle { text { Feature title } } } p { slot featureCardBody { text { Short feature description. } } } q-layout { data-pb-slot: featureCardContent; width: 100%; q-row { q-col { slot featureCardContent { text { Additional card content. } } } } } } }"
-        instance-qhtml: "pbFeatureCard featureCard { featureCardTitle { text { Your feature } } featureCardBody { text { Describe the benefit here. } } featureCardContent { text { Add nested content. } } }"
-        div.pb-palette-preview.card {
-          h3 { text { Feature } }
-          p { text { Card block } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Two Column Copy"
-        component: "pbTwoColumnCopy"
-        qhtml: "q-component pbTwoColumnCopy { section.pb-two-column { q-layout { data-pb-slot: twoColumnLayout; width: 100%; cols: 2; q-row { q-col { h3 { slot leftTitle { text { Left heading } } } p { slot leftBody { text { Left body copy. } } } } q-col { h3 { slot rightTitle { text { Right heading } } } p { slot rightBody { text { Right body copy. } } } } } } } }"
-        instance-qhtml: "pbTwoColumnCopy twoColumnCopy { leftTitle { text { Left heading } } leftBody { text { Lorem ipsum dolor sit amet. } } rightTitle { text { Right heading } } rightBody { text { Sed do eiusmod tempor. } } }"
-        div.pb-palette-preview.columns {
-          h3 { text { Columns } }
-          p { text { Two content areas } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Callout"
-        component: "pbCallout"
-        qhtml: "q-component pbCallout { aside.pb-callout { strong { slot calloutLabel { text { Note } } } p { slot calloutBody { text { Highlighted information. } } } q-layout { data-pb-slot: calloutContent; width: 100%; q-row { q-col { slot calloutContent { text { Add supporting details here. } } } } } } }"
-        instance-qhtml: "pbCallout callout { calloutLabel { text { Note } } calloutBody { text { Important details go here. } } calloutContent { text { Add nested callout content. } } }"
-        div.pb-palette-preview.callout {
-          h3 { text { Callout } }
-          p { text { Highlight panel } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Button Row"
-        component: "pbButtonRow"
-        qhtml: "q-component pbButtonRow { div.pb-button-row { q-layout { data-pb-slot: buttonRowActions; width: 100%; q-row { q-col { slot buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } } } } } p { slot buttonRowContent { text { Optional helper text. } } } } }"
-        instance-qhtml: "pbButtonRow buttonRow { buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } } buttonRowContent { text { Optional helper text. } } }"
-        div.pb-palette-preview.buttons {
-          h3 { text { Buttons } }
-          p { text { CTA pair } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Section"
-        component: "pbBuilderSection"
-        qhtml: "q-component pbBuilderSection { section.pb-builder-section { p { slot sectionEyebrow { text { Section label } } } h2 { slot sectionTitle { text { Section title } } } p { slot sectionSubtitle { text { Section subtitle. } } } q-layout { data-pb-slot: sectionContent; width: 100%; q-row { q-col { slot sectionContent { text { Add section content here. } } } } } } }"
-        instance-qhtml: "pbBuilderSection builderSection { sectionEyebrow { text { Section label } } sectionTitle { text { Your section title } } sectionSubtitle { text { Lorem ipsum dolor sit amet. } } sectionContent { text { Add nested page content. } } }"
-        div.pb-palette-preview.callout {
-          h3 { text { Section } }
-          p { text { Heading wrapper } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Sidebar Layout"
-        component: "pbSidebarLayout"
-        qhtml: "q-component pbSidebarLayout { section.pb-sidebar-layout { q-layout { data-pb-slot: sidebarLayout; width: 100%; cols: 2; q-row { q-col { aside { h3 { slot sidebarLayoutSidebarTitle { text { Sidebar } } } p { slot sidebarLayoutSidebarBody { text { Sidebar body. } } } } } q-col { main { h3 { slot sidebarLayoutMainTitle { text { Main Content } } } p { slot sidebarLayoutMainBody { text { Main body. } } } q-layout { data-pb-slot: sidebarLayoutContent; width: 100%; q-row { q-col { slot sidebarLayoutContent { text { Nested content area. } } } } } } } } } } }"
-        instance-qhtml: "pbSidebarLayout sidebarLayout { sidebarLayoutSidebarTitle { text { Sidebar } } sidebarLayoutSidebarBody { text { Links or metadata. } } sidebarLayoutMainTitle { text { Main Content } } sidebarLayoutMainBody { text { Lorem ipsum dolor sit amet. } } sidebarLayoutContent { text { Nested page content area. } } }"
-        div.pb-palette-preview.columns {
-          h3 { text { Sidebar } }
-          p { text { Sidebar + main } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "HTML Block"
-        component: "pbHtmlBlock"
-        qhtml: "q-component pbHtmlBlock { section.pb-html-block { h4 { slot htmlBlockLabel { text { HTML Block } } } div { slot htmlBlockContent { html { <p>Raw HTML area</p> } } } q-layout { data-pb-slot: htmlBlockFooter; width: 100%; q-row { q-col { slot htmlBlockFooter { text { Footer text. } } } } } } }"
-        instance-qhtml: "pbHtmlBlock htmlBlock { htmlBlockLabel { text { HTML Block } } htmlBlockContent { html { <p>Lorem ipsum dolor sit amet.</p> } } htmlBlockFooter { text { Additional content below HTML. } } }"
-        div.pb-palette-preview.card {
-          h3 { text { HTML Block } }
-          p { text { Raw embed area } }
-        }
-      }
-
-      q-palette-toolbox-button {
-        name: "Form Block"
-        component: "pbFormBlock"
-        qhtml: "q-component pbFormBlock { form.pb-form-block { action: '#'; method: 'post'; q-layout { data-pb-slot: formContents; width: 100%; q-row { q-col { slot formContents { div.form-field { label { text { Name } } input { type: 'text'; name: 'name'; placeholder: 'Your name' } } div.form-field { label { text { Email } } input { type: 'email'; name: 'email'; placeholder: 'you@example.com' } } div.form-actions { button { type: 'submit'; text { Send Message } } } } } } } } }"
-        instance-qhtml: "pbFormBlock formBlock { formContents { div.form-field { label { text { Name } } input { type: 'text'; name: 'name'; placeholder: 'Your name' } } div.form-field { label { text { Email } } input { type: 'email'; name: 'email'; placeholder: 'you@example.com' } } div.form-actions { button { type: 'submit'; text { Send Message } } } } }"
-        div.pb-palette-preview.card {
-          h3 { text { Form Block } }
-          p { text { Input + submit } }
+        q-col {
+          width: "inherit"
+          height: "inherit"
+          h3 { slot rightTitle { text { Right heading } } }
+          p { slot rightBody { text { Right column body. } } }
         }
       }
     }
   }
+}
+
+q-component builderCalloutBlock {
+  aside.builder-callout-block {
+    strong { slot calloutLabel { text { Note } } }
+    p { slot calloutBody { text { Important details go here. } } }
+    div.builder-content-slot { slot calloutContent { text { Add supporting content. } } }
+  }
+}
+
+q-component builderButtonRow {
+  div.builder-button-row {
+    div.builder-actions { slot buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } } }
+    p { slot buttonRowContent { text { Optional helper text. } } }
+  }
+}
+
+q-component builderHtmlBlock {
+  section.builder-html-block {
+    h4 { slot htmlBlockLabel { text { HTML Block } } }
+    div { slot htmlBlockContent { html { <p>Raw HTML area</p> } } }
+    footer { slot htmlBlockFooter { text { Footer text. } } }
+  }
+}
+
+q-component builderFormBlock {
+  form.builder-form-block {
+    action: "#"
+    method: "post"
+    slot formContents {
+      div.form-field {
+        label { text { Name } }
+        input {
+          type: "text"
+          name: "name"
+          placeholder: "Your name"
+        }
+      }
+      div.form-field {
+        label { text { Email } }
+        input {
+          type: "email"
+          name: "email"
+          placeholder: "you@example.com"
+        }
+      }
+      div.form-actions {
+        button {
+          type: "submit"
+          text { Send Message }
+        }
+      }
+    }
+  }
+}
+
+q-component pageBuilderPalette {
+  aside.page-builder-palette {
+    header.page-builder-palette-header {
+      h2 { text { Palette } }
+      p { text { Choose a component definition. Drag and drop wiring comes next. } }
+    }
+
+    q-layout {
+      width: "inherit"
+      height: "85vh"
+      gap: "8px"
+
+      q-col {
+        width: "inherit"
+        height: "inherit"
+
+        section.page-builder-palette-group {
+          h3 { text { Sections } }
+          builderPaletteButton heroPaletteButton {
+            paletteId: "builder.hero"
+            definitionName: "builderHeroBlock"
+            definitionUUID: "builder-definition-hero"
+            displayName: "Hero"
+            category: "Sections"
+            description: "Headline, copy, and actions"
+            iconLabel: "H"
+            instanceName: "heroBlock"
+            slotNames: "heroTitle,heroSubtitle,heroActions,heroContent"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderHeroPaletteItem); }
+          }
+          builderPaletteButton calloutPaletteButton {
+            paletteId: "builder.callout"
+            definitionName: "builderCalloutBlock"
+            definitionUUID: "builder-definition-callout"
+            displayName: "Callout"
+            category: "Sections"
+            description: "Highlighted message"
+            iconLabel: "!"
+            instanceName: "calloutBlock"
+            slotNames: "calloutLabel,calloutBody,calloutContent"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderCalloutPaletteItem); }
+          }
+        }
+
+        section.page-builder-palette-group {
+          h3 { text { Layout And Content } }
+          builderPaletteButton twoColumnPaletteButton {
+            paletteId: "builder.two-column"
+            definitionName: "builderTwoColumnBlock"
+            definitionUUID: "builder-definition-two-column"
+            displayName: "Two Column"
+            category: "Layouts"
+            description: "Left and right areas"
+            iconLabel: "2"
+            instanceName: "twoColumnBlock"
+            slotNames: "leftTitle,leftBody,rightTitle,rightBody"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderTwoColumnPaletteItem); }
+          }
+          builderPaletteButton featureCardPaletteButton {
+            paletteId: "builder.feature-card"
+            definitionName: "builderFeatureCard"
+            definitionUUID: "builder-definition-feature-card"
+            displayName: "Feature Card"
+            category: "Cards"
+            description: "Icon, title, and body"
+            iconLabel: "C"
+            instanceName: "featureCard"
+            slotNames: "featureIcon,featureTitle,featureBody,featureContent"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderFeatureCardPaletteItem); }
+          }
+          builderPaletteButton htmlPaletteButton {
+            paletteId: "builder.html"
+            definitionName: "builderHtmlBlock"
+            definitionUUID: "builder-definition-html"
+            displayName: "HTML Block"
+            category: "Content"
+            description: "Raw HTML area"
+            iconLabel: "<>"
+            instanceName: "htmlBlock"
+            slotNames: "htmlBlockLabel,htmlBlockContent,htmlBlockFooter"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderHtmlPaletteItem); }
+          }
+        }
+
+        section.page-builder-palette-group {
+          h3 { text { Actions And Forms } }
+          builderPaletteButton buttonRowPaletteButton {
+            paletteId: "builder.button-row"
+            definitionName: "builderButtonRow"
+            definitionUUID: "builder-definition-button-row"
+            displayName: "Button Row"
+            category: "Actions"
+            description: "Primary and secondary CTA"
+            iconLabel: "B"
+            instanceName: "buttonRow"
+            slotNames: "buttonRowActions,buttonRowContent"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderButtonRowPaletteItem); }
+          }
+          builderPaletteButton formPaletteButton {
+            paletteId: "builder.form"
+            definitionName: "builderFormBlock"
+            definitionUUID: "builder-definition-form"
+            displayName: "Form"
+            category: "Forms"
+            description: "Name, email, submit"
+            iconLabel: "F"
+            instanceName: "formBlock"
+            slotNames: "formContents"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderFormPaletteItem); }
+          }
+        }
+      }
+    }
+  }
+}
+
+q-component page-builder-palette extends pageBuilderPalette {
 }
