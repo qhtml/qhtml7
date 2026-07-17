@@ -5,6 +5,8 @@
     if (document.getElementById("lbMenu") &&
         document.getElementById("lbEditorDialog") &&
         document.getElementById("lbPropertiesDialog") &&
+        document.getElementById("lbCssColorDialog") &&
+        document.getElementById("lbCssLengthDialog") &&
         document.getElementById("lbDropChoiceDialog") &&
         document.getElementById("lbReplaceChildrenDialog")) {
       return;
@@ -41,6 +43,122 @@
       cursor: not-allowed;
       background: transparent;
     }
+
+    .lb-preview-host [data-lb-builder-root="1"] {
+      width: max-content !important;
+      height: max-content !important;
+      min-width: 75vw !important;
+      min-height: 75vh !important;
+      padding: 5vh 5vw !important;
+      overflow: visible !important;
+      box-sizing: border-box !important;
+      background: rgba(248, 250, 252, 0.45);
+    }
+
+    .lb-preview-host [data-lb-builder-root="1"][data-lb-active="1"] {
+      outline: 2px dashed rgba(37, 99, 235, 0.65);
+      outline-offset: -2px;
+      background: rgba(37, 99, 235, 0.035);
+    }
+
+    .lb-outline-list,
+    .lb-outline-children {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .lb-outline-children {
+      margin-left: 14px;
+      padding-left: 8px;
+      border-left: 1px solid #e2e8f0;
+    }
+
+    .lb-outline-row {
+      width: 100%;
+      min-height: 30px;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      align-items: center;
+      gap: 4px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #0f172a;
+      padding: 3px 6px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .lb-outline-row:hover {
+      background: #eff6ff;
+    }
+
+    .lb-outline-row.active {
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-weight: 850;
+    }
+
+    .lb-outline-marker {
+      width: 18px;
+      height: 18px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 5px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .lb-outline-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .lb-outline-type {
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .layout-builder-workspace.collapsed .layout-builder-outline-title,
+    .layout-builder-workspace.collapsed .layout-builder-outline-tree {
+      display: none;
+    }
+
+    .layout-builder-workspace.collapsed .layout-builder-outline {
+      overflow: visible;
+    }
+
+    .layout-builder-workspace.collapsed .layout-builder-outline-header {
+      min-height: 100%;
+      justify-content: center;
+      padding: 0;
+      border-bottom: 0;
+    }
+
+    .layout-builder-workspace.collapsed .layout-builder-outline-toggle {
+      position: absolute;
+      top: 10px;
+      right: 1px;
+      z-index: 5001;
+      width: 18px;
+      height: 34px;
+      min-width: 18px;
+      padding: 0;
+      border-radius: 7px 0 0 7px;
+    }
+
+    .layout-builder-workspace.collapsed {
+      grid-template-columns: minmax(0, 1fr) 12px !important;
+    }
   </style>
 
   <input id="lbOpenFile" type="file" accept=".qhtml,.txt,text/plain" hidden>
@@ -49,6 +167,7 @@
     <button class="lb-menu-item" type="button" data-menu-open="add">Add... <span class="lb-chevron">&rsaquo;</span></button>
     <button class="lb-menu-item" type="button" data-action="edit">Edit...</button>
     <button class="lb-menu-item" type="button" data-action="properties">Properties...</button>
+    <button class="lb-menu-item" type="button" data-menu-open="css">CSS... <span class="lb-chevron">&rsaquo;</span></button>
     <div class="lb-menu-separator"></div>
     <button class="lb-menu-item lb-danger" type="button" data-action="delete">Delete...</button>
   </div>
@@ -67,6 +186,55 @@
     <button class="lb-menu-item" type="button" data-placement="child">as Child</button>
     <div class="lb-menu-separator"></div>
     <button class="lb-menu-item" type="button" data-placement="replace">Replace</button>
+  </div>
+
+  <div id="lbCssMenu" class="lb-submenu" hidden>
+    <button class="lb-menu-item" type="button" data-css-menu-open="colors">Colors <span class="lb-chevron">&rsaquo;</span></button>
+    <button class="lb-menu-item" type="button" data-css-menu-open="size">Size <span class="lb-chevron">&rsaquo;</span></button>
+    <button class="lb-menu-item" type="button" data-css-menu-open="spacing">Spacing <span class="lb-chevron">&rsaquo;</span></button>
+    <button class="lb-menu-item" type="button" data-css-menu-open="border">Border <span class="lb-chevron">&rsaquo;</span></button>
+    <button class="lb-menu-item" type="button" data-css-menu-open="text">Text <span class="lb-chevron">&rsaquo;</span></button>
+  </div>
+
+  <div id="lbCssColorsMenu" class="lb-submenu lb-css-property-menu" hidden>
+    <button class="lb-menu-item" type="button" data-css-kind="color" data-css-property="backgroundColor">Background Color</button>
+    <button class="lb-menu-item" type="button" data-css-kind="color" data-css-property="color">Text Color</button>
+    <button class="lb-menu-item" type="button" data-css-kind="color" data-css-property="borderColor">Border Color</button>
+  </div>
+
+  <div id="lbCssSizeMenu" class="lb-submenu lb-css-property-menu" hidden>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="width" data-css-dimension="width">Width</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="height" data-css-dimension="height">Height</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="minWidth" data-css-dimension="width">Min Width</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="minHeight" data-css-dimension="height">Min Height</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="maxWidth" data-css-dimension="width">Max Width</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="maxHeight" data-css-dimension="height">Max Height</button>
+  </div>
+
+  <div id="lbCssSpacingMenu" class="lb-submenu lb-css-property-menu" hidden>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="gap" data-css-dimension="width">Gap</button>
+    <div class="lb-menu-separator"></div>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="padding" data-css-dimension="width">Padding</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="paddingLeft" data-css-dimension="width">Padding Left</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="paddingRight" data-css-dimension="width">Padding Right</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="paddingTop" data-css-dimension="height">Padding Top</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="paddingBottom" data-css-dimension="height">Padding Bottom</button>
+    <div class="lb-menu-separator"></div>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="marginLeft" data-css-dimension="width">Margin Left</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="marginRight" data-css-dimension="width">Margin Right</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="marginTop" data-css-dimension="height">Margin Top</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="marginBottom" data-css-dimension="height">Margin Bottom</button>
+  </div>
+
+  <div id="lbCssBorderMenu" class="lb-submenu lb-css-property-menu" hidden>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="borderWidth" data-css-dimension="width">Border Width</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="borderRadius" data-css-dimension="width">Border Radius</button>
+  </div>
+
+  <div id="lbCssTextMenu" class="lb-submenu lb-css-property-menu" hidden>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="fontSize" data-css-dimension="width">Font Size</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="letterSpacing" data-css-dimension="width">Letter Spacing</button>
+    <button class="lb-menu-item" type="button" data-css-kind="length" data-css-property="lineHeight" data-css-dimension="height">Line Height</button>
   </div>
 
   <dialog id="lbEditorDialog" class="lb-dialog">
@@ -123,6 +291,10 @@
           <input id="lbPropMinWidth" type="text" placeholder="inherit">
         </div>
         <div class="lb-field">
+          <label for="lbPropMinHeight">Min Height</label>
+          <input id="lbPropMinHeight" type="text" placeholder="inherit">
+        </div>
+        <div class="lb-field">
           <label for="lbPropMinColWidth">Min Column Width</label>
           <input id="lbPropMinColWidth" type="text" placeholder="inherit">
         </div>
@@ -140,6 +312,61 @@
     <div class="lb-dialog-actions">
       <button id="lbPropertiesCancel" class="lb-button" type="button">Cancel</button>
       <button id="lbPropertiesSave" class="lb-button primary" type="button">Save</button>
+    </div>
+  </dialog>
+
+  <dialog id="lbCssColorDialog" class="lb-dialog lb-drop-dialog">
+    <div class="lb-dialog-header">
+      <h2 id="lbCssColorTitle" class="lb-dialog-title">CSS Color</h2>
+      <button id="lbCssColorClose" class="lb-button" type="button">Close</button>
+    </div>
+    <div class="lb-dialog-body">
+      <div class="lb-form-grid">
+        <div class="lb-field">
+          <label for="lbCssColorValue">Color</label>
+          <input id="lbCssColorValue" type="color" value="#ffffff">
+        </div>
+        <div class="lb-field">
+          <label for="lbCssColorText">Value</label>
+          <input id="lbCssColorText" type="text" placeholder="#ffffff">
+        </div>
+      </div>
+    </div>
+    <div class="lb-dialog-actions">
+      <button id="lbCssColorCancel" class="lb-button" type="button">Cancel</button>
+      <button id="lbCssColorSave" class="lb-button primary" type="button">Save</button>
+    </div>
+  </dialog>
+
+  <dialog id="lbCssLengthDialog" class="lb-dialog lb-drop-dialog">
+    <div class="lb-dialog-header">
+      <h2 id="lbCssLengthTitle" class="lb-dialog-title">CSS Length</h2>
+      <button id="lbCssLengthClose" class="lb-button" type="button">Close</button>
+    </div>
+    <div class="lb-dialog-body">
+      <div class="lb-form-grid">
+        <div class="lb-field">
+          <label for="lbCssLengthNumber">Number</label>
+          <input id="lbCssLengthNumber" type="number" step="0.01">
+        </div>
+        <div class="lb-field">
+          <label for="lbCssLengthUnit">Unit</label>
+          <select id="lbCssLengthUnit">
+            <option value="px">px</option>
+            <option value="%">%</option>
+            <option value="vw">vw</option>
+            <option value="vh">vh</option>
+            <option value="vmin">vmin</option>
+            <option value="vmax">vmax</option>
+            <option value="rem">rem</option>
+            <option value="em">em</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="lb-dialog-actions">
+      <button id="lbCssLengthCancel" class="lb-button" type="button">Cancel</button>
+      <button id="lbCssLengthSave" class="lb-button primary" type="button">Save</button>
     </div>
   </dialog>
 
@@ -181,11 +408,14 @@
   let editorMode = "";
   let editorTargetId = "";
   let editorOriginal = "";
+  let cssEditState = null;
   let nodeCounter = 0;
   let interaction = null;
   let dropTargetId = "";
   let menuFrozen = false;
+  let outlineCollapsed = false;
   const scopedImports = [];
+  const collapsedOutlineIds = new Set();
 
   const DEFAULT_QHTML = 'div { padding: "18px"; text { Edit this QHTML content. } }';
   const menus = [];
@@ -194,12 +424,40 @@
   const EDGE_RATIO = 0.1;
   const DRAG_DISTANCE = 5;
   const DEFAULT_LAYOUT_VALUE = "inherit";
+  const BUILDER_ROOT_PADDING = "5vh 5vw";
+  const CSS_LABELS = {
+    backgroundColor: "Background Color",
+    color: "Text Color",
+    borderColor: "Border Color",
+    width: "Width",
+    height: "Height",
+    minWidth: "Min Width",
+    minHeight: "Min Height",
+    maxWidth: "Max Width",
+    maxHeight: "Max Height",
+    gap: "Gap",
+    padding: "Padding",
+    paddingLeft: "Padding Left",
+    paddingRight: "Padding Right",
+    paddingTop: "Padding Top",
+    paddingBottom: "Padding Bottom",
+    marginLeft: "Margin Left",
+    marginRight: "Margin Right",
+    marginTop: "Margin Top",
+    marginBottom: "Margin Bottom",
+    borderWidth: "Border Width",
+    borderRadius: "Border Radius",
+    fontSize: "Font Size",
+    letterSpacing: "Letter Spacing",
+    lineHeight: "Line Height"
+  };
   const EDITABLE_LAYOUT_PROPS = [
     "width",
     "height",
     "flex",
     "gap",
     "minWidth",
+    "minHeight",
     "minColWidth",
     "wrap"
   ];
@@ -210,19 +468,7 @@
   }
 
   function createNode(type, children, options) {
-    const opts = options || {};
     const nodeChildren = Array.isArray(children) ? children.slice() : [];
-    if (opts.label !== false && (type === "q-row" || type === "q-col")) {
-      const label = {
-        id: nextId(),
-        type: "qhtml",
-        name: "",
-        props: {},
-        source: type === "q-row" ? "text { row }" : "text { col }",
-        children: []
-      };
-      nodeChildren.unshift(label);
-    }
     return {
       id: nextId(),
       type: type,
@@ -238,23 +484,75 @@
       return defaultLayoutProps();
     }
     if (type === "q-row") {
-      return defaultLayoutProps();
+      return defaultLayoutProps({
+        width: DEFAULT_LAYOUT_VALUE,
+        height: "20vh",
+        minWidth: "1vw",
+        minHeight: "1vh"
+      });
     }
     if (type === "q-col") {
-      return defaultLayoutProps();
+      return defaultLayoutProps({
+        width: "20vw",
+        height: DEFAULT_LAYOUT_VALUE,
+        minWidth: "1vw"
+      });
     }
     return {};
   }
 
-  function defaultLayoutProps() {
+  function defaultLayoutProps(overrides) {
+    const values = overrides || {};
     return EDITABLE_LAYOUT_PROPS.reduce((props, key) => {
-      props[key] = DEFAULT_LAYOUT_VALUE;
+      props[key] = Object.prototype.hasOwnProperty.call(values, key) ? values[key] : DEFAULT_LAYOUT_VALUE;
       return props;
     }, {});
   }
 
   function isLayoutType(type) {
     return type === "q-layout" || type === "q-row" || type === "q-col";
+  }
+
+  function isBuilderRoot(node) {
+    return !!(node && node.builderRoot === true);
+  }
+
+  function createBuilderRoot(children) {
+    const node = createNode("q-layout", Array.isArray(children) ? children : [], { label: false });
+    node.builderRoot = true;
+    node.name = "";
+    node.props = normalizedPropsFor("q-layout", {
+      width: "max-content",
+      height: "max-content",
+      minWidth: "75vw",
+      minHeight: "75vh",
+      padding: BUILDER_ROOT_PADDING,
+      gap: "12px",
+      overflow: "visible",
+      "data-lb-builder-root": "1"
+    });
+    return node;
+  }
+
+  function userRootNodes() {
+    if (!root) {
+      return [];
+    }
+    return isBuilderRoot(root) ? (root.children || []) : [root];
+  }
+
+  function firstUserRoot() {
+    return userRootNodes()[0] || null;
+  }
+
+  function wrapAsBuilderRoot(node) {
+    if (!node) {
+      return createBuilderRoot([buildDefaultUserTree()]);
+    }
+    if (isBuilderRoot(node)) {
+      return node;
+    }
+    return createBuilderRoot([node]);
   }
 
   function normalizedPropsFor(type, props) {
@@ -270,6 +568,7 @@
 
     const aliases = {
       "min-width": "minWidth",
+      "min-height": "minHeight",
       "min-col-width": "minColWidth",
       "flex-wrap": "wrap",
       flexWrap: "wrap"
@@ -318,7 +617,7 @@
     return node;
   }
 
-  function buildDefaultTree() {
+  function buildDefaultUserTree() {
     return createNode("q-layout", [
       createNode("q-row", [
         createNode("q-col", [
@@ -326,6 +625,10 @@
         ])
       ])
     ]);
+  }
+
+  function buildDefaultTree() {
+    return createBuilderRoot([buildDefaultUserTree()]);
   }
 
   function escapeQhtmlString(value) {
@@ -349,6 +652,7 @@
       "flex",
       "gap",
       "minWidth",
+      "minHeight",
       "minColWidth",
       "wrap"
     ];
@@ -404,6 +708,14 @@
   }
 
   function currentSource() {
+    const roots = userRootNodes();
+    const source = roots.length
+      ? roots.map((node) => modelToQHTML(node, 0)).join("\n\n")
+      : "";
+    return sourceWithScopedImports(source);
+  }
+
+  function previewSource() {
     return sourceWithScopedImports(modelToQHTML(root, 0));
   }
 
@@ -418,7 +730,7 @@
     if (!previewHost) {
       return;
     }
-    const source = currentSource();
+    const source = previewSource();
     previewHost.qhtmlSource = source;
     if (typeof previewHost.fromQHTML === "function") {
       previewHost.fromQHTML(source);
@@ -450,6 +762,138 @@
       if (drop) {
         drop.setAttribute("data-lb-drop", "1");
       }
+    }
+    renderOutline();
+  }
+
+  function outlineTypeLabel(node) {
+    if (isBuilderRoot(node)) {
+      return "root";
+    }
+    if (!node) {
+      return "";
+    }
+    if (node.type === "q-layout") {
+      return "layout";
+    }
+    if (node.type === "q-row") {
+      return "row";
+    }
+    if (node.type === "q-col") {
+      return "column";
+    }
+    return "qhtml";
+  }
+
+  function qhtmlNodeSummary(node) {
+    if (node.meta && node.meta.displayName) {
+      return String(node.meta.displayName);
+    }
+    const source = String(node.source || "")
+      .replace(/^\s*q-import\s*\{[^}]*\}\s*$/gm, "")
+      .trim();
+    const first = /^([A-Za-z_][\w-]*(?:[#.][^\s{]+)?)/.exec(source);
+    return first ? first[1] : "QHTML Content";
+  }
+
+  function outlineLabel(node) {
+    if (isBuilderRoot(node)) {
+      return "Canvas Root";
+    }
+    if (node.type === "q-layout") {
+      return node.name ? "Layout " + node.name : "Layout";
+    }
+    if (node.type === "q-row") {
+      return node.name ? "Row " + node.name : "Row";
+    }
+    if (node.type === "q-col") {
+      return node.name ? "Column " + node.name : "Column";
+    }
+    return qhtmlNodeSummary(node);
+  }
+
+  function renderOutlineNode(parent, node) {
+    const item = document.createElement("li");
+    const row = document.createElement("button");
+    const marker = document.createElement("span");
+    const labelWrap = document.createElement("span");
+    const title = document.createElement("span");
+    const type = document.createElement("span");
+    const children = node.children || [];
+    const hasChildren = children.length > 0;
+    const collapsed = collapsedOutlineIds.has(node.id);
+
+    item.className = "lb-outline-item";
+    item.dataset.nodeId = node.id;
+    row.type = "button";
+    row.className = "lb-outline-row" + (node.id === activeId ? " active" : "");
+    row.dataset.nodeId = node.id;
+    marker.className = "lb-outline-marker";
+    marker.textContent = hasChildren ? (collapsed ? ">" : "v") : "";
+    labelWrap.className = "lb-outline-label";
+    title.textContent = outlineLabel(node);
+    type.className = "lb-outline-type";
+    type.textContent = outlineTypeLabel(node);
+
+    labelWrap.appendChild(title);
+    labelWrap.appendChild(document.createTextNode(" "));
+    labelWrap.appendChild(type);
+    row.appendChild(marker);
+    row.appendChild(labelWrap);
+    row.addEventListener("click", () => {
+      activeId = node.id;
+      menuTargetId = "";
+      refreshOutlines();
+      setStatus("Selected " + outlineLabel(node));
+    });
+    marker.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!hasChildren) {
+        return;
+      }
+      if (collapsedOutlineIds.has(node.id)) {
+        collapsedOutlineIds.delete(node.id);
+      } else {
+        collapsedOutlineIds.add(node.id);
+      }
+      renderOutline();
+    });
+    item.appendChild(row);
+
+    if (hasChildren && !collapsed) {
+      const list = document.createElement("ul");
+      list.className = "lb-outline-children";
+      children.forEach((child) => {
+        renderOutlineNode(list, child);
+      });
+      item.appendChild(list);
+    }
+
+    parent.appendChild(item);
+  }
+
+  function renderOutline() {
+    const host = document.getElementById("lbOutlineTree");
+    if (!host || !root) {
+      return;
+    }
+    host.innerHTML = "";
+    const list = document.createElement("ul");
+    list.className = "lb-outline-list";
+    renderOutlineNode(list, root);
+    host.appendChild(list);
+  }
+
+  function applyOutlineCollapsed() {
+    const workspace = document.getElementById("layoutBuilderWorkspace");
+    const button = document.getElementById("lbOutlineToggle");
+    if (workspace) {
+      workspace.classList.toggle("collapsed", outlineCollapsed);
+      workspace.style.gridTemplateColumns = outlineCollapsed ? "minmax(0, 1fr) 12px" : "minmax(0, 1fr) 300px";
+    }
+    if (button) {
+      button.textContent = outlineCollapsed ? "<" : ">";
+      button.setAttribute("aria-expanded", outlineCollapsed ? "false" : "true");
     }
   }
 
@@ -647,6 +1091,9 @@
     if (!edge) {
       return "";
     }
+    if (isBuilderRoot(node)) {
+      return "";
+    }
     if (node.type === "q-col" && parent && parent.type === "q-row") {
       if (edge === "left" && !hasPreviousHorizontalLayoutSibling(node, parent)) {
         return "";
@@ -742,9 +1189,10 @@
     return true;
   }
 
-  function createQHTMLNodeFromSource(source) {
+  function createQHTMLNodeFromSource(source, meta) {
     const node = createNode("qhtml", []);
     node.source = String(source || "").trim();
+    node.meta = meta || {};
     return node;
   }
 
@@ -764,7 +1212,7 @@
     const targetId = element ? element.getAttribute("data-layout-id") : root.id;
     const found = findNodeById(targetId);
     const target = found && found.node ? found.node : root;
-    const qhtmlNode = createQHTMLNodeFromSource(qhtmlSource);
+    const qhtmlNode = createQHTMLNodeFromSource(qhtmlSource, meta);
     let inserted = false;
 
     if (meta && Array.isArray(meta.scopeImports)) {
@@ -822,6 +1270,9 @@
     if (!found || !found.node) {
       return false;
     }
+    if (isBuilderRoot(found.node)) {
+      return false;
+    }
     if (!canReplaceTarget(sourceNode, found.parent)) {
       return false;
     }
@@ -833,8 +1284,8 @@
         return false;
       }
     }
-    if (!found.parent) {
-      root = sourceNode;
+    if (!found.parent || isBuilderRoot(found.node)) {
+      root = wrapAsBuilderRoot(sourceNode);
       return true;
     }
     const index = found.parent.children.indexOf(found.node);
@@ -846,6 +1297,9 @@
     const source = findNodeById(sourceId);
     const target = findNodeById(targetId);
     if (!source || !target || !source.node || !target.node || source.node === target.node) {
+      return false;
+    }
+    if (isBuilderRoot(source.node) || isBuilderRoot(target.node)) {
       return false;
     }
     if (isDescendantOf(target.node, source.node) || isDescendantOf(source.node, target.node)) {
@@ -940,6 +1394,14 @@
     const region = dropRegion(element, event);
 
     if (!region.edge) {
+      if (isBuilderRoot(target.node)) {
+        const sourceNode = detachNode(sourceId);
+        if (!sourceNode) {
+          return false;
+        }
+        target.node.children.push(sourceNode);
+        return true;
+      }
       return promptCenterDrop(sourceId, targetId);
     }
 
@@ -1041,6 +1503,118 @@
     const precision = unit === "px" ? 0 : 3;
     const rounded = Number(value.toFixed(precision));
     return String(rounded) + unit;
+  }
+
+  function selectedElementForNode(node) {
+    if (!node || node.type === "qhtml") {
+      return null;
+    }
+    return document.querySelector('[data-layout-id="' + CSS.escape(node.id) + '"]');
+  }
+
+  function normalizeHexColor(value) {
+    const text = String(value || "").trim();
+    if (/^#[0-9a-f]{6}$/i.test(text)) {
+      return text;
+    }
+    if (/^#[0-9a-f]{3}$/i.test(text)) {
+      return "#" + text.slice(1).split("").map((part) => part + part).join("");
+    }
+    const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(text);
+    if (rgb) {
+      return "#" + [rgb[1], rgb[2], rgb[3]].map((part) => {
+        return clamp(Number(part) || 0, 0, 255).toString(16).padStart(2, "0");
+      }).join("");
+    }
+    return "#ffffff";
+  }
+
+  function openCssColorEditor(propertyName) {
+    const found = currentTarget();
+    const node = found.node || root;
+    if (isBuilderRoot(node)) {
+      hideMenus();
+      setStatus("The builder root has no editable CSS");
+      return;
+    }
+    const value = String((node.props || {})[propertyName] || "").trim();
+    const colorValue = normalizeHexColor(value);
+    cssEditState = {
+      kind: "color",
+      nodeId: node.id,
+      propertyName: propertyName
+    };
+    document.getElementById("lbCssColorTitle").textContent = CSS_LABELS[propertyName] || propertyName;
+    document.getElementById("lbCssColorValue").value = colorValue;
+    document.getElementById("lbCssColorText").value = value || colorValue;
+    document.getElementById("lbCssColorDialog").showModal();
+    hideMenus();
+  }
+
+  function lengthUnitBaseForDialog(unit, dimension, element) {
+    const rendered = element ? element.getBoundingClientRect()[dimension === "height" ? "height" : "width"] : 0;
+    return unitBasePixels(unit, dimension, element, rendered || 100, 1);
+  }
+
+  function openCssLengthEditor(propertyName, dimension) {
+    const found = currentTarget();
+    const node = found.node || root;
+    if (isBuilderRoot(node)) {
+      hideMenus();
+      setStatus("The builder root has no editable CSS");
+      return;
+    }
+    const element = selectedElementForNode(node);
+    const currentValue = String((node.props || {})[propertyName] || "").trim();
+    const parsed = parseLengthValue(currentValue);
+    const rect = element ? element.getBoundingClientRect() : null;
+    const fallbackPixels = rect ? rect[dimension === "height" ? "height" : "width"] : 0;
+    const pixels = parsed ? lengthValueToPixels(node, propertyName, element, dimension) : fallbackPixels;
+    const unit = parsed ? parsed.unit : (dimension === "height" ? "vh" : "vw");
+    const base = lengthUnitBaseForDialog(unit, dimension, element);
+    const number = base ? pixels / base : (parsed ? parsed.number : 0);
+    cssEditState = {
+      kind: "length",
+      nodeId: node.id,
+      propertyName: propertyName,
+      dimension: dimension,
+      pixels: Number.isFinite(pixels) && pixels > 0 ? pixels : 0
+    };
+    document.getElementById("lbCssLengthTitle").textContent = CSS_LABELS[propertyName] || propertyName;
+    document.getElementById("lbCssLengthNumber").value = String(Number((number || 0).toFixed(3)));
+    document.getElementById("lbCssLengthUnit").value = unit;
+    document.getElementById("lbCssLengthDialog").showModal();
+    hideMenus();
+  }
+
+  function saveCssColorEditor() {
+    const state = cssEditState;
+    const found = state ? findNodeById(state.nodeId) : null;
+    if (found && found.node) {
+      found.node.props = normalizedPropsFor(found.node.type, found.node.props);
+      found.node.props[state.propertyName] = document.getElementById("lbCssColorText").value.trim();
+      activeId = found.node.id;
+      renderPreview();
+      setStatus("Updated " + (CSS_LABELS[state.propertyName] || state.propertyName));
+    }
+    document.getElementById("lbCssColorDialog").close();
+    cssEditState = null;
+  }
+
+  function saveCssLengthEditor() {
+    const state = cssEditState;
+    const found = state ? findNodeById(state.nodeId) : null;
+    if (found && found.node) {
+      const number = Number(document.getElementById("lbCssLengthNumber").value) || 0;
+      const unit = document.getElementById("lbCssLengthUnit").value || "px";
+      found.node.props = normalizedPropsFor(found.node.type, found.node.props);
+      found.node.props[state.propertyName] = String(Number(number.toFixed(3))) + unit;
+      activeId = found.node.id;
+      renderPreview();
+      setStatus("Updated " + (CSS_LABELS[state.propertyName] || state.propertyName));
+    }
+    document.getElementById("lbCssLengthDialog").close();
+    cssEditState = null;
   }
 
   function applyLayoutWidth(node, parent, element, widthValue) {
@@ -1682,6 +2256,11 @@
       }
       target.children.push(next);
     } else if (placement === "replace") {
+      if (isBuilderRoot(target)) {
+        hideMenus();
+        setStatus("The builder root cannot be replaced");
+        return;
+      }
       if (!canReplaceTarget(next, parent)) {
         hideMenus();
         setStatus(kind + " cannot replace this target");
@@ -1714,6 +2293,11 @@
   function deleteActiveNode() {
     const found = currentTarget();
     if (!found.node) {
+      return;
+    }
+    if (isBuilderRoot(found.node)) {
+      hideMenus();
+      setStatus("The builder root cannot be deleted");
       return;
     }
     if (!found.parent) {
@@ -1785,8 +2369,11 @@
 
   function replaceNode(oldNode, newNode) {
     const found = findNodeById(oldNode.id);
-    if (!found || !found.parent) {
-      root = newNode;
+    if (!found || isBuilderRoot(found.node)) {
+      return;
+    }
+    if (!found.parent) {
+      root = wrapAsBuilderRoot(newNode);
       return;
     }
     const index = found.parent.children.indexOf(oldNode);
@@ -1811,6 +2398,11 @@
   function openProperties() {
     const found = currentTarget();
     const node = found.node || root;
+    if (isBuilderRoot(node)) {
+      hideMenus();
+      setStatus("The builder root has no editable properties");
+      return;
+    }
     node.props = normalizedPropsFor(node.type, node.props);
     document.getElementById("lbPropType").value = node.type === "qhtml" ? "q-layout" : node.type;
     document.getElementById("lbPropName").value = node.name || "";
@@ -1819,6 +2411,7 @@
     document.getElementById("lbPropFlex").value = node.props.flex || "";
     document.getElementById("lbPropGap").value = node.props.gap || "";
     document.getElementById("lbPropMinWidth").value = node.props.minWidth || node.props["min-width"] || "";
+    document.getElementById("lbPropMinHeight").value = node.props.minHeight || node.props["min-height"] || "";
     document.getElementById("lbPropMinColWidth").value = node.props.minColWidth || node.props["min-col-width"] || "";
     document.getElementById("lbPropWrap").value = node.props.wrap || node.props.flexWrap || node.props["flex-wrap"] || "";
     document.getElementById("lbPropertiesDialog").showModal();
@@ -1837,9 +2430,11 @@
     props.flex = document.getElementById("lbPropFlex").value.trim();
     props.gap = document.getElementById("lbPropGap").value.trim();
     props.minWidth = document.getElementById("lbPropMinWidth").value.trim();
+    props.minHeight = document.getElementById("lbPropMinHeight").value.trim();
     props.minColWidth = document.getElementById("lbPropMinColWidth").value.trim();
     props.wrap = document.getElementById("lbPropWrap").value.trim();
     delete props["min-width"];
+    delete props["min-height"];
     delete props["min-col-width"];
     delete props.flexWrap;
     delete props["flex-wrap"];
@@ -1867,8 +2462,8 @@
     reader.addEventListener("load", () => {
       const source = String(reader.result || "");
       const parsed = parseLayoutSource(source);
-      root = parsed || buildDefaultTree();
-      activeId = root.id;
+      root = wrapAsBuilderRoot(parsed || buildDefaultUserTree());
+      activeId = firstUserRoot() ? firstUserRoot().id : root.id;
       renderPreview();
       setStatus("Opened " + file.name);
     });
@@ -1877,7 +2472,10 @@
 
   function getActiveSource() {
     const found = currentTarget();
-    return sourceWithScopedImports(modelToQHTML(found.node || root, 0));
+    if (isBuilderRoot(found.node)) {
+      return currentSource();
+    }
+    return sourceWithScopedImports(modelToQHTML(found.node || firstUserRoot() || root, 0));
   }
 
   function handleCanvasPointer(event) {
@@ -1915,6 +2513,10 @@
     const region = pointerRegion(element, event);
     const rawEdge = region.edge;
     region.edge = resizeEdgeForNode(found.node, found.parent, region.edge);
+    if (isBuilderRoot(found.node)) {
+      event.preventDefault();
+      return;
+    }
     if (!region.edge &&
         rawEdge &&
         found.node.type === "q-col" &&
@@ -2095,6 +2697,12 @@
     menu.style.top = Math.min(rect.top, window.innerHeight - menu.offsetHeight - 8) + "px";
   }
 
+  function hideCssPropertyMenus() {
+    document.querySelectorAll(".lb-css-property-menu").forEach((menu) => {
+      menu.hidden = true;
+    });
+  }
+
   function updatePlacementMenuState(kind) {
     const found = currentTarget();
     const target = found.node || root;
@@ -2102,17 +2710,40 @@
     const afterButton = document.querySelector("#lbPlacementMenu [data-placement='after']");
     const childButton = document.querySelector("#lbPlacementMenu [data-placement='child']");
     const replaceButton = document.querySelector("#lbPlacementMenu [data-placement='replace']");
-    const siblingAllowed = found.parent ? canInsertAsChild(kind, found.parent.type) : false;
+    const siblingAllowed = found.parent && !isBuilderRoot(target) ? canInsertAsChild(kind, found.parent.type) : false;
     beforeButton.disabled = !siblingAllowed;
     afterButton.disabled = !siblingAllowed;
     childButton.disabled = !canInsertAsChild(kind, target.type);
-    replaceButton.disabled = !canReplaceTarget({ type: kind }, found.parent);
+    replaceButton.disabled = isBuilderRoot(target) || !canReplaceTarget({ type: kind }, found.parent);
+  }
+
+  function updateContextMenuState() {
+    const found = currentTarget();
+    const target = found.node || root;
+    const rootTarget = isBuilderRoot(target);
+    const editButton = document.querySelector("#lbMenu [data-action='edit']");
+    const propertiesButton = document.querySelector("#lbMenu [data-action='properties']");
+    const deleteButton = document.querySelector("#lbMenu [data-action='delete']");
+    const cssButton = document.querySelector("#lbMenu [data-menu-open='css']");
+    if (editButton) {
+      editButton.disabled = rootTarget;
+    }
+    if (propertiesButton) {
+      propertiesButton.disabled = rootTarget;
+    }
+    if (deleteButton) {
+      deleteButton.disabled = rootTarget;
+    }
+    if (cssButton) {
+      cssButton.disabled = rootTarget;
+    }
   }
 
   function hideMenus() {
     menus.forEach((menu) => {
       menu.hidden = true;
     });
+    hideCssPropertyMenus();
     pendingPlacementKind = "";
     menuFrozen = false;
   }
@@ -2121,7 +2752,25 @@
     const menu = document.getElementById("lbMenu");
     const addMenu = document.getElementById("lbAddMenu");
     const placementMenu = document.getElementById("lbPlacementMenu");
-    menus.push(menu, addMenu, placementMenu);
+    const cssMenu = document.getElementById("lbCssMenu");
+    const cssPropertyMenus = {
+      colors: document.getElementById("lbCssColorsMenu"),
+      size: document.getElementById("lbCssSizeMenu"),
+      spacing: document.getElementById("lbCssSpacingMenu"),
+      border: document.getElementById("lbCssBorderMenu"),
+      text: document.getElementById("lbCssTextMenu")
+    };
+    menus.push(
+      menu,
+      addMenu,
+      placementMenu,
+      cssMenu,
+      cssPropertyMenus.colors,
+      cssPropertyMenus.size,
+      cssPropertyMenus.spacing,
+      cssPropertyMenus.border,
+      cssPropertyMenus.text
+    );
 
     menu.addEventListener("click", (event) => {
       const button = event.target.closest("button");
@@ -2132,8 +2781,13 @@
       const open = button.getAttribute("data-menu-open");
       if (open === "add") {
         showSubmenu(addMenu, button);
+      } else if (open === "css") {
+        showSubmenu(cssMenu, button);
       } else if (action === "edit") {
         const target = currentTarget().node || root;
+        if (isBuilderRoot(target)) {
+          return;
+        }
         openEditor("edit", target.id, getActiveSource());
       } else if (action === "properties") {
         openProperties();
@@ -2141,6 +2795,40 @@
         deleteActiveNode();
       }
     });
+
+    cssMenu.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) {
+        return;
+      }
+      const open = button.getAttribute("data-css-menu-open");
+      if (open) {
+        hideCssPropertyMenus();
+        showSubmenu(cssPropertyMenus[open], button);
+        return;
+      }
+    });
+
+    Object.keys(cssPropertyMenus).forEach((key) => {
+      cssPropertyMenus[key].addEventListener("click", (event) => {
+        const button = event.target.closest("button");
+        if (!button) {
+          return;
+        }
+        openCssPropertyEditor(button);
+      });
+    });
+
+    function openCssPropertyEditor(button) {
+      const kind = button.getAttribute("data-css-kind");
+      const propertyName = button.getAttribute("data-css-property");
+      const dimension = button.getAttribute("data-css-dimension") || "width";
+      if (kind === "color") {
+        openCssColorEditor(propertyName);
+      } else if (kind === "length") {
+        openCssLengthEditor(propertyName, dimension);
+      }
+    }
 
     addMenu.addEventListener("click", (event) => {
       const button = event.target.closest("button");
@@ -2197,12 +2885,58 @@
     document.getElementById("lbPropertiesClose").addEventListener("click", () => {
       document.getElementById("lbPropertiesDialog").close();
     });
+
+    document.getElementById("lbCssColorValue").addEventListener("input", (event) => {
+      document.getElementById("lbCssColorText").value = event.target.value;
+    });
+    document.getElementById("lbCssColorText").addEventListener("input", (event) => {
+      const value = normalizeHexColor(event.target.value);
+      document.getElementById("lbCssColorValue").value = value;
+    });
+    document.getElementById("lbCssColorSave").addEventListener("click", saveCssColorEditor);
+    document.getElementById("lbCssColorCancel").addEventListener("click", () => {
+      document.getElementById("lbCssColorDialog").close();
+      cssEditState = null;
+    });
+    document.getElementById("lbCssColorClose").addEventListener("click", () => {
+      document.getElementById("lbCssColorDialog").close();
+      cssEditState = null;
+    });
+
+    document.getElementById("lbCssLengthUnit").addEventListener("change", (event) => {
+      const state = cssEditState;
+      const found = state ? findNodeById(state.nodeId) : null;
+      const element = found && found.node ? selectedElementForNode(found.node) : null;
+      const unit = event.target.value || "px";
+      const base = state ? lengthUnitBaseForDialog(unit, state.dimension, element) : 1;
+      const next = state && base ? state.pixels / base : 0;
+      document.getElementById("lbCssLengthNumber").value = String(Number((next || 0).toFixed(3)));
+    });
+    document.getElementById("lbCssLengthNumber").addEventListener("input", (event) => {
+      const state = cssEditState;
+      const found = state ? findNodeById(state.nodeId) : null;
+      const element = found && found.node ? selectedElementForNode(found.node) : null;
+      const unit = document.getElementById("lbCssLengthUnit").value || "px";
+      const base = state ? lengthUnitBaseForDialog(unit, state.dimension, element) : 1;
+      if (state) {
+        state.pixels = (Number(event.target.value) || 0) * base;
+      }
+    });
+    document.getElementById("lbCssLengthSave").addEventListener("click", saveCssLengthEditor);
+    document.getElementById("lbCssLengthCancel").addEventListener("click", () => {
+      document.getElementById("lbCssLengthDialog").close();
+      cssEditState = null;
+    });
+    document.getElementById("lbCssLengthClose").addEventListener("click", () => {
+      document.getElementById("lbCssLengthDialog").close();
+      cssEditState = null;
+    });
   }
 
   function bindToolbar() {
     document.getElementById("lbNew").addEventListener("click", () => {
       root = buildDefaultTree();
-      activeId = root.id;
+      activeId = firstUserRoot() ? firstUserRoot().id : root.id;
       renderPreview();
       setStatus("New layout");
     });
@@ -2235,8 +2969,20 @@
       event.preventDefault();
       handleCanvasPointer(event);
       menuTargetId = activeId || root.id;
+      updateContextMenuState();
       showMenu(document.getElementById("lbMenu"), event.clientX, event.clientY);
     });
+  }
+
+  function bindOutline() {
+    const button = document.getElementById("lbOutlineToggle");
+    if (button) {
+      button.addEventListener("click", () => {
+        outlineCollapsed = !outlineCollapsed;
+        applyOutlineCollapsed();
+      });
+    }
+    applyOutlineCollapsed();
   }
 
   function stripComments(source) {
@@ -2416,10 +3162,11 @@
       return;
     }
     root = buildDefaultTree();
-    activeId = root.id;
+    activeId = firstUserRoot() ? firstUserRoot().id : root.id;
     createPreviewHost();
     bindToolbar();
     bindCanvas();
+    bindOutline();
     bindMenus();
     bindDialogs();
     renderPreview();

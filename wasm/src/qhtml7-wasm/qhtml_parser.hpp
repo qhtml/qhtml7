@@ -141,6 +141,7 @@ protected:
         return {
             QStringLiteral("q-component"),
             QStringLiteral("q-worker"),
+            QStringLiteral("q-logger"),
             QStringLiteral("q-property"),
             QStringLiteral("q-signal"),
             QStringLiteral("q-class"),
@@ -351,6 +352,9 @@ private:
         }
         if (qhtmlKeyword == QStringLiteral("q-worker")) {
             return new QHTMLWorker(qhtmlName, m_attributes);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-logger")) {
+            return new QHTMLLogger(qhtmlName, m_attributes);
         }
         if (qhtmlKeyword == QStringLiteral("q-property")) {
             return new QHTMLProperty(qhtmlName, m_attributes);
@@ -828,6 +832,13 @@ struct StructuredValueStatement
     QString statement;
 };
 
+struct InlineAssignmentStatement
+{
+    bool matched = false;
+    int endIndex = -1;
+    QString statement;
+};
+
 inline QChar expectedCloserForStructuredOpener(QChar opener)
 {
     if (opener == QLatin1Char('[')) {
@@ -983,6 +994,108 @@ inline StructuredValueStatement structuredValueStatementAt(const QString &source
         ++end;
     }
     if (end < source.size() && source.at(end) == QLatin1Char(';')) {
+        ++end;
+    }
+
+    result.matched = true;
+    result.endIndex = end;
+    result.statement = source.mid(index, valueEnd - index).trimmed();
+    return result;
+}
+
+inline InlineAssignmentStatement inlineAssignmentStatementAt(const QString &source, int cursor)
+{
+    InlineAssignmentStatement result;
+    if (cursor < 0 || cursor >= source.size()) {
+        return result;
+    }
+
+    int index = cursor;
+    while (index < source.size() && source.at(index).isSpace()) {
+        ++index;
+    }
+    if (index >= source.size() || !isWordStart(source.at(index))) {
+        return result;
+    }
+
+    QString name;
+    int cursorAfterName = index;
+    while (cursorAfterName < source.size() && isWordChar(source.at(cursorAfterName))) {
+        name += source.at(cursorAfterName++);
+    }
+    if (name == QStringLiteral("q-property")) {
+        return result;
+    }
+
+    int colonIndex = cursorAfterName;
+    while (colonIndex < source.size() &&
+           source.at(colonIndex).isSpace() &&
+           source.at(colonIndex) != QLatin1Char('\n')) {
+        ++colonIndex;
+    }
+    if (colonIndex >= source.size() || source.at(colonIndex) != QLatin1Char(':')) {
+        return result;
+    }
+
+    int valueStart = colonIndex + 1;
+    while (valueStart < source.size() &&
+           source.at(valueStart).isSpace() &&
+           source.at(valueStart) != QLatin1Char('\n')) {
+        ++valueStart;
+    }
+    if (valueStart >= source.size()) {
+        return result;
+    }
+
+    const QChar firstValueChar = source.at(valueStart);
+    if (firstValueChar == QLatin1Char('{') || firstValueChar == QLatin1Char('[')) {
+        return result;
+    }
+
+    int valueEnd = valueStart;
+    if (firstValueChar == QLatin1Char('"') ||
+        firstValueChar == QLatin1Char('\'') ||
+        firstValueChar == QLatin1Char('`')) {
+        const QChar quote = firstValueChar;
+        bool escape = false;
+        ++valueEnd;
+        while (valueEnd < source.size()) {
+            const QChar ch = source.at(valueEnd);
+            if (escape) {
+                escape = false;
+            } else if (ch == QLatin1Char('\\')) {
+                escape = true;
+            } else if (ch == quote) {
+                ++valueEnd;
+                break;
+            }
+            ++valueEnd;
+        }
+    } else {
+        while (valueEnd < source.size()) {
+            const QChar ch = source.at(valueEnd);
+            if (ch.isSpace() ||
+                ch == QLatin1Char(';') ||
+                ch == QLatin1Char(',') ||
+                ch == QLatin1Char('{')) {
+                break;
+            }
+            ++valueEnd;
+        }
+    }
+
+    if (valueEnd <= valueStart) {
+        return result;
+    }
+
+    int end = valueEnd;
+    while (end < source.size() &&
+           source.at(end).isSpace() &&
+           source.at(end) != QLatin1Char('\n')) {
+        ++end;
+    }
+    if (end < source.size() &&
+        (source.at(end) == QLatin1Char(';') || source.at(end) == QLatin1Char(','))) {
         ++end;
     }
 
@@ -1390,6 +1503,7 @@ inline QHTMLAstNode *nodeFromHeader(const QString &header, const QString &conten
     if (trimmedHeader == QStringLiteral("q-array") ||
         trimmedHeader == QStringLiteral("q-map") ||
         trimmedHeader == QStringLiteral("q-model") ||
+        trimmedHeader == QStringLiteral("q-logger") ||
         trimmedHeader == QStringLiteral("q-layout") ||
         trimmedHeader == QStringLiteral("q-row") ||
         trimmedHeader == QStringLiteral("q-col") ||
@@ -1532,6 +1646,10 @@ inline void appendStatementOrUnknown(QHTMLAstNode *parent, const QString &source
         if (statement.isEmpty()) {
             continue;
         }
+        if (parent && parent->qhtmlKeyword == QStringLiteral("q-logger")) {
+            parent->appendAstChild(new QHTMLAstUnknownFragment(statement));
+            continue;
+        }
         if (QHTMLAstNode *node = nodeFromStatement(statement)) {
             parent->appendAstChild(node);
         } else {
@@ -1566,6 +1684,18 @@ inline void QHTMLAstNode::scan(const QString &source)
                 appendAstChild(new QHTMLAstUnknownFragment(structuredStatement.statement));
             }
             cursor = structuredStatement.endIndex;
+            continue;
+        }
+
+        const qhtml7_parser_detail::InlineAssignmentStatement inlineAssignment =
+            qhtml7_parser_detail::inlineAssignmentStatementAt(cleanedSource, cursor);
+        if (inlineAssignment.matched) {
+            if (QHTMLAstNode *node = qhtml7_parser_detail::nodeFromStatement(inlineAssignment.statement)) {
+                appendAstChild(node);
+            } else {
+                appendAstChild(new QHTMLAstUnknownFragment(inlineAssignment.statement));
+            }
+            cursor = inlineAssignment.endIndex;
             continue;
         }
 
@@ -2752,6 +2882,8 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("remove", &QHTMLComponentInstanceSlot::removeJs, allow_raw_pointers())
         .function("children", &QHTMLComponentInstanceSlot::childrenJs);
     class_<QHTMLComponentInstance, base<QHTMLTypedNode>>("QHTMLComponentInstance")
+        .constructor<>()
+        .constructor<std::string, std::string>()
         .function("component", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
         .function("componentDefinition", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
         .function("componentDefinitionUUID", &QHTMLComponentInstance::componentDefinitionUUIDJs)

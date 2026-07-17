@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML7 q-logger Test</title>
+  <script src="../dist/qhtml.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #eef4fb;
+      color: #122033;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 56px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      line-height: 1.15;
+    }
+
+    .intro {
+      margin: 0 0 18px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .test-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    q-html,
+    q-html7 {
+      display: block;
+    }
+
+    .logger-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .logger-card h2,
+    .logger-card p {
+      margin: 0;
+    }
+
+    .logger-card h2 {
+      font-size: 17px;
+      color: #1e3a8a;
+    }
+
+    .logger-card p {
+      color: #64748b;
+      line-height: 1.45;
+    }
+
+    .logger-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid #94a3b8;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #122033;
+      padding: 0 11px;
+      font: inherit;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .log-output {
+      min-height: 80px;
+      max-height: 180px;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid #d8e0eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-family: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>QHTML7 q-logger Test</h1>
+    <p class="intro">Each test is a small q-component with its own q-logger, property, signal, function call, and dynamic child component insertion.</p>
+
+    <div class="test-grid">
+      <q-html version="7">
+q-component othercomp { }
+
+q-component testLoggerShorthand {
+  q-property myprop: 4
+  q-property myobj: 0
+  q-signal mysignal(num)
+  q-logger { q-component q-signal q-property }
+
+  function runFunction() {
+    this.myprop = this.myprop + 5;
+    this.mysignal(this.myprop);
+  }
+
+  function addOtherComp() {
+    this.myobj = new QHTMLComponentInstance("othercomp", "generatedOtherShorthand");
+    var json = this.toJSON();
+    var kids = json["qhtmlChildren"];
+    kids.push(this.myobj.toJSON());
+    json["qhtmlChildren"] = kids;
+    this.fromJSON(json);
+  }
+
+  onready {
+    this.runFunction();
+    this.addOtherComp();
+  }
+
+}
+testLoggerShorthand shorthandTest { }
+ section.logger-card {
+    h2 { text { Test 1: shorthand categories } }
+    p { text { q-logger { q-component q-signal q-property } } }
+    div.logger-actions {
+      button { type: "button" onclick { shorthandTest.runFunction(); alert("Ran function") } text { Run Function } }
+      button { type: "button" onclick { shorthandTest.addOtherComp(); } text { Add Component } }
+    }
+    pre#shorthandLog.log-output { text { watch console for QHTMLLogger output } }
+  }
+q-component testLoggerComponentOnly {
+  q-property componentOnlyCounter: 0
+  q-property myobj: 0
+  q-signal componentOnlySignal(num)
+  q-logger { q-component }
+
+  function componentOnlyRunProcedure() {
+    this.componentOnlyCounter = Number(this.componentOnlyCounter) + 1;
+    this.componentOnlySignal("component-only signal " + this.componentOnlyCounter);
+  }
+
+  function componentOnlyAddOtherComp() {
+    this.myobj = new QHTMLComponentInstance("othercomp", "generatedOtherComponentOnly");
+    var json = this.toJSON();
+    var kids = json["qhtmlChildren"];
+    kids.push(this.myobj.toJSON());
+    json["qhtmlChildren"] = kids;
+    this.fromJSON(json);
+  }
+
+  onready {
+    this.componentOnlyRunProcedure();
+    this.componentOnlyAddOtherComp();
+  }
+
+  section.logger-card {
+    h2 { text { Test 2: q-component shorthand only } }
+    p { text { q-logger { q-component } } }
+    div.logger-actions {
+      button { type: "button" onclick { componentOnlyTest.componentOnlyRunProcedure(); } text { Run Function } }
+      button { type: "button" onclick { componentOnlyTest.componentOnlyAddOtherComp(); } text { Add Component } }
+    }
+    pre#componentOnlyLog.log-output { text { watch console for QHTMLLogger output } }
+  }
+}
+
+testLoggerComponentOnly componentOnlyTest { }
+
+q-component testLoggerClassNames {
+  q-property classNameCounter: 0
+  q-property myobj: 0
+  q-signal classNameSignal(num)
+  q-logger { QHTMLSignal QHTMLComponent QHTMLProperty }
+
+  function classNameRunProcedure() {
+    this.classNameCounter = Number(this.classNameCounter) + 1;
+    this.classNameSignal("class-name signal " + this.classNameCounter);
+  }
+
+  function classNameAddOtherComp() {
+    this.myobj = new QHTMLComponentInstance("othercomp", "generatedOtherClassNames");
+    var json = this.toJSON();
+    var kids = json["qhtmlChildren"];
+    kids.push(this.myobj.toJSON());
+    json["qhtmlChildren"] = kids;
+    this.fromJSON(json);
+  }
+
+  onready {
+    this.classNameRunProcedure();
+    this.classNameAddOtherComp();
+  }
+
+  section.logger-card {
+    h2 { text { Test 3: QHTML class-name categories } }
+    p { text { q-logger { QHTMLSignal QHTMLComponent QHTMLProperty } } }
+    div.logger-actions {
+      button { type: "button" onclick { classNameTest.classNameRunProcedure(); } text { Run Function } }
+      button { type: "button" onclick { classNameTest.classNameAddOtherComp(); } text { Add Component } }
+    }
+    pre#classNameLog.log-output { text { watch console for QHTMLLogger output } }
+  }
+}
+
+testLoggerClassNames classNameTest { }
+      </q-html>
+    </div>
+  </main>
+</body>
+</html>

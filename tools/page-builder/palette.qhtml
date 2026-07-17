@@ -166,41 +166,173 @@ q-component builderFormPaletteItem extends builderPaletteItem {
   q-property slotNames: "formContents"
 }
 
+q-component builderPriceBoxPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.price-box"
+  q-property definitionName: "builderPriceBox"
+  q-property definitionUUID: "builder-definition-price-box"
+  q-property displayName: "Price Box"
+  q-property category: "Commerce"
+  q-property description: "Plan name, price, features, and CTA"
+  q-property iconLabel: "$"
+  q-property instanceName: "priceBox"
+  q-property slotNames: "planName,planPrice,planPeriod,planFeatures,planAction"
+}
+
+q-component builderCustomerReviewPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.customer-review"
+  q-property definitionName: "builderCustomerReview"
+  q-property definitionUUID: "builder-definition-customer-review"
+  q-property displayName: "Customer Review"
+  q-property category: "Trust"
+  q-property description: "Quote, author, and review metadata"
+  q-property iconLabel: "R"
+  q-property instanceName: "customerReview"
+  q-property slotNames: "reviewQuote,reviewAuthor,reviewMeta"
+}
+
+q-component builderDecoratedHeadlinePaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.decorated-headline"
+  q-property definitionName: "builderDecoratedHeadline"
+  q-property definitionUUID: "builder-definition-decorated-headline"
+  q-property displayName: "Decorated Headline"
+  q-property category: "Headers"
+  q-property description: "Eyebrow, headline, subcopy, and divider"
+  q-property iconLabel: "T"
+  q-property instanceName: "decoratedHeadline"
+  q-property slotNames: "headlineEyebrow,headlineText,headlineSubtext"
+}
+
+q-component builderStatsBandPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.stats-band"
+  q-property definitionName: "builderStatsBand"
+  q-property definitionUUID: "builder-definition-stats-band"
+  q-property displayName: "Stats Band"
+  q-property category: "Trust"
+  q-property description: "Three compact metrics"
+  q-property iconLabel: "3"
+  q-property instanceName: "statsBand"
+  q-property slotNames: "statOneValue,statOneLabel,statTwoValue,statTwoLabel,statThreeValue,statThreeLabel"
+}
+
+q-component builderFaqPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.faq"
+  q-property definitionName: "builderFaqBlock"
+  q-property definitionUUID: "builder-definition-faq"
+  q-property displayName: "FAQ"
+  q-property category: "Content"
+  q-property description: "Expandable question and answer block"
+  q-property iconLabel: "?"
+  q-property instanceName: "faqBlock"
+  q-property slotNames: "faqTitle,faqOneQuestion,faqOneAnswer,faqTwoQuestion,faqTwoAnswer"
+}
+
+q-component builderLogoStripPaletteItem extends builderPaletteItem {
+  q-property paletteId: "builder.logo-strip"
+  q-property definitionName: "builderLogoStrip"
+  q-property definitionUUID: "builder-definition-logo-strip"
+  q-property displayName: "Logo Strip"
+  q-property category: "Trust"
+  q-property description: "Partner or customer logo row"
+  q-property iconLabel: "L"
+  q-property instanceName: "logoStrip"
+  q-property slotNames: "logoStripLabel,logoOne,logoTwo,logoThree,logoFour"
+}
+
 q-component builderHeroBlock {
   section.builder-hero-block {
-    h1 { slot heroTitle { text { Launch faster } } }
-    p { slot heroSubtitle { text { Compose QHTML pages visually. } } }
-    div.builder-actions { slot heroActions { button { text { Get started } } } }
+    backgroundColor: "#ffffff"
+    color: "#0f172a"
+    padding: "48px"
+    borderRadius: "18px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    boxShadow: "0 18px 50px rgba(15,23,42,.10)"
+    h1 {
+      margin: "0 0 14px"
+      fontSize: "44px"
+      lineHeight: "1"
+      fontWeight: "900"
+      slot heroTitle { text { Launch faster } }
+    }
+    p {
+      margin: "0 0 22px"
+      color: "#475569"
+      fontSize: "18px"
+      lineHeight: "1.55"
+      slot heroSubtitle { text { Compose QHTML pages visually. } }
+    }
+    div.builder-actions {
+      display: "flex"
+      flexWrap: "wrap"
+      gap: "10px"
+      marginBottom: "18px"
+      slot heroActions { button { text { Get started } } }
+    }
     div.builder-content-slot { slot heroContent { text { Add supporting content. } } }
   }
 }
 
 q-component builderFeatureCard {
   article.builder-feature-card {
-    span.builder-feature-icon { slot featureIcon { text { * } } }
-    h3 { slot featureTitle { text { Feature title } } }
-    p { slot featureBody { text { Explain the benefit clearly. } } }
+    backgroundColor: "#ffffff"
+    color: "#0f172a"
+    padding: "24px"
+    borderRadius: "14px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    boxShadow: "0 12px 32px rgba(15,23,42,.08)"
+    span.builder-feature-icon {
+      display: "inline-grid"
+      width: "38px"
+      height: "38px"
+      marginBottom: "14px"
+      borderRadius: "10px"
+      backgroundColor: "#eff6ff"
+      color: "#1d4ed8"
+      fontWeight: "900"
+      slot featureIcon { text { * } }
+    }
+    h3 {
+      margin: "0 0 8px"
+      fontSize: "20px"
+      slot featureTitle { text { Feature title } }
+    }
+    p {
+      margin: "0"
+      color: "#64748b"
+      lineHeight: "1.55"
+      slot featureBody { text { Explain the benefit clearly. } }
+    }
     div.builder-content-slot { slot featureContent { text { Add nested content. } } }
   }
 }
 
 q-component builderTwoColumnBlock {
   section.builder-two-column-block {
+    backgroundColor: "#ffffff"
+    padding: "28px"
+    borderRadius: "16px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
     q-layout {
       width: "inherit"
       height: "inherit"
+      gap: "18px"
       q-row {
         width: "inherit"
         height: "inherit"
+        gap: "18px"
         q-col {
           width: "inherit"
           height: "inherit"
+          padding: "18px"
           h3 { slot leftTitle { text { Left heading } } }
           p { slot leftBody { text { Left column body. } } }
         }
         q-col {
           width: "inherit"
           height: "inherit"
+          padding: "18px"
           h3 { slot rightTitle { text { Right heading } } }
           p { slot rightBody { text { Right column body. } } }
         }
@@ -211,24 +343,67 @@ q-component builderTwoColumnBlock {
 
 q-component builderCalloutBlock {
   aside.builder-callout-block {
-    strong { slot calloutLabel { text { Note } } }
-    p { slot calloutBody { text { Important details go here. } } }
+    backgroundColor: "#f8fafc"
+    color: "#0f172a"
+    padding: "24px"
+    borderRadius: "14px"
+    borderWidth: "1px"
+    borderColor: "#93c5fd"
+    strong {
+      display: "block"
+      marginBottom: "8px"
+      color: "#1d4ed8"
+      slot calloutLabel { text { Note } }
+    }
+    p {
+      margin: "0"
+      lineHeight: "1.55"
+      slot calloutBody { text { Important details go here. } }
+    }
     div.builder-content-slot { slot calloutContent { text { Add supporting content. } } }
   }
 }
 
 q-component builderButtonRow {
   div.builder-button-row {
-    div.builder-actions { slot buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } } }
-    p { slot buttonRowContent { text { Optional helper text. } } }
+    display: "flex"
+    flexWrap: "wrap"
+    alignItems: "center"
+    justifyContent: "space-between"
+    gap: "14px"
+    padding: "18px"
+    backgroundColor: "#ffffff"
+    borderRadius: "12px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    div.builder-actions {
+      display: "flex"
+      gap: "10px"
+      flexWrap: "wrap"
+      slot buttonRowActions { button { text { Primary Action } } button { text { Secondary Action } } }
+    }
+    p {
+      margin: "0"
+      color: "#64748b"
+      slot buttonRowContent { text { Optional helper text. } }
+    }
   }
 }
 
 q-component builderHtmlBlock {
   section.builder-html-block {
-    h4 { slot htmlBlockLabel { text { HTML Block } } }
+    backgroundColor: "#ffffff"
+    padding: "22px"
+    borderRadius: "12px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    h4 { margin: "0 0 10px" slot htmlBlockLabel { text { HTML Block } } }
     div { slot htmlBlockContent { html { <p>Raw HTML area</p> } } }
-    footer { slot htmlBlockFooter { text { Footer text. } } }
+    footer {
+      color: "#64748b"
+      fontSize: "13px"
+      slot htmlBlockFooter { text { Footer text. } }
+    }
   }
 }
 
@@ -236,6 +411,11 @@ q-component builderFormBlock {
   form.builder-form-block {
     action: "#"
     method: "post"
+    backgroundColor: "#ffffff"
+    padding: "24px"
+    borderRadius: "14px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
     slot formContents {
       div.form-field {
         label { text { Name } }
@@ -263,6 +443,242 @@ q-component builderFormBlock {
   }
 }
 
+q-component builderPriceBox {
+  article.builder-price-box {
+    backgroundColor: "#ffffff"
+    color: "#0f172a"
+    padding: "28px"
+    borderRadius: "18px"
+    borderWidth: "1px"
+    borderColor: "#cbd5e1"
+    boxShadow: "0 16px 42px rgba(15,23,42,.10)"
+    h3 {
+      margin: "0 0 8px"
+      fontSize: "22px"
+      slot planName { text { Professional } }
+    }
+    div.builder-price-line {
+      display: "flex"
+      alignItems: "baseline"
+      gap: "8px"
+      marginBottom: "18px"
+      strong {
+        fontSize: "42px"
+        lineHeight: "1"
+        slot planPrice { text { $49 } }
+      }
+      span {
+        color: "#64748b"
+        slot planPeriod { text { per month } }
+      }
+    }
+    ul {
+      margin: "0 0 22px 18px"
+      padding: "0"
+      lineHeight: "1.7"
+      slot planFeatures {
+        li { text { Core CMS blocks } }
+        li { text { Search-friendly output } }
+        li { text { Priority support } }
+      }
+    }
+    div.builder-actions {
+      slot planAction { button { type: "button" text { Choose plan } } }
+    }
+  }
+}
+
+q-component builderCustomerReview {
+  figure.builder-customer-review {
+    backgroundColor: "#ffffff"
+    color: "#0f172a"
+    padding: "26px"
+    borderRadius: "16px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    margin: "0"
+    blockquote {
+      margin: "0 0 18px"
+      fontSize: "20px"
+      lineHeight: "1.5"
+      slot reviewQuote { text { This made our content workflow dramatically easier to manage. } }
+    }
+    figcaption {
+      display: "grid"
+      gap: "3px"
+      strong { slot reviewAuthor { text { Alex Morgan } } }
+      span {
+        color: "#64748b"
+        fontSize: "13px"
+        slot reviewMeta { text { Founder, Example Co. } }
+      }
+    }
+  }
+}
+
+q-component builderDecoratedHeadline {
+  header.builder-decorated-headline {
+    padding: "12px 0 22px"
+    p {
+      margin: "0 0 8px"
+      color: "#2563eb"
+      fontSize: "13px"
+      fontWeight: "850"
+      letterSpacing: "0.12em"
+      textTransform: "uppercase"
+      slot headlineEyebrow { text { Featured Section } }
+    }
+    h2 {
+      margin: "0"
+      color: "#0f172a"
+      fontSize: "36px"
+      lineHeight: "1.05"
+      fontWeight: "900"
+      slot headlineText { text { A clearer way to build pages } }
+    }
+    div {
+      width: "72px"
+      height: "4px"
+      backgroundColor: "#2563eb"
+      borderRadius: "999px"
+      marginTop: "14px"
+      marginBottom: "14px"
+    }
+    p.builder-headline-subtext {
+      margin: "0"
+      color: "#64748b"
+      lineHeight: "1.6"
+      slot headlineSubtext { text { Use this section to introduce an offer, service, category, or editorial area. } }
+    }
+  }
+}
+
+q-component builderStatsBand {
+  section.builder-stats-band {
+    display: "flex"
+    flexWrap: "wrap"
+    gap: "14px"
+    backgroundColor: "#0f172a"
+    color: "#ffffff"
+    padding: "24px"
+    borderRadius: "16px"
+    div.builder-stat {
+      flex: "1 1 160px"
+      strong {
+        display: "block"
+        fontSize: "30px"
+        slot statOneValue { text { 42% } }
+      }
+      span { color: "#cbd5e1" slot statOneLabel { text { Faster publishing } } }
+    }
+    div.builder-stat {
+      flex: "1 1 160px"
+      strong {
+        display: "block"
+        fontSize: "30px"
+        slot statTwoValue { text { 18k } }
+      }
+      span { color: "#cbd5e1" slot statTwoLabel { text { Indexed pages } } }
+    }
+    div.builder-stat {
+      flex: "1 1 160px"
+      strong {
+        display: "block"
+        fontSize: "30px"
+        slot statThreeValue { text { 99.9% } }
+      }
+      span { color: "#cbd5e1" slot statThreeLabel { text { Runtime uptime } } }
+    }
+  }
+}
+
+q-component builderFaqBlock {
+  section.builder-faq-block {
+    backgroundColor: "#ffffff"
+    padding: "24px"
+    borderRadius: "14px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    h3 { margin: "0 0 14px" slot faqTitle { text { Frequently asked questions } } }
+    details {
+      padding: "12px 0"
+      borderColor: "#e2e8f0"
+      borderWidth: "0 0 1px 0"
+      summary {
+        cursor: "pointer"
+        fontWeight: "800"
+        slot faqOneQuestion { text { Can I edit this later? } }
+      }
+      p {
+        color: "#64748b"
+        lineHeight: "1.55"
+        slot faqOneAnswer { text { Yes. Select the block, edit its slots, or adjust CSS from the context menu. } }
+      }
+    }
+    details {
+      padding: "12px 0"
+      summary {
+        cursor: "pointer"
+        fontWeight: "800"
+        slot faqTwoQuestion { text { Does this export clean QHTML? } }
+      }
+      p {
+        color: "#64748b"
+        lineHeight: "1.55"
+        slot faqTwoAnswer { text { The builder keeps the structure editable and serializes the final QHTML. } }
+      }
+    }
+  }
+}
+
+q-component builderLogoStrip {
+  section.builder-logo-strip {
+    backgroundColor: "#ffffff"
+    padding: "22px"
+    borderRadius: "14px"
+    borderWidth: "1px"
+    borderColor: "#dbe4f0"
+    p {
+      margin: "0 0 14px"
+      color: "#64748b"
+      fontSize: "13px"
+      fontWeight: "850"
+      letterSpacing: "0.08em"
+      textTransform: "uppercase"
+      slot logoStripLabel { text { Trusted by teams shipping modern web content } }
+    }
+    div {
+      display: "flex"
+      flexWrap: "wrap"
+      gap: "12px"
+      span {
+        padding: "10px 14px"
+        borderRadius: "10px"
+        backgroundColor: "#f8fafc"
+        slot logoOne { text { Acme } }
+      }
+      span {
+        padding: "10px 14px"
+        borderRadius: "10px"
+        backgroundColor: "#f8fafc"
+        slot logoTwo { text { Northstar } }
+      }
+      span {
+        padding: "10px 14px"
+        borderRadius: "10px"
+        backgroundColor: "#f8fafc"
+        slot logoThree { text { Vertex } }
+      }
+      span {
+        padding: "10px 14px"
+        borderRadius: "10px"
+        backgroundColor: "#f8fafc"
+        slot logoFour { text { Atlas } }
+      }
+    }
+  }
+}
+
 q-component pageBuilderPalette {
   aside.page-builder-palette {
     header.page-builder-palette-header {
@@ -281,6 +697,18 @@ q-component pageBuilderPalette {
 
         section.page-builder-palette-group {
           h3 { text { Sections } }
+          builderPaletteButton decoratedHeadlinePaletteButton {
+            paletteId: "builder.decorated-headline"
+            definitionName: "builderDecoratedHeadline"
+            definitionUUID: "builder-definition-decorated-headline"
+            displayName: "Decorated Headline"
+            category: "Headers"
+            description: "Eyebrow, headline, divider"
+            iconLabel: "T"
+            instanceName: "decoratedHeadline"
+            slotNames: "headlineEyebrow,headlineText,headlineSubtext"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderDecoratedHeadlinePaletteItem); }
+          }
           builderPaletteButton heroPaletteButton {
             paletteId: "builder.hero"
             definitionName: "builderHeroBlock"
@@ -304,6 +732,18 @@ q-component pageBuilderPalette {
             instanceName: "calloutBlock"
             slotNames: "calloutLabel,calloutBody,calloutContent"
             function instantiatePaletteItem() { return this.createInstanceFromType(builderCalloutPaletteItem); }
+          }
+          builderPaletteButton statsBandPaletteButton {
+            paletteId: "builder.stats-band"
+            definitionName: "builderStatsBand"
+            definitionUUID: "builder-definition-stats-band"
+            displayName: "Stats Band"
+            category: "Trust"
+            description: "Three compact metrics"
+            iconLabel: "3"
+            instanceName: "statsBand"
+            slotNames: "statOneValue,statOneLabel,statTwoValue,statTwoLabel,statThreeValue,statThreeLabel"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderStatsBandPaletteItem); }
           }
         }
 
@@ -345,10 +785,34 @@ q-component pageBuilderPalette {
             slotNames: "htmlBlockLabel,htmlBlockContent,htmlBlockFooter"
             function instantiatePaletteItem() { return this.createInstanceFromType(builderHtmlPaletteItem); }
           }
+          builderPaletteButton faqPaletteButton {
+            paletteId: "builder.faq"
+            definitionName: "builderFaqBlock"
+            definitionUUID: "builder-definition-faq"
+            displayName: "FAQ"
+            category: "Content"
+            description: "Expandable Q and A"
+            iconLabel: "?"
+            instanceName: "faqBlock"
+            slotNames: "faqTitle,faqOneQuestion,faqOneAnswer,faqTwoQuestion,faqTwoAnswer"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderFaqPaletteItem); }
+          }
         }
 
         section.page-builder-palette-group {
           h3 { text { Actions And Forms } }
+          builderPaletteButton priceBoxPaletteButton {
+            paletteId: "builder.price-box"
+            definitionName: "builderPriceBox"
+            definitionUUID: "builder-definition-price-box"
+            displayName: "Price Box"
+            category: "Commerce"
+            description: "Plan price and features"
+            iconLabel: "$"
+            instanceName: "priceBox"
+            slotNames: "planName,planPrice,planPeriod,planFeatures,planAction"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderPriceBoxPaletteItem); }
+          }
           builderPaletteButton buttonRowPaletteButton {
             paletteId: "builder.button-row"
             definitionName: "builderButtonRow"
@@ -372,6 +836,34 @@ q-component pageBuilderPalette {
             instanceName: "formBlock"
             slotNames: "formContents"
             function instantiatePaletteItem() { return this.createInstanceFromType(builderFormPaletteItem); }
+          }
+        }
+
+        section.page-builder-palette-group {
+          h3 { text { Trust } }
+          builderPaletteButton reviewPaletteButton {
+            paletteId: "builder.customer-review"
+            definitionName: "builderCustomerReview"
+            definitionUUID: "builder-definition-customer-review"
+            displayName: "Customer Review"
+            category: "Trust"
+            description: "Quote and attribution"
+            iconLabel: "R"
+            instanceName: "customerReview"
+            slotNames: "reviewQuote,reviewAuthor,reviewMeta"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderCustomerReviewPaletteItem); }
+          }
+          builderPaletteButton logoStripPaletteButton {
+            paletteId: "builder.logo-strip"
+            definitionName: "builderLogoStrip"
+            definitionUUID: "builder-definition-logo-strip"
+            displayName: "Logo Strip"
+            category: "Trust"
+            description: "Partner/customer row"
+            iconLabel: "L"
+            instanceName: "logoStrip"
+            slotNames: "logoStripLabel,logoOne,logoTwo,logoThree,logoFour"
+            function instantiatePaletteItem() { return this.createInstanceFromType(builderLogoStripPaletteItem); }
           }
         }
       }

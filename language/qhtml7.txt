@@ -828,7 +828,13 @@ layouts can be either named types or anonymous.  Making them anonymous objects w
 
 Layout-builder behavior: tools/layout-builder.html is the reference implementation for manipulating QHTMLLayout, QHTMLLayoutRow, and QHTMLLayoutCol objects from a browser tool. The QHTML view for this tool lives in tools/layout-builder/main.qhtml and the imperative editor logic lives in tools/layout-builder/main.js so the same builder can be embedded into tools/page-builder.html. The JavaScript editor must mutate the QHTML layout object model, preserve the user's declared units, and export by calling the QHTML serialization path instead of rebuilding large strings by hand.
 
-Default layout properties are inherit unless the user explicitly sets them. A new q-layout defaults to width: inherit, height: inherit, gap: inherit, and contains a q-row child. A new q-row defaults to width: 100%, height: 10vh, gap: inherit, and contains the text child `text { row }` so it can be identified visually. A new q-col defaults to width: 10vw, height: inherit, gap: inherit, and contains the text child `text { col }`. Blank property fields in the layout editor are written back as inherit, not as 0px or auto.
+The layout editor owns an internal root q-layout wrapper that is not part of the exported QHTML. This root exists only inside the builder canvas, cannot be edited, resized, dragged, replaced, or deleted, and is used as the absolute top-level drop/context target. It must dynamically size to its children and provide extra canvas space, approximately 3-5vh/vw beyond the outermost child borders, so users can still add rows, columns, layouts, or QHTML around content even when the visible layout fills its current bounds. Saving or exporting strips this internal root and serializes only its user-created children.
+
+Default layout properties are inherit unless the user explicitly sets them. A new q-layout defaults to width: inherit, height: inherit, gap: inherit, and contains a q-row child. A new q-row defaults to width: inherit, height: 20vh, minWidth: 1vw, minHeight: 1vh, and gap: inherit. A new q-col defaults to width: 20vw, height: inherit, minWidth: 1vw, and gap: inherit. New rows and columns do not add placeholder `text { row }` or `text { col }` children; visual identification belongs to the layout tree/sidebar and selection outlines. Blank property fields in the layout editor are written back as inherit, not as 0px or auto.
+
+The layout editor includes a collapsible right-side structure tree. This tree is generated from the builder model, not from the rendered DOM, so it can show q-layout, q-row, q-col, and qhtml/palette content children even when those children do not have their own layout DOM element. Clicking a tree item selects the corresponding builder node. Branches can collapse independently. The tree is an editor affordance only and is not exported into final QHTML.
+
+The layout editor context menu includes a CSS submenu organized into grouped submenus: Colors, Size, Spacing, Border, and Text. These groups expose common shortcut properties such as backgroundColor, color, borderColor, width, height, minWidth, minHeight, maxWidth, maxHeight, gap, padding and padding sides, margin sides, borderWidth, borderRadius, fontSize, letterSpacing, and lineHeight. Color properties open a color picker dialog. Length properties open a number plus unit dialog. The editor may use pixels internally to calculate accurate conversion between px, %, vw, vh, vmin, vmax, rem, and em, but saving writes the selected unit back to the stored QHTML property. Cancel leaves the stored QHTML unchanged.
 
 The layout editor context menu operates on the deepest highlighted q-layout, q-row, or q-col under the cursor. When the menu opens, highlighting is frozen until the menu closes. Add -> Row, Add -> Column, and Add -> Layout each support Before, After, As Child, and Replace where the operation is valid. Columns can only be inserted as children into rows or layouts. Rows can only be inserted as children into columns or layouts. If a q-col is highlighted, Add -> Column -> As Child is disabled. If a q-row is highlighted, Add -> Row -> As Child is disabled. Edit opens the selected node's QHTML source in q-editor and Save reparses it into the selected object. Delete removes the selected layout object and its layout children.
 
@@ -906,6 +912,8 @@ Slot migration is required when a palette component definition changes. Before a
 The page builder canvas should use the shared layout-builder rules from section 24 for adding, moving, resizing, and deleting q-layout, q-row, and q-col objects. Page content components are inserted into those layout objects as QHTMLComponentInstance children. The builder should prefer QHTML object APIs over string manipulation: inspect with childList(), findChildrenByType(), slots(), toJSON(), and toQHTML(); mutate with append(), remove(), setProperty(), fromJSON(), and fromQHTML(); then ask the QHTML runtime to re-render the affected object.
 
 Default palette components should be declared in palette.qhtml as normal q-component definitions. The palette item definition references the actual canvas component through definitionName and definitionUUID, while the canvas component definition itself is also declared in palette.qhtml. This keeps the component editable as QHTML, avoids storing large escaped QHTML strings in DOM attributes, and lets the same definitions be serialized through the normal QHTMLDomTree APIs.
+
+The default palette should cover common modern CMS site-builder constructs, not only primitive examples. Current built-in palette definitions include hero sections, decorated headlines, callouts, two-column content, feature cards, HTML embeds, FAQ blocks, pricing boxes, button rows, forms, customer reviews, stats bands, and logo strips. These components should use QHTML7 shortcut CSS properties for their default presentation and should avoid raw inline `style {}` blocks.
 
 
 26. Additional implementation for page-builder
@@ -985,6 +993,57 @@ The last thing is going to be .reload() on QHTMLDomTree(). This reload() method 
 ---------
 
 27. Highlighting - whenever an area is under the mouse that is a QComponentInstanceSlot type, it should have the borderColor property set as blue.
+
+
+---------
+
+28. q-logger
+
+q-logger is a QHTML keyword that creates a QHTMLLogger object. When a q-logger is declared inside a QHTML context, the closest parent QHTMLDomNode-derived object adopts that logger as its logger property. All QHTMLDomNode-derived objects must expose logger, logger(), setLogger(logger), and maybeLog(message). logger() resolves locally first and then walks ancestors, so children inherit the nearest logger unless they define their own.
+
+q-logger may be anonymous or named:
+
+```
+q-logger { q-signal q-component q-property q-slot }
+q-logger { q-component }
+q-logger { QHTMLSignal QHTMLComponent QHTMLProperty QHTMLSlot }
+
+q-logger mylogger { q-signal }
+```
+
+The category tokens are normalized as follows:
+
+- q-signal, signal, and QHTMLSignal become QHTMLSignal.
+- q-property, property, and QHTMLProperty become QHTMLProperty.
+- q-component, component, QHTMLComponentDefinition, and QHTMLComponentInstance become QHTMLComponent.
+- q-slot, slot, QHTMLComponentSlot, QHTMLComponentInstanceSlot, and QHTMLSlot become QHTMLSlot.
+
+QHTMLLogger has these methods:
+
+```
+setCategories(arrayOrString)
+addCategory(value)
+removeCategory(value)
+log(message, category)
+logSignal(message)
+logProperty(message)
+logComponent(message)
+logSlot(message)
+```
+
+If category is omitted, null, or an empty string, log(message, category) always records the message regardless of the logger category filter. If a non-empty category is provided, the logger records the message only when that category is present in the logger's category list. If the logger has no categories configured, it accepts all non-empty categories.
+
+QHTMLSignal, QHTMLProperty, QHTMLComponentInstance, QHTMLComponentDefinition, and QHTMLSlot-related classes should call maybeLog(message) at important runtime points. maybeLog(message) determines the source object's category and forwards the message to the nearest logger. QHTMLSignal emits QHTMLSignal-category log entries when the signal is emitted, including sender and argument information. QHTMLProperty emits QHTMLProperty-category log entries when its value changes. Component classes expose maybeLog(message) and should use the QHTMLComponent category when logging lifecycle or definition/instance changes. Slot classes use the QHTMLSlot category.
+
+Custom connection-style usage is allowed where the runtime exposes compatible signals/functions:
+
+```
+q-logger mylogger { q-signal }
+mysignal.connect("maybeLog", function(message) { mylogger.logSignal(message) })
+mylogger.logSignal("message for signals")
+```
+
+The q-logger node renders no HTML. It must serialize through toQHTML(), toJSON(), fromQHTML(), and fromJSON() like any other QHTMLNode object.
 
 
 ---------

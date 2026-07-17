@@ -8,6 +8,7 @@
 #include <QtCore/QJsonParseError>
 #include <QtCore/QJsonValue>
 #include <QtCore/QList>
+#include <QtCore/QDebug>
 #include <QtCore/QObject>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSet>
@@ -198,9 +199,11 @@ class QHTMLVideo;
 class QHTMLVideoAsset;
 class QHTMLVideoPlayer;
 class QHTMLParticleEmitter;
+class QHTMLLogger;
 class QHTMLNode;
 class QHTMLJavaScriptRuntime;
 
+inline void qhtmlBindLoggerToNode(QHTMLLogger *logger, QHTMLNode *node);
 inline QString qhtmlInterpolateTextForContext(QString value, const QHTMLNode *contextNode);
 inline QString qhtmlResolvePropertyValue(QString rawValue, const QHTMLNode *contextNode, QSet<QString> &resolving, int depth);
 inline QString qhtmlResolveCssValueForContext(QString value, const QHTMLNode *contextNode);
@@ -425,6 +428,7 @@ public:
     QHash<int, QHTMLNode *> qhtmlChildren;
     QHash<QString, QString> qhtmlProperties;
     QHTMLContext *qhtmlContext = nullptr;
+    QHTMLLogger *qhtmlLogger = nullptr;
 
     QHTMLNode *parent() const { return qhtmlParent; }
     QHTMLNode *parentJs() const { return qhtmlParent; }
@@ -543,6 +547,10 @@ public:
             child->qhtmlContext->setParentContext(qhtmlContext);
         }
         qhtmlChildren.insert(qhtmlChildren.size(), child);
+        adoptLoggerFromChild(child);
+        if (qhtmlLogger) {
+            qhtmlBindLoggerToNode(qhtmlLogger, child);
+        }
     }
 
     void insertChild(int index, QHTMLNode *child)
@@ -563,6 +571,10 @@ public:
         }
         shifted.insert(boundedIndex, child);
         qhtmlChildren = shifted;
+        adoptLoggerFromChild(child);
+        if (qhtmlLogger) {
+            qhtmlBindLoggerToNode(qhtmlLogger, child);
+        }
     }
 
     void appendChildJs(QHTMLNode *child) { appendChild(child); }
@@ -619,6 +631,16 @@ public:
     {
         return property(QString::fromStdString(key)).toStdString();
     }
+
+    QHTMLLogger *logger() const;
+    QHTMLLogger *loggerJs() const { return logger(); }
+    void setLogger(QHTMLLogger *logger);
+    void setLoggerJs(QHTMLLogger *logger) { setLogger(logger); }
+    void adoptLoggerFromChild(QHTMLNode *child);
+    QString loggerCategory() const;
+    std::string loggerCategoryJs() const { return loggerCategory().toStdString(); }
+    bool maybeLog(const QString &message);
+    bool maybeLogJs(const std::string &message) { return maybeLog(QString::fromStdString(message)); }
 
     void updateKeywordReference(const QString &name, const QString &value)
     {
@@ -1061,6 +1083,262 @@ private:
     QHash<QString, QString> m_attributes;
 };
 
+class QHTMLLogger final : public QObject, public QHTMLTypedNode
+{
+    Q_OBJECT
+public:
+    using QHTMLNode::children;
+    using QHTMLNode::parent;
+    using QHTMLNode::setProperty;
+
+    explicit QHTMLLogger(const QString &name = QString(),
+                         const QHash<QString, QString> &attributes = {})
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("q-logger"), name, attributes)
+    {
+        setQHTMLType(QStringLiteral("QHTMLLogger"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("logger"));
+        setCategories(parseCategorySource(attributes.value(QStringLiteral("categories"))));
+    }
+
+    QStringList categories() const
+    {
+        QStringList out = m_categories;
+        for (QHTMLNode *child : children()) {
+            for (const QString &category : parseCategorySource(child ? child->sourceQHTML(0) : QString())) {
+                if (!out.contains(category)) {
+                    out.append(category);
+                }
+            }
+        }
+        return out;
+    }
+
+    emscripten::val categoriesJs() const
+    {
+        emscripten::val out = emscripten::val::array();
+        const QStringList list = categories();
+        for (int i = 0; i < list.size(); ++i) {
+            out.set(i, list.at(i).toStdString());
+        }
+        return out;
+    }
+
+    QString categoryList() const { return categories().join(QLatin1Char(' ')); }
+    std::string categoryListJs() const { return categoryList().toStdString(); }
+
+    void setCategories(const QStringList &categories)
+    {
+        m_categories.clear();
+        for (const QString &category : categories) {
+            addCategory(category);
+        }
+        setAttribute(QStringLiteral("categories"), categoryList());
+    }
+
+    void setCategoryList(const QString &categories) { setCategories(parseCategorySource(categories)); }
+    void setCategoryListJs(const std::string &categories) { setCategoryList(QString::fromStdString(categories)); }
+
+    void setCategoriesJs(emscripten::val categories)
+    {
+        QStringList out;
+        if (emscripten::val::global("Array").call<bool>("isArray", categories)) {
+            const int length = categories["length"].as<int>();
+            for (int i = 0; i < length; ++i) {
+                out.append(QString::fromStdString(categories[i].as<std::string>()));
+            }
+        } else if (!categories.isUndefined() && !categories.isNull()) {
+            out = parseCategorySource(QString::fromStdString(categories.as<std::string>()));
+        }
+        setCategories(out);
+    }
+
+    void addCategory(const QString &category)
+    {
+        const QString normalized = normalizeCategory(category);
+        if (!normalized.isEmpty() && !m_categories.contains(normalized)) {
+            m_categories.append(normalized);
+            setAttribute(QStringLiteral("categories"), categoryList());
+        }
+    }
+
+    void addCategoryJs(const std::string &category) { addCategory(QString::fromStdString(category)); }
+
+    void removeCategory(const QString &category)
+    {
+        const QString normalized = normalizeCategory(category);
+        m_categories.removeAll(normalized);
+        setAttribute(QStringLiteral("categories"), categoryList());
+    }
+
+    void removeCategoryJs(const std::string &category) { removeCategory(QString::fromStdString(category)); }
+
+    bool acceptsCategory(const QString &category) const
+    {
+        const QString normalized = normalizeCategory(category);
+        return normalized.isEmpty() || categories().isEmpty() || categories().contains(normalized);
+    }
+
+    bool acceptsCategoryJs(const std::string &category) const
+    {
+        return acceptsCategory(QString::fromStdString(category));
+    }
+
+public slots:
+    bool maybeLog(const QString &message) { return log(message); }
+    bool logSignal(const QString &message) { return log(message, QStringLiteral("QHTMLSignal")); }
+    bool logProperty(const QString &message) { return log(message, QStringLiteral("QHTMLProperty")); }
+    bool logComponent(const QString &message) { return log(message, QStringLiteral("QHTMLComponent")); }
+    bool logSlot(const QString &message) { return log(message, QStringLiteral("QHTMLSlot")); }
+
+public:
+    bool log(const QString &message, const QString &category = QString())
+    {
+        if (!acceptsCategory(category)) {
+            return false;
+        }
+        const QString normalized = normalizeCategory(category);
+        const QString entry = normalized.isEmpty()
+                                  ? message
+                                  : QStringLiteral("[") + normalized + QStringLiteral("] ") + message;
+        m_entries.append(entry);
+        qInfo().noquote() << QStringLiteral("QHTMLLogger") << entry;
+        return true;
+    }
+
+    bool logJs(const std::string &message, const std::string &category = std::string())
+    {
+        return log(QString::fromStdString(message), QString::fromStdString(category));
+    }
+
+    bool logSignalJs(const std::string &message) { return logSignal(QString::fromStdString(message)); }
+    bool logPropertyJs(const std::string &message) { return logProperty(QString::fromStdString(message)); }
+    bool logComponentJs(const std::string &message) { return logComponent(QString::fromStdString(message)); }
+    bool logSlotJs(const std::string &message) { return logSlot(QString::fromStdString(message)); }
+
+    QStringList entries() const { return m_entries; }
+    emscripten::val entriesJs() const
+    {
+        emscripten::val out = emscripten::val::array();
+        for (int i = 0; i < m_entries.size(); ++i) {
+            out.set(i, m_entries.at(i).toStdString());
+        }
+        return out;
+    }
+
+    QString renderHtml() const override { return QString(); }
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QString header = QStringLiteral("q-logger");
+        if (!qhtmlName().trimmed().isEmpty()) {
+            header += QLatin1Char(' ') + qhtmlName().trimmed();
+        }
+        return sourceBlock(header, categoryList(), indentLevel);
+    }
+
+    static QString normalizeCategory(QString category)
+    {
+        category = category.trimmed();
+        if (category.isEmpty()) {
+            return QString();
+        }
+        if (category == QStringLiteral("q-signal") || category == QStringLiteral("signal")) {
+            return QStringLiteral("QHTMLSignal");
+        }
+        if (category == QStringLiteral("q-property") || category == QStringLiteral("property")) {
+            return QStringLiteral("QHTMLProperty");
+        }
+        if (category == QStringLiteral("q-component") ||
+            category == QStringLiteral("component") ||
+            category == QStringLiteral("QHTMLComponentDefinition") ||
+            category == QStringLiteral("QHTMLComponentInstance")) {
+            return QStringLiteral("QHTMLComponent");
+        }
+        if (category == QStringLiteral("q-slot") ||
+            category == QStringLiteral("slot") ||
+            category == QStringLiteral("QHTMLComponentSlot") ||
+            category == QStringLiteral("QHTMLComponentInstanceSlot")) {
+            return QStringLiteral("QHTMLSlot");
+        }
+        return category;
+    }
+
+    static QStringList parseCategorySource(QString source)
+    {
+        source.replace(QLatin1Char('{'), QLatin1Char(' '));
+        source.replace(QLatin1Char('}'), QLatin1Char(' '));
+        source.replace(QLatin1Char(','), QLatin1Char(' '));
+        source.replace(QLatin1Char(';'), QLatin1Char(' '));
+        QStringList out;
+        const QStringList parts = source.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            const QString normalized = normalizeCategory(part);
+            if (!normalized.isEmpty() && !out.contains(normalized)) {
+                out.append(normalized);
+            }
+        }
+        return out;
+    }
+
+private:
+    QStringList m_categories;
+    QStringList m_entries;
+};
+
+inline QHTMLLogger *QHTMLNode::logger() const
+{
+    if (qhtmlLogger) {
+        return qhtmlLogger;
+    }
+    return qhtmlParent ? qhtmlParent->logger() : nullptr;
+}
+
+inline void QHTMLNode::setLogger(QHTMLLogger *logger)
+{
+    qhtmlLogger = logger;
+    if (logger) {
+        setProperty(QStringLiteral("logger"), logger->qhtmlUUID());
+        qhtmlBindLoggerToNode(logger, this);
+    } else {
+        qhtmlProperties.remove(QStringLiteral("logger"));
+    }
+}
+
+inline void QHTMLNode::adoptLoggerFromChild(QHTMLNode *child)
+{
+    if (QHTMLLogger *loggerNode = dynamic_cast<QHTMLLogger *>(child)) {
+        setLogger(loggerNode);
+    }
+}
+
+inline QString QHTMLNode::loggerCategory() const
+{
+    const QString type = qhtmlType();
+    if (type == QStringLiteral("QHTMLSignal")) {
+        return QStringLiteral("QHTMLSignal");
+    }
+    if (type == QStringLiteral("QHTMLProperty")) {
+        return QStringLiteral("QHTMLProperty");
+    }
+    if (type == QStringLiteral("QHTMLComponentDefinition") ||
+        type == QStringLiteral("QHTMLComponentInstance")) {
+        return QStringLiteral("QHTMLComponent");
+    }
+    if (type == QStringLiteral("QHTMLComponentSlot") ||
+        type == QStringLiteral("QHTMLSlot") ||
+        type == QStringLiteral("QHTMLSlotDefault") ||
+        type == QStringLiteral("QHTMLComponentInstanceSlot")) {
+        return QStringLiteral("QHTMLSlot");
+    }
+    return type;
+}
+
+inline bool QHTMLNode::maybeLog(const QString &message)
+{
+    QHTMLLogger *activeLogger = logger();
+    return activeLogger ? activeLogger->log(message, loggerCategory()) : false;
+}
+
 class QHTMLJavaScriptBlock final : public QHTMLDomNode
 {
 public:
@@ -1197,12 +1475,17 @@ private:
     int m_callCount = 0;
 };
 
-class QHTMLSignal final : public QHTMLTypedNode
+class QHTMLSignal final : public QObject, public QHTMLTypedNode
 {
+    Q_OBJECT
 public:
+    using QHTMLNode::parent;
+    using QHTMLNode::setProperty;
+
     explicit QHTMLSignal(const QString &name = QString(),
                          const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("q-signal"), name, attributes),
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("q-signal"), name, attributes),
           m_parameters(QHTMLFunction::parseParameters(attributes.value(QStringLiteral("parameters"))))
     {
         setQHTMLType(QStringLiteral("QHTMLSignal"));
@@ -1250,6 +1533,9 @@ public:
 private:
     QStringList m_parameters;
     QHTMLSignalBus *m_signalBus = nullptr;
+
+signals:
+    void maybeLog(const QString &message);
 };
 
 class QHTMLSignalConnection final
@@ -1373,15 +1659,26 @@ inline bool QHTMLSignal::connect(QHTMLFunction *function)
 inline int QHTMLSignal::emitSignal(const QStringList &arguments, QHTMLNode *sender)
 {
     QHTMLNode *resolvedSender = sender ? sender : parent();
+    emit maybeLog(QStringLiteral("Signal ") + qhtmlName() +
+                  QStringLiteral(" emitted by ") +
+                  (resolvedSender ? resolvedSender->qhtmlUUID() : QStringLiteral("<none>")) +
+                  QStringLiteral(" with arguments [") +
+                  arguments.join(QStringLiteral(", ")) +
+                  QStringLiteral("]"));
     return m_signalBus ? m_signalBus->emitSignal(this, resolvedSender, arguments) : 0;
 }
 
-class QHTMLComponentSlot final : public QHTMLTypedNode
+class QHTMLComponentSlot final : public QObject, public QHTMLTypedNode
 {
+    Q_OBJECT
 public:
+    using QHTMLNode::children;
+    using QHTMLNode::setProperty;
+
     explicit QHTMLComponentSlot(const QString &name = QString(),
                                 const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("slot"), name, attributes)
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("slot"), name, attributes)
     {
         setQHTMLType(QStringLiteral("QHTMLComponentSlot"));
         setProperty(QStringLiteral("kind"), QStringLiteral("component-slot"));
@@ -1431,6 +1728,9 @@ private:
         }
         return cloned;
     }
+
+signals:
+    void maybeLog(const QString &message);
 };
 
 class QHTMLSlotDefault final : public QHTMLTypedNode
@@ -2268,12 +2568,17 @@ private:
     QHTMLComponentSlot *m_definitionSlot = nullptr;
 };
 
-class QHTMLComponentDefinition final : public QHTMLTypedNode
+class QHTMLComponentDefinition final : public QObject, public QHTMLTypedNode
 {
+    Q_OBJECT
 public:
+    using QHTMLNode::children;
+    using QHTMLNode::setProperty;
+
     explicit QHTMLComponentDefinition(const QString &name = QString(),
                                       const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("q-component"), name, attributes)
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("q-component"), name, attributes)
     {
         setQHTMLType(QStringLiteral("QHTMLComponentDefinition"));
         setProperty(QStringLiteral("kind"), QStringLiteral("component-definition"));
@@ -2299,19 +2604,38 @@ public:
     }
 
     bool hasExtends() const { return !extendsList().isEmpty(); }
+
+signals:
+    void maybeLog(const QString &message);
 };
 
-class QHTMLComponentInstance final : public QHTMLTypedNode
+class QHTMLComponentInstance final : public QObject, public QHTMLTypedNode
 {
+    Q_OBJECT
 public:
+    using QHTMLNode::children;
+    using QHTMLNode::property;
+    using QHTMLNode::setProperty;
+
     explicit QHTMLComponentInstance(const QString &name = QString(),
                                     const QHash<QString, QString> &attributes = {},
                                     QHTMLComponentDefinition *definition = nullptr)
-        : QHTMLTypedNode(QStringLiteral("q-component-instance"), name, attributes)
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("q-component-instance"), name, attributes)
     {
         setQHTMLType(QStringLiteral("QHTMLComponentInstance"));
         m_definition = definition;
         setProperty(QStringLiteral("kind"), QStringLiteral("component-instance"));
+    }
+
+    QHTMLComponentInstance(const std::string &componentName, const std::string &name)
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("q-component-instance"), QString::fromStdString(name), {})
+    {
+        setQHTMLType(QStringLiteral("QHTMLComponentInstance"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("component-instance"));
+        setProperty(QStringLiteral("qhtmlComponentName"), QString::fromStdString(componentName));
+        setProperty(QStringLiteral("componentName"), QString::fromStdString(componentName));
     }
 
     ~QHTMLComponentInstance() override
@@ -2320,7 +2644,13 @@ public:
         m_slotViews.clear();
     }
 
-    void setDefinition(QHTMLComponentDefinition *definition) { m_definition = definition; }
+    void setDefinition(QHTMLComponentDefinition *definition)
+    {
+        m_definition = definition;
+        emit maybeLog(QStringLiteral("Component instance ") + qhtmlName() +
+                      QStringLiteral(" definition set to ") +
+                      (definition ? definition->qhtmlName() : QStringLiteral("<none>")));
+    }
     QHTMLComponentDefinition *definition() const { return m_definition; }
     QHTMLComponentDefinition *definitionJs() const { return m_definition; }
 
@@ -2453,6 +2783,12 @@ public:
             return nullptr;
         }
         overrideNode->appendChild(cloned);
+        if (QHTMLLogger *activeLogger = logger()) {
+            activeLogger->log(QStringLiteral("Slot ") + slotName +
+                                  QStringLiteral(" appended node ") +
+                                  (cloned->qhtmlName().isEmpty() ? cloned->qhtmlType() : cloned->qhtmlName()),
+                              QStringLiteral("QHTMLSlot"));
+        }
         return cloned;
     }
 
@@ -2465,7 +2801,18 @@ public:
         for (int i = 0; i < overrideNode->childCount(); ++i) {
             QHTMLNode *child = overrideNode->childAt(i);
             if (child == node || (child && child->qhtmlUUID() == node->qhtmlUUID())) {
-                return overrideNode->removeChildAt(i);
+                const QString childLabel = child
+                                               ? (child->qhtmlName().isEmpty() ? child->qhtmlType() : child->qhtmlName())
+                                               : QStringLiteral("anonymous");
+                const bool removed = overrideNode->removeChildAt(i);
+                if (removed) {
+                    if (QHTMLLogger *activeLogger = logger()) {
+                        activeLogger->log(QStringLiteral("Slot ") + slotName +
+                                              QStringLiteral(" removed node ") + childLabel,
+                                          QStringLiteral("QHTMLSlot"));
+                    }
+                }
+                return removed;
             }
         }
         return false;
@@ -3197,6 +3544,9 @@ private:
         }
         return cloned;
     }
+
+signals:
+    void maybeLog(const QString &message);
 };
 
 inline QHTMLComponentInstanceSlot::QHTMLComponentInstanceSlot(QHTMLComponentInstance *owner,
@@ -4443,12 +4793,17 @@ inline QHTMLModel *QHTMLModel::cloneModelBlock() const
     return cloned;
 }
 
-class QHTMLProperty final : public QHTMLTypedNode
+class QHTMLProperty final : public QObject, public QHTMLTypedNode
 {
+    Q_OBJECT
 public:
+    using QHTMLNode::children;
+    using QHTMLNode::setProperty;
+
     explicit QHTMLProperty(const QString &name = QString(),
                            const QHash<QString, QString> &attributes = {})
-        : QHTMLTypedNode(QStringLiteral("q-property"), name, attributes),
+        : QObject(nullptr),
+          QHTMLTypedNode(QStringLiteral("q-property"), name, attributes),
           m_value(attributes.value(QStringLiteral("value")))
     {
         setQHTMLType(QStringLiteral("QHTMLProperty"));
@@ -4472,6 +4827,7 @@ public:
         delete m_legacyValueNode;
         m_legacyValueNode = nullptr;
         m_valueNode = createValueNode(m_value);
+        emit maybeLog(QStringLiteral("Property ") + qhtmlName() + QStringLiteral(" set to ") + m_value);
     }
     void setValueJs(const std::string &value) { setValue(QString::fromStdString(value)); }
     QString structuredType() const
@@ -4560,7 +4916,43 @@ private:
     QString m_value;
     QHTMLNode *m_valueNode = nullptr;
     mutable QHTMLNode *m_legacyValueNode = nullptr;
+
+signals:
+    void maybeLog(const QString &message);
 };
+
+inline void qhtmlBindLoggerToNode(QHTMLLogger *logger, QHTMLNode *node)
+{
+    if (!logger || !node) {
+        return;
+    }
+
+    if (QHTMLSignal *signal = dynamic_cast<QHTMLSignal *>(node)) {
+        QObject::connect(signal, &QHTMLSignal::maybeLog,
+                         logger, &QHTMLLogger::logSignal,
+                         Qt::UniqueConnection);
+    } else if (QHTMLProperty *property = dynamic_cast<QHTMLProperty *>(node)) {
+        QObject::connect(property, &QHTMLProperty::maybeLog,
+                         logger, &QHTMLLogger::logProperty,
+                         Qt::UniqueConnection);
+    } else if (QHTMLComponentDefinition *definition = dynamic_cast<QHTMLComponentDefinition *>(node)) {
+        QObject::connect(definition, &QHTMLComponentDefinition::maybeLog,
+                         logger, &QHTMLLogger::logComponent,
+                         Qt::UniqueConnection);
+    } else if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(node)) {
+        QObject::connect(instance, &QHTMLComponentInstance::maybeLog,
+                         logger, &QHTMLLogger::logComponent,
+                         Qt::UniqueConnection);
+    } else if (QHTMLComponentSlot *slot = dynamic_cast<QHTMLComponentSlot *>(node)) {
+        QObject::connect(slot, &QHTMLComponentSlot::maybeLog,
+                         logger, &QHTMLLogger::logSlot,
+                         Qt::UniqueConnection);
+    }
+
+    for (QHTMLNode *child : node->children()) {
+        qhtmlBindLoggerToNode(logger, child);
+    }
+}
 
 class QHTMLJavaScriptRuntime
 {
@@ -8962,6 +9354,20 @@ inline QJsonObject QHTMLNode::toJsonObject() const
         object.insert(QStringLiteral("attributes"), qhtmlStringHashToJsonObject(typed->attributes()));
     }
 
+    if (const QHTMLComponentInstance *instance = dynamic_cast<const QHTMLComponentInstance *>(this)) {
+        QString componentName = instance->property(QStringLiteral("qhtmlComponentName")).trimmed();
+        if (componentName.isEmpty()) {
+            componentName = instance->property(QStringLiteral("componentName")).trimmed();
+        }
+        if (componentName.isEmpty() && instance->definition()) {
+            componentName = instance->definition()->qhtmlName();
+        }
+        if (!componentName.isEmpty()) {
+            object.insert(QStringLiteral("qhtmlComponentName"), componentName);
+            object.insert(QStringLiteral("componentName"), componentName);
+        }
+    }
+
     if (const QHTMLTextFragment *text = dynamic_cast<const QHTMLTextFragment *>(this)) {
         object.insert(QStringLiteral("qhtmlContents"), text->value());
         object.insert(QStringLiteral("value"), text->value());
@@ -9014,6 +9420,9 @@ inline QJsonObject QHTMLNode::toJsonObject() const
         object.insert(QStringLiteral("qhtmlParameters"), qhtmlStringListToJsonArray(functionNode->parameters()));
         object.insert(QStringLiteral("parameters"), functionNode->parameterList());
         qhtmlInsertBase64Body(object, functionNode->body());
+    } else if (const QHTMLLogger *loggerNode = dynamic_cast<const QHTMLLogger *>(this)) {
+        object.insert(QStringLiteral("qhtmlCategories"), qhtmlStringListToJsonArray(loggerNode->categories()));
+        object.insert(QStringLiteral("categories"), loggerNode->categoryList());
     } else if (const QHTMLSignal *signalNode = dynamic_cast<const QHTMLSignal *>(this)) {
         object.insert(QStringLiteral("qhtmlParameters"), qhtmlStringListToJsonArray(signalNode->parameters()));
         object.insert(QStringLiteral("parameters"), signalNode->parameterList());
@@ -9158,6 +9567,14 @@ inline QHTMLNode *QHTMLNode::nodeFromJsonObject(const QJsonObject &object, QHTML
             definition = qhtmlFindComponentDefinitionByNameIn(qhtmlTopScope(ownerScope) ? const_cast<QHTMLNode *>(qhtmlTopScope(ownerScope)) : ownerScope, componentName);
         }
         node = new QHTMLComponentInstance(name, attributes, definition);
+    } else if (type == QStringLiteral("QHTMLLogger")) {
+        const QStringList categories = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlCategories")));
+        if (!categories.isEmpty()) {
+            attributes.insert(QStringLiteral("categories"), categories.join(QStringLiteral(" ")));
+        } else if (object.contains(QStringLiteral("categories"))) {
+            attributes.insert(QStringLiteral("categories"), qhtmlFirstJsonString(object, {"categories"}));
+        }
+        node = new QHTMLLogger(name, attributes);
     } else if (type == QStringLiteral("QHTMLFunction")) {
         const QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
         if (!parameters.isEmpty()) {
@@ -9386,6 +9803,12 @@ inline bool QHTMLNode::fromJsonObject(const QJsonObject &object)
         }
         functionNode->setParameters(parameters);
         functionNode->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLLogger *loggerNode = dynamic_cast<QHTMLLogger *>(this)) {
+        QStringList categories = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlCategories")));
+        if (categories.isEmpty()) {
+            categories = QHTMLLogger::parseCategorySource(qhtmlFirstJsonString(object, {"categories"}));
+        }
+        loggerNode->setCategories(categories);
     } else if (QHTMLSignal *signalNode = dynamic_cast<QHTMLSignal *>(this)) {
         QStringList parameters = qhtmlStringListFromJsonValue(object.value(QStringLiteral("qhtmlParameters")));
         if (parameters.isEmpty()) {

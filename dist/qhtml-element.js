@@ -1314,6 +1314,7 @@
     reserve("QArray", globalScope.QArray);
     reserve("QModel", globalScope.QModel);
     reserve("QCallback", globalScope.QCallback);
+    reserve("QHTMLComponentInstance", globalScope.QHTML7.Module.QHTMLComponentInstance);
     addScopedQHTMLContextBindings(add, domElement, sourceRegistry);
 
     if (sourceRegistry) {
@@ -1322,6 +1323,9 @@
       }
       if (sourceRegistry.workersByName) {
         sourceRegistry.workersByName.forEach((worker, name) => add(name, worker));
+      }
+      if (sourceRegistry.loggersByName) {
+        sourceRegistry.loggersByName.forEach((logger, name) => add(name, logger));
       }
       addDomElementContextBindings(add, domElement, sourceRegistry);
       if (sourceRegistry.componentDefinitionsByName) {
@@ -2050,6 +2054,9 @@
     if (typeof value === "undefined" && registry.workersByName) {
       value = registry.workersByName.get(parts[0]);
     }
+    if (typeof value === "undefined" && registry.loggersByName) {
+      value = registry.loggersByName.get(parts[0]);
+    }
     if (typeof value === "undefined") {
       value = selfElement ? selfElement[parts[0]] : undefined;
     }
@@ -2206,6 +2213,12 @@
       if (typeof signalNode.emit === "function") {
         signalNode.emit(serializedArgs);
       }
+      logQHTMLRuntime(
+        domElement.__qhtmlRegistry,
+        "QHTMLSignal",
+        "Signal " + signalName + " emitted by " + (domElement.id || qhtmlNodeName(domElement.qhtmlNode) || "anonymous") + " with arguments [" + serializedArgs + "]",
+        domElement
+      );
       if (typeof domElement.dispatchEvent === "function" && typeof CustomEvent === "function") {
         domElement.dispatchEvent(new CustomEvent("QHTMLSignal", {
           bubbles: true,
@@ -2380,6 +2393,12 @@
 
   function dispatchPropertyChange(domElement, propertyNode, propertyName, nextValue, transactionId) {
     withPropertyTransaction(transactionId, () => {
+      logQHTMLRuntime(
+        domElement.__qhtmlRegistry,
+        "QHTMLProperty",
+        "Property " + propertyName + " changed on " + (domElement.id || qhtmlNodeName(domElement.qhtmlNode) || "anonymous") + " to " + String(nextValue),
+        domElement
+      );
       const signalName = `${propertyName}changed`;
       if (typeof domElement[signalName] === "function") {
         domElement[signalName].__qhtmlPendingTransactionId = transactionId;
@@ -2690,6 +2709,201 @@
         return true;
       }
     };
+  }
+
+  function normalizeLoggerCategory(category) {
+    const text = String(category == null ? "" : category).trim();
+    if (!text) {
+      return "";
+    }
+    if (text === "q-signal" || text === "signal" || text === "QHTMLSignal") {
+      return "QHTMLSignal";
+    }
+    if (text === "q-property" || text === "property" || text === "QHTMLProperty") {
+      return "QHTMLProperty";
+    }
+    if (text === "q-component" ||
+        text === "component" ||
+        text === "QHTMLComponent" ||
+        text === "QHTMLComponentDefinition" ||
+        text === "QHTMLComponentInstance") {
+      return "QHTMLComponent";
+    }
+    if (text === "q-slot" ||
+        text === "slot" ||
+        text === "QHTMLSlot" ||
+        text === "QHTMLComponentSlot" ||
+        text === "QHTMLComponentInstanceSlot") {
+      return "QHTMLSlot";
+    }
+    return text;
+  }
+
+  function loggerCategoriesFromNode(loggerNode) {
+    const categories = new Set();
+    const add = (value) => {
+      const normalized = normalizeLoggerCategory(value);
+      if (normalized) {
+        categories.add(normalized);
+      }
+    };
+    if (loggerNode && typeof loggerNode.categoryList === "function") {
+      String(loggerNode.categoryList() || "").split(/\s+/).forEach(add);
+    } else if (loggerNode && typeof loggerNode.categories === "function") {
+      Array.from(loggerNode.categories() || []).forEach(add);
+    } else {
+      qhtmlNodeChildrenText(loggerNode).split(/\s+/).forEach(add);
+    }
+    return categories;
+  }
+
+  function callLoggerNodeMethod(loggerNode, methodName, args) {
+    const jsMethodName = methodName + "Js";
+    if (loggerNode && typeof loggerNode[methodName] === "function") {
+      return loggerNode[methodName].apply(loggerNode, args);
+    }
+    if (loggerNode && typeof loggerNode[jsMethodName] === "function") {
+      return loggerNode[jsMethodName].apply(loggerNode, args);
+    }
+    return undefined;
+  }
+
+  function createLiveLogger(loggerNode) {
+    const loggerName = qhtmlNodeName(loggerNode);
+    const loggerUuid = typeof loggerNode.qhtmlUUID === "function" ? loggerNode.qhtmlUUID() : "";
+    const categories = loggerCategoriesFromNode(loggerNode);
+    const entries = [];
+    const logger = {
+      qhtmlNode: loggerNode,
+      qhtmlName: loggerName,
+      qhtmlUUID: loggerUuid,
+      categories() {
+        return Array.from(categories);
+      },
+      entries() {
+        return entries.slice();
+      },
+      setCategories(value) {
+        categories.clear();
+        const items = Array.isArray(value) ? value : String(value || "").split(/\s+/);
+        items.forEach((item) => {
+          const normalized = normalizeLoggerCategory(item);
+          if (normalized) {
+            categories.add(normalized);
+          }
+        });
+        return callLoggerNodeMethod(loggerNode, "setCategoryList", [Array.from(categories).join(" ")]);
+      },
+      addCategory(value) {
+        const normalized = normalizeLoggerCategory(value);
+        if (normalized) {
+          categories.add(normalized);
+          return callLoggerNodeMethod(loggerNode, "addCategory", [normalized]);
+        }
+        return false;
+      },
+      removeCategory(value) {
+        const normalized = normalizeLoggerCategory(value);
+        categories.delete(normalized);
+        return callLoggerNodeMethod(loggerNode, "removeCategory", [normalized]);
+      },
+      acceptsCategory(value) {
+        const normalized = normalizeLoggerCategory(value);
+        return !normalized || categories.size === 0 || categories.has(normalized);
+      },
+      log(message, category) {
+        const normalized = normalizeLoggerCategory(category);
+        if (!logger.acceptsCategory(normalized)) {
+          return false;
+        }
+        const entry = normalized ? "[" + normalized + "] " + String(message) : String(message);
+        entries.push(entry);
+        callLoggerNodeMethod(loggerNode, "log", [String(message), normalized]);
+        console.log("QHTMLLogger", entry);
+        return true;
+      },
+      logSignal(message) {
+        return logger.log(message, "QHTMLSignal");
+      },
+      logProperty(message) {
+        return logger.log(message, "QHTMLProperty");
+      },
+      logComponent(message) {
+        return logger.log(message, "QHTMLComponent");
+      },
+      logSlot(message) {
+        return logger.log(message, "QHTMLSlot");
+      }
+    };
+    return logger;
+  }
+
+  function registerRuntimeLogger(registry, loggerNode) {
+    if (!registry || !loggerNode || qhtmlNodeType(loggerNode) !== "QHTMLLogger") {
+      return null;
+    }
+    const loggerUuid = qhtmlNodeUuid(loggerNode);
+    let logger = loggerUuid ? registry.loggersByUuid.get(loggerUuid) : null;
+    if (!logger) {
+      logger = createLiveLogger(loggerNode);
+    }
+    const loggerName = qhtmlNodeName(loggerNode);
+    if (loggerName) {
+      registry.loggersByName.set(loggerName, logger);
+      registry.loggers[loggerName] = logger;
+    }
+    if (loggerUuid) {
+      registry.loggersByUuid.set(loggerUuid, logger);
+    }
+    const ownerNode = loggerNode.parent();
+    const ownerUuid = qhtmlNodeUuid(ownerNode);
+    if (ownerUuid) {
+      registry.loggersByOwnerUuid.set(ownerUuid, logger);
+    }
+    return logger;
+  }
+
+  function refreshRuntimeLoggers(registry) {
+    if (!registry || !registry.nodesByUuid) {
+      return;
+    }
+    registry.loggersByName.clear();
+    registry.loggersByUuid.clear();
+    registry.loggersByOwnerUuid.clear();
+    registry.loggers = {};
+    registry.nodesByUuid.forEach((node) => {
+      registerRuntimeLogger(registry, node);
+    });
+  }
+
+  function nearestRuntimeLogger(registry, owner) {
+    const ownerNode = owner && owner.qhtmlNode ? owner.qhtmlNode : owner;
+    let node = ownerNode || null;
+    while (node) {
+      const uuid = qhtmlNodeUuid(node);
+      if (uuid && registry.loggersByOwnerUuid.has(uuid)) {
+        return registry.loggersByOwnerUuid.get(uuid);
+      }
+      node = node.parent();
+    }
+    return null;
+  }
+
+  function logQHTMLRuntime(registry, category, message, owner) {
+    if (!registry || !registry.loggersByUuid) {
+      return 0;
+    }
+    const logger = nearestRuntimeLogger(registry, owner);
+    if (logger && logger.log(message, category)) {
+      return 1;
+    }
+    let count = 0;
+    registry.loggersByUuid.forEach((candidate) => {
+      if (candidate && candidate.log(message, category)) {
+        count += 1;
+      }
+    });
+    return count;
   }
 
   function createLiveWorker(workerNode, registry) {
@@ -6178,6 +6392,12 @@
           parentComponent[instanceName] = domElement;
         }
       }
+      logQHTMLRuntime(
+        registry,
+        "QHTMLComponent",
+        "Component instance " + (qhtmlNodeName(instanceNode) || instanceUuid || "anonymous") + " bound dynamically",
+        instanceNode
+      );
       bindComponentDefinitionDeclarations(domElement, instanceNode, registry);
       bindDeclarativeAssignmentAttributes(domElement, instanceNode, registry);
       bindRuntimeChildren(domElement, instanceNode, registry);
@@ -6239,6 +6459,13 @@
     return domElement;
   }
 
+  function rebindRuntimeLoggersForHost(hostElement) {
+    const registry = hostElement && (hostElement.__qhtmlRegistry || hostElement.qhtmlComponentRegistry);
+    const tree = hostElement && hostElement.qhtmlDomTree;
+    registerGeneratedQHTMLTree(tree, registry);
+    refreshRuntimeLoggers(registry);
+  }
+
   function bindComponentContextForwarders(domElement, componentElement) {
     if (!domElement || !componentElement || domElement === componentElement) {
       return;
@@ -6281,6 +6508,16 @@
       : null;
     domElement.component = componentElement || domElement || (registry && registry.rootElement) || null;
     bindComponentContextForwarders(domElement, componentElement);
+    domElement.toJSON = function componentToJSON() {
+      return domElement.qhtmlNode.toJSON();
+    };
+    domElement.fromJSON = function componentFromJSON(value) {
+      const changed = domElement.qhtmlNode.fromJSON(value);
+      registerGeneratedQHTMLTree(domElement.qhtmlNode, registry || domElement.__qhtmlRegistry);
+      refreshRuntimeLoggers(registry || domElement.__qhtmlRegistry);
+      updateRuntimeElementTree(domElement, registry || domElement.__qhtmlRegistry);
+      return changed;
+    };
     if (typeof domElement.update !== "function" || domElement.update.__qhtmlRuntimeUpdate === true) {
       const update = function () {
         return updateRuntimeElementTree(domElement, registry || domElement.__qhtmlRegistry);
@@ -6718,6 +6955,9 @@
       qhtmlClassInstancesByUuid: new Map(),
       workersByName: new Map(),
       workersByUuid: new Map(),
+      loggersByName: new Map(),
+      loggersByUuid: new Map(),
+      loggersByOwnerUuid: new Map(),
       futurePropertySignalConnections: new Map(),
       stylesByName: new Map(),
       themesByName: new Map(),
@@ -6758,6 +6998,7 @@
         if (definitionProxy.qhtmlUUID) {
           registry.componentDefinitionsByUuid.set(definitionProxy.qhtmlUUID, definitionProxy);
         }
+        logQHTMLRuntime(registry, "QHTMLComponent", "Component definition " + nodeName + " registered", node);
       }
     });
     registry.refreshStyle = function (styleName) {
@@ -6779,6 +7020,7 @@
     registry.painters = {};
     registry.definitions = {};
     registry.workers = {};
+    registry.loggers = {};
     registry.qhtmlClasses = {};
     registry.qhtmlClassInstances = {};
     registry.stylesByName.forEach((styleDef, styleName) => {
@@ -6810,6 +7052,10 @@
     rootElement.qhtmlNode = tree;
     rootElement.qhtmlDomTree = tree;
     rootElement.__qhtmlRegistry = registry;
+    refreshRuntimeLoggers(registry);
+    registry.componentDefinitionsByName.forEach((definitionProxy, definitionName) => {
+      logQHTMLRuntime(registry, "QHTMLComponent", "Component definition " + definitionName + " registered", definitionProxy.qhtmlNode);
+    });
     bindRuntimeChildren(rootElement, tree, registry);
 
     nodesByUuid.forEach((node) => {
@@ -6854,6 +7100,12 @@
           parentComponent[instanceName] = domElement;
         }
       }
+      logQHTMLRuntime(
+        registry,
+        "QHTMLComponent",
+        "Component instance " + (qhtmlNodeName(instanceNode) || instanceUuid || "anonymous") + " bound",
+        instanceNode
+      );
     });
 
     renderedComponents.forEach((domElement) => {
@@ -7460,6 +7712,12 @@
     },
     mountElement,
     mountAll
+  });
+
+  document.addEventListener(QHTML_CONTENT_LOADED_EVENT, () => {
+    document.querySelectorAll(QHTML_ROOT_SELECTOR).forEach((element) => {
+      rebindRuntimeLoggersForHost(element);
+    });
   });
 
   if (document.readyState === "loading") {

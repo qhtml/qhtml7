@@ -58,16 +58,27 @@ q-style lbStatus {
 }
 
 q-style lbCanvas {
-  min-width: 75vw
+  min-width: 0
   min-height: 75vh
   border-left: 1px solid #cbd5e1
-  border-right: 1px solid #cbd5e1
   border-bottom: 1px solid #cbd5e1
-  border-radius: 0 0 10px 10px
+  border-radius: 0 0 0 10px
   background: #ffffff
   overflow: auto
   padding: 16px
   box-sizing: border-box
+}
+
+q-style lbWorkspace {
+  display: grid
+  grid-template-columns: minmax(0, 1fr) 300px
+  min-height: 75vh
+  border-right: 1px solid #cbd5e1
+  box-sizing: border-box
+}
+
+q-style lbWorkspaceCollapsed {
+  grid-template-columns: minmax(0, 1fr) 12px
 }
 
 q-style lbPreviewMount {
@@ -75,6 +86,53 @@ q-style lbPreviewMount {
   min-height: 75vh
   background: linear-gradient(90deg, rgba(226,232,240,.55) 1px, transparent 1px), linear-gradient(180deg, rgba(226,232,240,.55) 1px, transparent 1px)
   background-size: 24px 24px
+}
+
+q-style lbOutlineSidebar {
+  position: relative
+  min-width: 0
+  min-height: 0
+  border-left: 1px solid #cbd5e1
+  border-bottom: 1px solid #cbd5e1
+  border-radius: 0 0 10px 0
+  background: #f8fafc
+  overflow: hidden
+  box-sizing: border-box
+}
+
+q-style lbOutlineHeader {
+  min-height: 42px
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+  padding: 8px 10px
+  border-bottom: 1px solid #e2e8f0
+  box-sizing: border-box
+}
+
+q-style lbOutlineTitle {
+  margin: 0
+  color: #0f172a
+  font-size: 13px
+  font-weight: 850
+}
+
+q-style lbOutlineToggle {
+  width: 28px
+  height: 28px
+  border: 1px solid #cbd5e1
+  border-radius: 7px
+  background: #ffffff
+  color: #0f172a
+  cursor: pointer
+}
+
+q-style lbOutlineTree {
+  height: calc(75vh - 42px)
+  overflow: auto
+  padding: 8px
+  box-sizing: border-box
 }
 
 q-theme layoutBuilderTheme {
@@ -85,8 +143,15 @@ q-theme layoutBuilderTheme {
   div.layout-builder-toolbar { lbToolbar }
   button.layout-builder-tool-button { lbToolbarButton }
   span.layout-builder-status { lbStatus }
+  div.layout-builder-workspace { lbWorkspace }
+  div.layout-builder-workspace.collapsed { lbWorkspaceCollapsed }
   main.layout-builder-canvas { lbCanvas }
   div.layout-preview-mount { lbPreviewMount }
+  aside.layout-builder-outline { lbOutlineSidebar }
+  div.layout-builder-outline-header { lbOutlineHeader }
+  h2.layout-builder-outline-title { lbOutlineTitle }
+  button.layout-builder-outline-toggle { lbOutlineToggle }
+  div.layout-builder-outline-tree { lbOutlineTree }
 }
 
 layoutBuilderTheme {
@@ -120,10 +185,32 @@ layoutBuilderTheme {
       }
     }
 
-    main.layout-builder-canvas {
-      id: "layoutCanvas"
-      div.layout-preview-mount {
-        id: "layoutPreviewMount"
+    div.layout-builder-workspace {
+      id: "layoutBuilderWorkspace"
+      main.layout-builder-canvas {
+        id: "layoutCanvas"
+        div.layout-preview-mount {
+          id: "layoutPreviewMount"
+        }
+      }
+
+      aside.layout-builder-outline {
+        id: "lbOutlineSidebar"
+        div.layout-builder-outline-header {
+          h2.layout-builder-outline-title {
+            id: "lbOutlineTitle"
+            text { Structure }
+          }
+          button.layout-builder-outline-toggle {
+            id: "lbOutlineToggle"
+            type: "button"
+            aria-label: "Toggle structure tree"
+            text { > }
+          }
+        }
+        div.layout-builder-outline-tree {
+          id: "lbOutlineTree"
+        }
       }
     }
   }
