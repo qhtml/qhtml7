@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QHTML Test Board - q-components</title>
   <script>window.QHTML_EVENT_LOOP_MODE = "queued";</script>
-  <script src="../../dist/qhtml-wasm.js"></script>
+  <script src="../../dist/qhtml.js"></script>
   <style>
     :root { --bg:#eef4fb; --panel:#fff; --ink:#10243d; --edge:#d3deec; --pass:#0f7a52; --fail:#b42323; --dep:#6b7280; }
     * { box-sizing:border-box; }
@@ -32,7 +32,7 @@
 </head>
 <body>
   <div class="page">
-    <q-html id="acc-host">
+    <q-html6 id="acc-host">
 q-component q-test-accumulator {
   q-property manifest: q-map { }
   q-property results: q-map { }
@@ -363,7 +363,7 @@ q-timer accRefreshTimer {
           <span id="badge-10" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> Welcome | Projected content.</div>
-        <q-html id="host-t10" data-test-no="10">
+        <q-html6 id="host-t10" data-test-no="10">
 q-component app-card { q-property { title } div { h3 { text { ${this.component.title} } } slot { body } } } app-card { title: "Welcome" body { p { text { Projected content. } } } }
 
 onReady {
@@ -380,7 +380,7 @@ onReady {
           <span id="badge-11" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> hello world</div>
-        <q-html id="host-t11" data-test-no="11">
+       <q-html6 id="host-t11" data-test-no="11">
 q-component signal-probe {
   q-signal ping(message)
   function fire() {
@@ -434,7 +434,7 @@ onReady {
           <span id="badge-12" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> hello world</div>
-        <q-html id="host-t12" data-test-no="12">
+        <q-html6 id="host-t12" data-test-no="12">
 q-component mycomp { q-alias myotherprop { return "hello world"; } div { text { ${this.component.myotherprop} } } } mycomp { }
 
 onReady {
@@ -451,7 +451,7 @@ onReady {
           <span id="badge-25" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> base-ok</div>
-        <q-html id="host-t25" data-test-no="25">
+        <q-html6 id="host-t25" data-test-no="25">
 q-component base-label { q-property label: "base-ok" } q-component child-label extends base-label { div { text { ${this.component.label} } } } child-label { }
 
 onReady {
@@ -468,7 +468,7 @@ onReady {
           <span id="badge-26" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> A-B</div>
-        <q-html id="host-t26" data-test-no="26">
+        <q-html6 id="host-t26" data-test-no="26">
 q-component base-a { q-property a: "A" } q-component base-b { q-property b: "B" } q-component child-multi extends base-a extends base-b { div { text { ${this.component.a}-${this.component.b} } } } child-multi { }
 
 onReady {
@@ -485,7 +485,7 @@ onReady {
           <span id="badge-29" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> self-ok</div>
-        <q-html id="host-t29" data-test-no="29">
+        <q-html6 id="host-t29" data-test-no="29">
 q-component probe29 {
   q-signal probe(message)
   onPrObE {
@@ -517,7 +517,7 @@ onReady {
           <span id="badge-30" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> multi-ok-a | multi-ok-b</div>
-        <q-html id="host-t30" data-test-no="30">
+        <q-html6 id="host-t30" data-test-no="30">
 q-component emitter30 {
   q-signal ping(value)
   function fireNow() {
@@ -554,7 +554,7 @@ onReady {
           <span id="badge-39" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> test has been deprecated</div>
-        <q-html id="host-t39" data-test-no="39">
+        <q-html6 id="host-t39" data-test-no="39">
 div { text { test has been deprecated } }
 
 onReady {
@@ -571,7 +571,7 @@ onReady {
           <span id="badge-47" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> forward-ok</div>
-        <q-html id="host-t47" data-test-no="47">
+        <q-html6 id="host-t47" data-test-no="47">
 q-component source47 {
   q-signal step(value)
   function run() {
@@ -616,7 +616,7 @@ onReady {
           <span id="badge-48" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> count=1</div>
-        <q-html id="host-t48" data-test-no="48">
+        <q-html6 id="host-t48" data-test-no="48">
 q-component emitter48 {
   q-logger { q-signal q-property function }
   q-signal tick()
@@ -655,7 +655,7 @@ onReady {
           <span id="badge-50" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> payload-7</div>
-        <q-html id="host-t50" data-test-no="50">
+        <q-html6 id="host-t50" data-test-no="50">
 q-component emitter50 {
   q-signal fired(value, count)
   function fireNow() {
@@ -688,7 +688,7 @@ onReady {
           <span id="badge-51" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> cross-ok</div>
-        <q-html id="host-t51" data-test-no="51">
+        <q-html6 id="host-t51" data-test-no="51">
 q-component emitter51 {
   q-logger { q-signal q-property function }
   q-signal done(msg)
@@ -726,7 +726,7 @@ onReady {
           <span id="badge-52" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> count=0|disconnect-ok</div>
-        <q-html id="host-t52" data-test-no="52">
+        <q-html6 id="host-t52" data-test-no="52">
 q-component emitter52 {
   q-signal done(value)
   function fireNow(value) { this.done(value); }
@@ -768,7 +768,7 @@ onReady {
           <span id="badge-53" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> prop53-ok</div>
-        <q-html id="host-t53" data-test-no="53">
+        <q-html6 id="host-t53" data-test-no="53">
 q-component prop53 {
   q-logger { q-signal q-property function }
   q-property count: 0
@@ -835,7 +835,7 @@ onReady {
           <span id="badge-54" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> prop54-ok</div>
-        <q-html id="host-t54" data-test-no="54">
+        <q-html6 id="host-t54" data-test-no="54">
 q-component mycomp54 {
   q-logger { q-signal q-property function }
   q-property myprop
@@ -870,7 +870,7 @@ onReady {
           <span id="badge-55" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> hello world</div>
-        <q-html id="host-t55" data-test-no="55">
+        <q-html6 id="host-t55" data-test-no="55">
 q-component propertyTest55 {
   q-property myprop
   q-logger { q-property }
@@ -903,7 +903,7 @@ onReady {
           <span id="badge-56" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> signal-ok</div>
-        <q-html id="host-t56" data-test-no="56">
+        <q-html6 id="host-t56" data-test-no="56">
 q-component signalTest56 {
   q-signal ping(value)
   q-logger { q-signal }
@@ -937,7 +937,7 @@ onReady {
           <span id="badge-57" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> component-ok</div>
-        <q-html id="host-t57" data-test-no="57">
+        <q-html6 id="host-t57" data-test-no="57">
 q-component componentTest57 {
   q-property status: "waiting"
   q-logger { q-component }
@@ -970,7 +970,7 @@ onReady {
           <span id="badge-58" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> 1</div>
-        <q-html id="host-t58" data-test-no="58">
+        <q-html6 id="host-t58" data-test-no="58">
 q-component functionTest58 {
   q-property count: 0
   q-logger { function }
@@ -1003,7 +1003,7 @@ onReady {
           <span id="badge-59" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> slot-ok</div>
-        <q-html id="host-t59" data-test-no="59">
+        <q-html6 id="host-t59" data-test-no="59">
 q-component slotTest59 {
   q-logger { slot }
   slot { body }
@@ -1038,7 +1038,7 @@ onReady {
           <span id="badge-60" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> 4</div>
-        <q-html id="host-t60" data-test-no="60">
+        <q-html6 id="host-t60" data-test-no="60">
 q-model t60-model { q-array { 1, 2, 3 } }
 div#t60-scope { q-logger { model } }
 button#t60-run {
@@ -1069,7 +1069,7 @@ onReady {
           <span id="badge-61" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> instantiation-ok</div>
-        <q-html id="host-t61" data-test-no="61">
+        <q-html6 id="host-t61" data-test-no="61">
 q-component instTest61 {
   q-property status: "waiting"
   q-logger { instantiation }
@@ -1102,7 +1102,7 @@ onReady {
           <span id="badge-62" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> multi-ok-1</div>
-        <q-html id="host-t62" data-test-no="62">
+        <q-html6 id="host-t62" data-test-no="62">
 q-component multiTest62 {
   q-property count: 0
   q-signal ping(value)
@@ -1140,7 +1140,7 @@ onReady {
           <span id="badge-63" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> a=1|b=1</div>
-        <q-html id="host-t63" data-test-no="63">
+        <q-html6 id="host-t63" data-test-no="63">
 q-component scopeTest63 {
   q-property count: 0
   q-logger { q-property }
@@ -1178,7 +1178,7 @@ onReady {
           <span id="badge-64" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> q-property | foo | q-signal | done</div>
-        <q-html id="host-t64" data-test-no="64">
+        <q-html6 id="host-t64" data-test-no="64">
 q-component probe64 {
   q-logger { q-signal q-property }
   q-property foo: "bar"
@@ -1210,7 +1210,7 @@ onReady {
           <span id="badge-65" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> map65-ok|</div>
-        <q-html id="host-t65" data-test-no="65">
+        <q-html6 id="host-t65" data-test-no="65">
 q-component mapPump65 {
   q-logger { q-signal q-property }
   q-property payload: q-map { }
@@ -1262,7 +1262,7 @@ onReady {
           <span id="badge-66" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> q-property | count | q-signal | done | slot</div>
-        <q-html id="host-t66" data-test-no="66">
+        <q-html6 id="host-t66" data-test-no="66">
 q-import { ../../dist/q-components/q-tree-view.qhtml?v=tree-css-28 }
 
 q-component comp66 {
@@ -1300,7 +1300,7 @@ onReady {
           <span id="badge-68" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> model-array-as a | model-array-as b | model-array-as c</div>
-        <q-html id="host-t68" data-test-no="68">
+        <q-html6 id="host-t68" data-test-no="68">
 q-model-view {
   model { q-array { "a", "b", "c" } }
   as { item }
@@ -1321,7 +1321,7 @@ onReady {
           <span id="badge-69" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> model-slot-alias 7 | model-slot-alias 8</div>
-        <q-html id="host-t69" data-test-no="69">
+        <q-html6 id="host-t69" data-test-no="69">
 q-model-view {
   q-model { q-array { 7, 8 } }
   slot { row }
@@ -1342,7 +1342,7 @@ onReady {
           <span id="badge-70" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> model-map-ref alpha</div>
-        <q-html id="host-t70" data-test-no="70">
+        <q-html6 id="host-t70" data-test-no="70">
 q-model my-model70 {
   q-map { first: "alpha", second: "beta" }
 }
@@ -1367,7 +1367,7 @@ onReady {
           <span id="badge-71" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> model-script-source 11 | model-script-source 12 | model-script-source 13</div>
-        <q-html id="host-t71" data-test-no="71">
+        <q-html6 id="host-t71" data-test-no="71">
 q-model-view {
   q-model {
     q-script { return [11, 12, 13] }
@@ -1390,7 +1390,7 @@ onReady {
           <span id="badge-72" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> base72 x | base72 y | child72 x | child72 y | slot72</div>
-        <q-html id="host-t72" data-test-no="72">
+        <q-html6 id="host-t72" data-test-no="72">
 q-component base-model-view72 extends q-model-view {
   q-model { q-array { "x", "y" } }
   as { item }
@@ -1424,7 +1424,7 @@ onReady {
           <span id="badge-73" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> ancestor73-leaf-leaf | leaf73-leaf-leaf</div>
-        <q-html id="host-t73" data-test-no="73">
+        <q-html6 id="host-t73" data-test-no="73">
 q-component ancestor73 {
   q-property label: "ancestor"
   function who() { return "ancestor" }
@@ -1458,7 +1458,7 @@ onReady {
           <span id="badge-74" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> root74-r1 | mid74-r1 | leaf74-r1 | root74-r2 | mid74-r2 | leaf74-r2</div>
-        <q-html id="host-t74" data-test-no="74">
+        <q-html6 id="host-t74" data-test-no="74">
 q-component root74 extends q-model-view {
   model { q-array { "r1", "r2" } }
   as { row }
@@ -1490,7 +1490,7 @@ onReady {
           <span id="badge-75" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> mycomp1-one | mycomp2-one | mycomp1-two | mycomp2-two</div>
-        <q-html id="host-t75" data-test-no="75">
+        <q-html6 id="host-t75" data-test-no="75">
 q-component mycomp1 extends q-model-view {
   model { q-array { "one", "two" } }
   as { item }
@@ -1517,7 +1517,7 @@ onReady {
           <span id="badge-76" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> Z0|a|B2|c | Z0 | a | B2 | c</div>
-        <q-html id="host-t76" data-test-no="76">
+        <q-html6 id="host-t76" data-test-no="76">
 q-model t76model {
   q-array { "a", "b" }
 }
@@ -1553,7 +1553,7 @@ onReady {
           <span id="badge-77" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> remove|3</div>
-        <q-html id="host-t77" data-test-no="77">
+        <q-html6 id="host-t77" data-test-no="77">
 q-model t77model {
   q-map { one: "1" }
 }
@@ -1587,7 +1587,7 @@ onReady {
           <span id="badge-78" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> add,update,remove</div>
-        <q-html id="host-t78" data-test-no="78">
+        <q-html6 id="host-t78" data-test-no="78">
 q-model t78model {
   q-array { 1 }
 }
@@ -1621,7 +1621,7 @@ onReady {
           <span id="badge-100" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> hello-world-100</div>
-        <q-html id="host-t100" data-test-no="100">
+        <q-html6 id="host-t100" data-test-no="100">
 q-component source100 {
   q-property value: "hello-world-100"
 }
@@ -1653,7 +1653,7 @@ onReady {
           <span id="badge-103" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> NL-100 | Night Lamp | DC-220 | Desk Clock</div>
-        <q-html id="host-t103" data-test-no="103">
+        <q-html6 id="host-t103" data-test-no="103">
 q-import { ../../dist/q-components/q-estore.qhtml }
 
 q-estore#store103 {
@@ -1687,7 +1687,7 @@ onReady {
           <span id="badge-110" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> nested-call-110 | id="t110-btn"</div>
-<q-html id="host-t110" data-test-no="110">
+<q-html6 id="host-t110" data-test-no="110">
 q-component rootRef110 {
   q-property state: "waiting"
   function mark(value) {
@@ -1733,7 +1733,7 @@ mid110 midInst110 { }
           <span id="badge-111" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> owner-alias-111</div>
-<q-html id="host-t111" data-test-no="111">
+<q-html6 id="host-t111" data-test-no="111">
 q-component child111 {
   onReady {
     var out = document.querySelector("#t111-out");
@@ -1770,7 +1770,7 @@ onReady {
           <span id="badge-112" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> root-112</div>
-<q-html id="host-t112" data-test-no="112">
+<q-html6 id="host-t112" data-test-no="112">
 q-component ownerProbe112 {
   onReady {
     var out = document.querySelector("#t112-out");
@@ -1817,7 +1817,7 @@ onReady {
           <span id="badge-113" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> cols=18|rows=1|count=18|frame=</div>
-<q-html id="host-t113" data-test-no="113">
+<q-html6 id="host-t113" data-test-no="113">
 q-import { ../../dist/q-components/q-spritesheet.qhtml }
 
 q-spritesheet sprite113 {
@@ -1873,7 +1873,7 @@ onready {
           <span id="badge-114" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> <probe114 q-component="probe114" qhtml-component-instance="1"></probe114><div id="t114-out">signal=alpha-beta | prop=42</div></div>
-<q-html id="host-t114" data-test-no="114">
+<q-html6 id="host-t114" data-test-no="114">
 q-component probe114 {
   q-signal emitPair(left, right)
   q-property numberVal: 0
@@ -1938,7 +1938,7 @@ onReady {
           <span id="badge-118" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> lifecycle-then-ok</div>
-<q-html id="host-t118" data-test-no="118">
+<q-html6 id="host-t118" data-test-no="118">
 q-component mycomp118 {
   onready {
     /* nothing */
@@ -1967,7 +1967,7 @@ div#t118-out { text { waiting } }
           <span id="badge-119" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> activated state2 | statechanged=state2 | component=1 | method=method-ok | signal=1</div>
-<q-html id="host-t119" data-test-no="119">
+<q-html6 id="host-t119" data-test-no="119">
 q-component q-a {
   q-property lastState: "waiting"
 
@@ -2085,7 +2085,7 @@ onReady {
           <span id="badge-122" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> hello world | borderWidth=5px | topLeft=12px | background=paint | mask=paint</div>
-<q-html id="host-t122" data-test-no="122">
+<q-html6 id="host-t122" data-test-no="122">
 q-import { ../../dist/q-components/q-tech-panel.qhtml }
 
 q-tech-panel {
@@ -2149,7 +2149,7 @@ onReady {
           <span id="badge-124" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> root-layout | row-nested-layout | col-nested-layout | level-3-layout</div>
-<q-html id="host-t124" data-test-no="124">
+<q-html6 id="host-t124" data-test-no="124">
 div#t124-stage {
   style { display: block; padding: 10px; border: 1px solid #cbd5e1; background: #f8fafc; }
 
@@ -2223,7 +2223,7 @@ onReady {
           <span id="badge-125" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> slot-row-a | slot-row-b | slot-context</div>
-<q-html id="host-t125" data-test-no="125">
+<q-html6 id="host-t125" data-test-no="125">
 q-component t125-value {
   q-property label: "unset"
   span.t125-value {
@@ -2293,7 +2293,7 @@ onReady {
           <span id="badge-126" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> inst3=123 | inst4=123 | inst5=123</div>
-<q-html id="host-t126" data-test-no="126">
+<q-html6 id="host-t126" data-test-no="126">
 q-component t126-comp {
   q-property blah: "unset"
   div.t126-comp-out {
@@ -2372,7 +2372,7 @@ onReady {
           <span id="badge-127" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> top-row | bottom-row | left-col | right-col</div>
-<q-html id="host-t127" data-test-no="127">
+<q-html6 id="host-t127" data-test-no="127">
 div#t127-controls {
   style { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   button#t127-add-top {
@@ -2475,7 +2475,7 @@ onReady {
           <span id="badge-128" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> Your heading here | Add a short supporting subtitle for this section. | Add supporting content or nested blocks here.</div>
-<q-html id="host-t128" data-test-no="128">
+<q-html6 id="host-t128" data-test-no="128">
 q-component t128-heading-block {
   header {
     h2 {
@@ -2545,7 +2545,7 @@ onReady {
           <span id="badge-129" class="badge pending">pending</span>
         </div>
         <div class="test-expected"><strong>Expected:</strong> stacked | wide</div>
-<q-html id="host-t129" data-test-no="129">
+<q-html6 id="host-t129" data-test-no="129">
 div#t129-box {
   style { width: 260px; maxWidth: 100%; border: 1px solid #cbd5e1; padding: 6px; }
 

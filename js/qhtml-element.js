@@ -3515,6 +3515,35 @@
     return liveTimer;
   }
 
+  function bindTimerDeclaration(domElement, timerNode, registry) {
+    if (!domElement || !timerNode || qhtmlNodeType(timerNode) !== "QHTMLTimer") {
+      return null;
+    }
+    const timerUuid = typeof timerNode.qhtmlUUID === "function" ? timerNode.qhtmlUUID() : "";
+    domElement.__qhtmlTimersByUuid = domElement.__qhtmlTimersByUuid || new Map();
+    if (timerUuid && domElement.__qhtmlTimersByUuid.has(timerUuid)) {
+      return domElement.__qhtmlTimersByUuid.get(timerUuid);
+    }
+    const timerName = qhtmlNodeName(timerNode);
+    const timerObject = createLiveTimer(timerNode, domElement, registry);
+    if (timerName) {
+      domElement[timerName] = timerObject;
+      if (registry && registry.timersByName) {
+        registry.timersByName.set(timerName, timerObject);
+      }
+      if (registry && registry.timers) {
+        registry.timers[timerName] = timerObject;
+      }
+    }
+    if (timerUuid) {
+      domElement.__qhtmlTimersByUuid.set(timerUuid, timerObject);
+      if (registry && registry.timersByUuid) {
+        registry.timersByUuid.set(timerUuid, timerObject);
+      }
+    }
+    return timerObject;
+  }
+
   function createObjectSignal(ownerObject, signalNode, signalName) {
     const connections = [];
     const signalFunction = function (...args) {
@@ -4938,7 +4967,8 @@
     const safeProperties = Array.isArray(properties) ? properties : [];
     const sourceUuid = sourceNode && typeof sourceNode.qhtmlUUID === "function" ? sourceNode.qhtmlUUID() : Math.random().toString(36).slice(2);
     const hint = String(nameHint || eventName || "paint").replace(/[^A-Za-z0-9_-]/g, "-");
-    const paintName = `qhtml-${eventName}-${hint}-${sourceUuid}`.replace(/[^A-Za-z0-9_-]/g, "-");
+    const uniqueId = `${sourceUuid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const paintName = `qhtml-${eventName}-${hint}-${uniqueId}`.replace(/[^A-Za-z0-9_-]/g, "-");
 
     domElement.__qhtmlPaintHandlerNodes = domElement.__qhtmlPaintHandlerNodes || new Set();
     const bindingKey = `${eventName}:${paintName}`;
@@ -4948,7 +4978,7 @@
     domElement.__qhtmlPaintHandlerNodes.add(bindingKey);
 
     const propertyNames = safeProperties.map((property) => property.name);
-    const expandedBody = expandPainterInvocations(body, registry, "inline");
+    const expandedBody = decodeQHTMLScriptEntities(expandPainterInvocations(body, registry, "inline"));
     const workletBodyPrefix = [
       'var white = "white";',
       'var black = "black";',
@@ -5236,13 +5266,16 @@
       if (!node) {
         return "";
       }
+      const nodeType = qhtmlNodeType(node);
       if (typeof node.body === "function") {
         return String(node.body() || "");
       }
       if (typeof node.contents === "function") {
         return String(node.contents() || "");
       }
-      if (typeof node.value === "function") {
+      if (nodeType !== "QHTMLMap" &&
+          nodeType !== "QHTMLMapNode" &&
+          typeof node.value === "function") {
         return String(node.value() || "");
       }
       if (typeof node.renderHtml === "function") {
@@ -5700,6 +5733,8 @@
         bindQHTMLCallback(domElement, child, registry);
       } else if (keyword === "q-switch") {
         bindQHTMLSwitch(domElement, child);
+      } else if (qhtmlNodeType(child) === "QHTMLTimer") {
+        bindTimerDeclaration(domElement, child, registry);
       }
     }
   }
@@ -6687,6 +6722,12 @@
       if (qhtmlNodeType(node) !== "QHTMLScript") {
         return;
       }
+      const parent = typeof node.parent === "function" ? node.parent() : null;
+      const parentType = qhtmlNodeType(parent);
+      if (parentType !== "QHTMLDomTree" &&
+          parentType !== "QHTMLComponentInstance") {
+        return;
+      }
       const scriptUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
       if (scriptUuid && registry.boundScriptNodes.has(scriptUuid)) {
         return;
@@ -7149,17 +7190,7 @@
         if (!ownerElement) {
           return;
         }
-        const timerName = qhtmlNodeName(node);
-        const timerUuid = typeof node.qhtmlUUID === "function" ? node.qhtmlUUID() : "";
-        const timerObject = createLiveTimer(node, ownerElement, registry);
-        if (timerName) {
-          ownerElement[timerName] = timerObject;
-          registry.timersByName.set(timerName, timerObject);
-          registry.timers[timerName] = timerObject;
-        }
-        if (timerUuid) {
-          registry.timersByUuid.set(timerUuid, timerObject);
-        }
+        bindTimerDeclaration(ownerElement, node, registry);
       });
     });
 

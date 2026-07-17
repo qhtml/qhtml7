@@ -2580,7 +2580,7 @@
     }
 
     const pending = new Promise(function loadRuntime(resolve, reject) {
-      const script = existing || document.createElement('script');
+      const script = existing && qEditorHasQHtmlPreviewRuntime() ? existing : document.createElement('script');
       let done = false;
       const finish = function finish(ok, error) {
         if (done) return;
@@ -2597,13 +2597,13 @@
       script.addEventListener('error', function onRuntimeError() {
         finish(false, new Error('Failed to load QHTML runtime script: ' + url));
       }, { once: true });
-      if (!existing) {
+      if (script !== existing) {
         script.async = false;
         script.src = url;
         script.setAttribute('data-qeditor-qhtml-runtime', '1');
         document.head.appendChild(script);
       }
-      if (existing && qEditorHasQHtmlPreviewRuntime()) {
+      if (script === existing && qEditorHasQHtmlPreviewRuntime()) {
         finish(true);
       }
     });
@@ -3697,7 +3697,13 @@
         this._syncQhtmlScroll();
         if (this._previewNode) {
           if (shouldPopulatePreview) {
-            this._generateSimplePreview(runtimeSource);
+            try {
+              await qEditorEnsurePreviewRuntime();
+              if (version !== this._renderVersion) return;
+              this._generateSimplePreview(runtimeSource);
+            } catch (error) {
+              renderShadowPreviewError(this._previewNode, error);
+            }
           } else {
             this._detachPreviewListeners();
             this._unmountPreviewQHtml();

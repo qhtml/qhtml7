@@ -922,6 +922,7 @@ q-component q-tech-panel {
   }
 
   function applyTechPanelProperties() {
+    this.watchPainterPrimers();
     var targets = this.panelTargets();
     var props = this.panelPropertyMap();
     var names = Object.keys(props);
@@ -963,6 +964,7 @@ q-component q-tech-panel {
     var retry = function() {
       host.applyTechPanelProperties();
     };
+    this.addEventListener("QHTMLPaintWorkletReady", retry);
     var primers = this.querySelectorAll ? this.querySelectorAll(".q-tech-panel-painter-primer, .q-tech-panel-mask-primer") : [];
     for (var i = 0; i < primers.length; i += 1) {
       primers[i].addEventListener("QHTMLPaintWorkletReady", retry);
@@ -973,6 +975,9 @@ q-component q-tech-panel {
     }
     setTimeout(retry, 60);
     setTimeout(retry, 180);
+    setTimeout(retry, 420);
+    setTimeout(retry, 900);
+    setTimeout(retry, 1800);
   }
 
   onready {

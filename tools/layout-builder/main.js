@@ -159,6 +159,32 @@
     .layout-builder-workspace.collapsed {
       grid-template-columns: minmax(0, 1fr) 12px !important;
     }
+
+    /*
+     * The runtime emits the QHTML layout nodes as flex boxes.  Keep the
+     * alternating row/column cross axis fluid while the main axis is governed
+     * by the builder's min/max constraints.
+     */
+    .lb-preview-host [qhtml-layout="q-row"] {
+      align-items: stretch !important;
+    }
+
+    .lb-preview-host [qhtml-layout="q-row"] > [qhtml-layout="q-col"],
+    .lb-preview-host [qhtml-layout="q-row"] > [qhtml-layout="q-layout"] {
+      height: auto !important;
+      align-self: stretch !important;
+    }
+
+    .lb-preview-host [qhtml-layout="q-col"],
+    .lb-preview-host [qhtml-layout="q-layout"] {
+      align-items: stretch !important;
+    }
+
+    .lb-preview-host [qhtml-layout="q-col"] > [qhtml-layout="q-row"],
+    .lb-preview-host [qhtml-layout="q-layout"] > [qhtml-layout="q-row"] {
+      width: 100% !important;
+      align-self: stretch !important;
+    }
   </style>
 
   <input id="lbOpenFile" type="file" accept=".qhtml,.txt,text/plain" hidden>
@@ -293,6 +319,14 @@
         <div class="lb-field">
           <label for="lbPropMinHeight">Min Height</label>
           <input id="lbPropMinHeight" type="text" placeholder="inherit">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropMaxWidth">Max Width</label>
+          <input id="lbPropMaxWidth" type="text" placeholder="inherit">
+        </div>
+        <div class="lb-field">
+          <label for="lbPropMaxHeight">Max Height</label>
+          <input id="lbPropMaxHeight" type="text" placeholder="inherit">
         </div>
         <div class="lb-field">
           <label for="lbPropMinColWidth">Min Column Width</label>
@@ -458,9 +492,42 @@
     "gap",
     "minWidth",
     "minHeight",
+    "maxWidth",
+    "maxHeight",
     "minColWidth",
     "wrap"
   ];
+
+  const RESIZE_AXIS = Object.freeze({
+    horizontal: Object.freeze({
+      name: "horizontal",
+      coordinate: "clientX",
+      size: "width",
+      min: "minWidth",
+      max: "maxWidth",
+      startEdge: "left",
+      endEdge: "right",
+      rectStart: "left",
+      rectEnd: "right",
+      scrollSize: "scrollWidth",
+      gapStyle: "columnGap"
+    }),
+    vertical: Object.freeze({
+      name: "vertical",
+      coordinate: "clientY",
+      size: "height",
+      min: "minHeight",
+      max: "maxHeight",
+      startEdge: "top",
+      endEdge: "bottom",
+      rectStart: "top",
+      rectEnd: "bottom",
+      scrollSize: "scrollHeight",
+      gapStyle: "rowGap"
+    })
+  });
+  const RESIZE_MINIMUM_PIXELS = 24;
+  const RESIZE_EPSILON = 0.5;
 
   function nextId() {
     nodeCounter += 1;
@@ -569,6 +636,8 @@
     const aliases = {
       "min-width": "minWidth",
       "min-height": "minHeight",
+      "max-width": "maxWidth",
+      "max-height": "maxHeight",
       "min-col-width": "minColWidth",
       "flex-wrap": "wrap",
       flexWrap: "wrap"
@@ -606,15 +675,55 @@
     return ordered;
   }
 
-  function normalizeTree(node) {
+  function layoutFlowAxis(parent) {
+    if (!parent) {
+      return "";
+    }
+    return parent.type === "q-row" ? "horizontal" : "vertical";
+  }
+
+  function normalizeLayoutFillTree(node, parent) {
     if (!node) {
       return null;
     }
     if (node.type !== "qhtml") {
       node.props = normalizedPropsFor(node.type, node.props);
+      if (parent && layoutFlowAxis(parent) === "horizontal") {
+        node.props.height = DEFAULT_LAYOUT_VALUE;
+      }
+      if (parent && layoutFlowAxis(parent) === "vertical") {
+        node.props.width = DEFAULT_LAYOUT_VALUE;
+      }
     }
-    node.children = (node.children || []).map(normalizeTree).filter(Boolean);
+    node.children = (node.children || [])
+      .map((child) => normalizeLayoutFillTree(child, node))
+      .filter(Boolean);
     return node;
+  }
+
+  function normalizeTree(node) {
+    return normalizeLayoutFillTree(node, null);
+  }
+
+  function enforceRenderedFill(node, parent) {
+    if (!node) {
+      return;
+    }
+    if (node.type !== "qhtml") {
+      const element = layoutElementById(node.id);
+      if (element) {
+        element.style.alignItems = "stretch";
+        if (parent && layoutFlowAxis(parent) === "horizontal") {
+          element.style.height = "auto";
+          element.style.alignSelf = "stretch";
+        }
+        if (parent && layoutFlowAxis(parent) === "vertical") {
+          element.style.width = "100%";
+          element.style.alignSelf = "stretch";
+        }
+      }
+    }
+    (node.children || []).forEach((child) => enforceRenderedFill(child, node));
   }
 
   function buildDefaultUserTree() {
@@ -653,6 +762,8 @@
       "gap",
       "minWidth",
       "minHeight",
+      "maxWidth",
+      "maxHeight",
       "minColWidth",
       "wrap"
     ];
@@ -699,12 +810,312 @@
     }
   }
 
+  function clearScopedImports() {
+    scopedImports.splice(0, scopedImports.length);
+  }
+
   function sourceWithScopedImports(source) {
     const body = String(source || "");
     if (!scopedImports.length) {
       return body;
     }
     return scopedImports.map((path) => "q-import { " + path + " }").join("\n") + "\n\n" + body;
+  }
+
+  function qhtmlModule() {
+    return window.QHTML7 && window.QHTML7.Module ? window.QHTML7.Module : null;
+  }
+
+  function createQHTMLDomTree(source) {
+    const Module = qhtmlModule();
+    if (!Module || typeof Module.QHTMLDomTree !== "function") {
+      return null;
+    }
+    const tree = new Module.QHTMLDomTree();
+    if (typeof tree.fromQHTML === "function") {
+      tree.fromQHTML(String(source || ""));
+      return tree;
+    }
+    if (typeof Module.QHTMLParser === "function" && typeof tree.loadFromAST === "function") {
+      const parser = new Module.QHTMLParser();
+      tree.loadFromAST(parser.parse(String(source || "")));
+      if (typeof parser.delete === "function") {
+        parser.delete();
+      }
+      return tree;
+    }
+    return tree;
+  }
+
+  function disposeQHTMLObject(value) {
+    if (value && typeof value.delete === "function") {
+      value.delete();
+    }
+  }
+
+  function normalizeQHTMLThroughDomTree(source) {
+    const tree = createQHTMLDomTree(source);
+    if (!tree) {
+      return String(source || "");
+    }
+    try {
+      if (typeof tree.toQHTML === "function") {
+        return tree.toQHTML();
+      }
+      if (typeof tree.sourceQHTML === "function") {
+        return tree.sourceQHTML();
+      }
+      return String(source || "");
+    } finally {
+      disposeQHTMLObject(tree);
+    }
+  }
+
+  function qhtmlChildArray(node) {
+    if (!node) {
+      return [];
+    }
+    const list = typeof node.childList === "function" ? node.childList() : null;
+    const count = typeof node.childCount === "function"
+      ? Number(node.childCount()) || 0
+      : Number(list && list.length) || 0;
+    const out = [];
+    for (let i = 0; i < count; i += 1) {
+      const child = typeof node.childAt === "function" ? node.childAt(i) : list[i];
+      if (child) {
+        out.push(child);
+      }
+    }
+    return out;
+  }
+
+  function sourceHasSingleLayoutRoot(source) {
+    const tree = createQHTMLDomTree(source);
+    if (!tree) {
+      return false;
+    }
+    try {
+      const children = qhtmlChildArray(tree).filter(Boolean);
+      if (children.length !== 1 || typeof children[0].qhtmlType !== "function") {
+        return false;
+      }
+      return isLayoutQHTMLType(children[0].qhtmlType());
+    } finally {
+      disposeQHTMLObject(tree);
+    }
+  }
+
+  function isLayoutQHTMLType(type) {
+    return type === "QHTMLLayout" || type === "QHTMLRowLayout" || type === "QHTMLColumnLayout";
+  }
+
+  function splitTopLevelImports(source) {
+    const text = String(source || "");
+    const imports = [];
+    let output = "";
+    let cursor = 0;
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    const importRe = /\bq-import\s*\{/y;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const ch = text[index];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+        continue;
+      }
+      if (ch === "}") {
+        depth = Math.max(0, depth - 1);
+        continue;
+      }
+      if (depth !== 0) {
+        continue;
+      }
+      importRe.lastIndex = index;
+      const match = importRe.exec(text);
+      if (!match) {
+        continue;
+      }
+      const open = importRe.lastIndex - 1;
+      const close = findMatchingBrace(text, open);
+      if (close < 0) {
+        continue;
+      }
+      output += text.slice(cursor, index);
+      imports.push(text.slice(open + 1, close).trim());
+      cursor = close + 1;
+      index = close;
+    }
+
+    output += text.slice(cursor);
+    return {
+      imports: imports,
+      source: output.trim()
+    };
+  }
+
+  function qhtmlAssignmentValue(node, name) {
+    const children = qhtmlChildArray(node);
+    for (let i = 0; i < children.length; i += 1) {
+      const child = children[i];
+      if (!child ||
+          typeof child.qhtmlType !== "function" ||
+          typeof child.qhtmlName !== "function" ||
+          child.qhtmlType() !== "QHTMLPropertyAssignment" ||
+          child.qhtmlName() !== name) {
+        continue;
+      }
+      const source = typeof child.sourceQHTML === "function" ? child.sourceQHTML() : child.toQHTML();
+      const match = /^[^:]+:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)/.exec(String(source || "").trim());
+      if (!match) {
+        return "";
+      }
+      let value = match[1];
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\'/g, "'");
+      }
+      return value;
+    }
+    return "";
+  }
+
+  function qhtmlNodeByLayoutId(node, id) {
+    if (!node) {
+      return null;
+    }
+    if (qhtmlAssignmentValue(node, "data-layout-id") === id) {
+      return node;
+    }
+    const children = qhtmlChildArray(node);
+    for (let i = 0; i < children.length; i += 1) {
+      const child = children[i];
+      if (!child || typeof child.qhtmlType !== "function" || !isLayoutQHTMLType(child.qhtmlType())) {
+        continue;
+      }
+      const found = qhtmlNodeByLayoutId(child, id);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  function qhtmlNodeIsLayoutScaffold(node) {
+    if (!node || typeof node.qhtmlType !== "function") {
+      return false;
+    }
+    const type = node.qhtmlType();
+    if (type !== "QHTMLDomTree" && !isLayoutQHTMLType(type) && type !== "QHTMLPropertyAssignment") {
+      return false;
+    }
+    const children = qhtmlChildArray(node);
+    for (let i = 0; i < children.length; i += 1) {
+      if (!qhtmlNodeIsLayoutScaffold(children[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function qhtmlChildIndex(parent, child) {
+    const children = qhtmlChildArray(parent);
+    const childUuid = child && typeof child.qhtmlUUID === "function" ? child.qhtmlUUID() : "";
+    for (let i = 0; i < children.length; i += 1) {
+      const current = children[i];
+      if (current === child) {
+        return i;
+      }
+      if (childUuid && current && typeof current.qhtmlUUID === "function" && current.qhtmlUUID() === childUuid) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function loadPreviewSourceFromDomTree(source) {
+    const parsed = parseLayoutSource(source);
+    root = wrapAsBuilderRoot(parsed || buildDefaultUserTree());
+  }
+
+  function insertNodeViaDomTree(kind, placement) {
+    const found = currentTarget();
+    const target = found.node || root;
+    const parent = found.parent;
+    const next = createNode(kind, []);
+    const tree = createQHTMLDomTree(previewSource());
+    if (!tree) {
+      return false;
+    }
+    try {
+      if (!qhtmlNodeIsLayoutScaffold(tree)) {
+        return false;
+      }
+      const targetNode = qhtmlNodeByLayoutId(tree, target.id);
+      if (!targetNode) {
+        return false;
+      }
+      const parentNode = parent ? qhtmlNodeByLayoutId(tree, parent.id) : null;
+      const nextSource = modelToQHTML(next, 0);
+      if (placement === "child") {
+        if (!canInsertAsChild(kind, target.type)) {
+          hideMenus();
+          setStatus(kind + " cannot be a child of " + target.type);
+          return true;
+        }
+        targetNode.appendQHTMLSource(nextSource);
+      } else if (placement === "replace") {
+        if (isBuilderRoot(target)) {
+          hideMenus();
+          setStatus("The builder root cannot be replaced");
+          return true;
+        }
+        if (!canReplaceTarget(next, parent)) {
+          hideMenus();
+          setStatus(kind + " cannot replace this target");
+          return true;
+        }
+        if (parentNode) {
+          const index = qhtmlChildIndex(parentNode, targetNode);
+          parentNode.replaceChildWithQHTMLSource(index, nextSource);
+        } else {
+          tree.clearChildren();
+          tree.appendQHTMLSource(nextSource);
+        }
+      } else if ((placement === "before" || placement === "after") && parentNode) {
+        if (!canInsertAsChild(kind, parent.type)) {
+          hideMenus();
+          setStatus(kind + " cannot be added beside this target");
+          return true;
+        }
+        const index = qhtmlChildIndex(parentNode, targetNode);
+        parentNode.insertQHTMLSource(index + (placement === "after" ? 1 : 0), nextSource);
+      } else {
+        targetNode.appendQHTMLSource(nextSource);
+      }
+      loadPreviewSourceFromDomTree(tree.toQHTML());
+      activeId = next.id;
+      hideMenus();
+      renderPreview();
+      setStatus(kind + " added");
+      return true;
+    } finally {
+      disposeQHTMLObject(tree);
+    }
   }
 
   function currentSource() {
@@ -716,7 +1127,12 @@
   }
 
   function previewSource() {
-    return sourceWithScopedImports(modelToQHTML(root, 0));
+    normalizeLayoutFillTree(root, null);
+    return modelToQHTML(root, 0);
+  }
+
+  function renderedPreviewSource() {
+    return sourceWithScopedImports(previewSource());
   }
 
   function setStatus(text) {
@@ -730,7 +1146,7 @@
     if (!previewHost) {
       return;
     }
-    const source = previewSource();
+    const source = renderedPreviewSource();
     previewHost.qhtmlSource = source;
     if (typeof previewHost.fromQHTML === "function") {
       previewHost.fromQHTML(source);
@@ -740,7 +1156,10 @@
     } else {
       previewHost.textContent = source;
     }
-    window.setTimeout(refreshOutlines, 0);
+    window.setTimeout(() => {
+      enforceRenderedFill(root, null);
+      refreshOutlines();
+    }, 0);
   }
 
   function refreshOutlines() {
@@ -980,12 +1399,12 @@
   }
 
   function layoutElementForEvent(event) {
-    return nearestLayoutElement(event.target);
+    return nearestLayoutElement(document.elementFromPoint(event.clientX, event.clientY) || event.target);
   }
 
   function layoutElementForResizeEvent(event) {
     const mount = document.getElementById("layoutPreviewMount");
-    let current = event.target;
+    let current = document.elementFromPoint(event.clientX, event.clientY) || event.target;
     while (current && mount && mount.contains(current)) {
       if (current.hasAttribute && current.hasAttribute("data-layout-id")) {
         const id = current.getAttribute("data-layout-id");
@@ -1076,31 +1495,52 @@
     return "move";
   }
 
-  function hasPreviousHorizontalLayoutSibling(node, parent) {
-    const siblings = parent && parent.children ? parent.children : [];
-    const index = siblings.indexOf(node);
-    for (let i = 0; i < index; i += 1) {
-      if (siblings[i] && (siblings[i].type === "q-col" || siblings[i].type === "q-layout")) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   function resizeEdgeForNode(node, parent, edge) {
-    if (!edge) {
+    if (!edge || !node || isBuilderRoot(node)) {
       return "";
     }
-    if (isBuilderRoot(node)) {
+    const axis = axisForEdge(edge);
+    if (!axis) {
       return "";
     }
-    if (node.type === "q-col" && parent && parent.type === "q-row") {
-      if (edge === "left" && !hasPreviousHorizontalLayoutSibling(node, parent)) {
+
+    if (node.type === "q-col") {
+      if (axis.name !== "horizontal") {
         return "";
       }
-      return edge === "left" || edge === "right" ? edge : "";
+      if (edge === "left" &&
+          parent &&
+          layoutFlowAxis(parent) === "horizontal" &&
+          !hasPreviousFlowSibling(node, parent, axis, null)) {
+        return "";
+      }
+      return edge;
     }
-    return edge;
+
+    if (node.type === "q-row") {
+      if (axis.name !== "vertical") {
+        return "";
+      }
+      if (edge === "top" &&
+          parent &&
+          layoutFlowAxis(parent) === "vertical" &&
+          !hasPreviousFlowSibling(node, parent, axis, null)) {
+        return "";
+      }
+      return edge;
+    }
+
+    if (node.type === "q-layout") {
+      if (edgeIsStart(edge, axis) &&
+          parent &&
+          layoutFlowAxis(parent) === axis.name &&
+          !hasPreviousFlowSibling(node, parent, axis, null)) {
+        return "";
+      }
+      return edge;
+    }
+
+    return "";
   }
 
   function updateCanvasCursor(event) {
@@ -1509,7 +1949,27 @@
     if (!node || node.type === "qhtml") {
       return null;
     }
-    return document.querySelector('[data-layout-id="' + CSS.escape(node.id) + '"]');
+    return layoutElementById(node.id);
+  }
+
+  function layoutElementById(id, scope) {
+    if (!id) {
+      return null;
+    }
+    const selector = '[data-layout-id="' + CSS.escape(id) + '"]';
+    if (scope) {
+      const direct = Array.from(scope.children || []).find((child) => {
+        return child.getAttribute && child.getAttribute("data-layout-id") === id;
+      });
+      if (direct) {
+        return direct;
+      }
+      const scoped = scope.querySelector(selector);
+      if (scoped) {
+        return scoped;
+      }
+    }
+    return document.querySelector(selector);
   }
 
   function normalizeHexColor(value) {
@@ -1617,101 +2077,6 @@
     cssEditState = null;
   }
 
-  function applyLayoutWidth(node, parent, element, widthValue) {
-    node.props.width = widthValue;
-    if (node.type === "q-col" && parent && parent.type === "q-row") {
-      node.props.flex = "0 0 " + widthValue;
-      if (String(node.props.minWidth || "").trim().toLowerCase() === DEFAULT_LAYOUT_VALUE) {
-        node.props.minWidth = "max-content";
-      }
-    }
-    if (element) {
-      element.style.width = widthValue;
-      if (node.type === "q-col" && parent && parent.type === "q-row") {
-        element.style.flex = "0 0 " + widthValue;
-        if (String(node.props.minWidth || "").trim().toLowerCase() === "max-content") {
-          element.style.minWidth = "max-content";
-        }
-      }
-    }
-  }
-
-  function applyLayoutHeight(node, parent, element, heightValue) {
-    node.props.height = heightValue;
-    if (node.type === "q-row" && parent && (parent.type === "q-layout" || parent.type === "q-col")) {
-      node.props.flex = "0 0 " + heightValue;
-      const minHeightValue = String(node.props.minHeight || node.props["min-height"] || "").trim().toLowerCase();
-      if (!minHeightValue || minHeightValue === DEFAULT_LAYOUT_VALUE) {
-        node.props.minHeight = "max-content";
-        delete node.props["min-height"];
-      }
-    }
-    if (element) {
-      element.style.height = heightValue;
-      if (node.type === "q-row" && parent && (parent.type === "q-layout" || parent.type === "q-col")) {
-        element.style.flex = "0 0 " + heightValue;
-        if (String(node.props.minHeight || "").trim().toLowerCase() === "max-content") {
-          element.style.minHeight = "max-content";
-        }
-      }
-    }
-  }
-
-  function parentResizeBounds(element) {
-    const parent = element ? element.parentElement : null;
-    const parentRect = parent ? parent.getBoundingClientRect() : null;
-    const rect = element ? element.getBoundingClientRect() : null;
-    const parentWidth = parentRect ? parentRect.width : Number.POSITIVE_INFINITY;
-    const parentHeight = parentRect ? parentRect.height : Number.POSITIVE_INFINITY;
-    const left = parentRect && rect ? clamp(rect.left - parentRect.left, 0, parentWidth) : 0;
-    const top = parentRect && rect ? clamp(rect.top - parentRect.top, 0, parentHeight) : 0;
-    return {
-      width: parentWidth,
-      height: parentHeight,
-      left: left,
-      top: top
-    };
-  }
-
-  function horizontalSiblingBounds(node, parent, parentElement, parentWidth) {
-    if (!node || !parent || node.type !== "q-col" || !parentElement) {
-      return {
-        minLeft: 0,
-        maxRight: parentWidth
-      };
-    }
-
-    const parentRect = parentElement.getBoundingClientRect();
-    const siblings = parent.children || [];
-    const index = siblings.indexOf(node);
-    let minLeft = 0;
-    let maxRight = parentWidth;
-
-    for (let i = 0; i < siblings.length; i += 1) {
-      const sibling = siblings[i];
-      if (!sibling || sibling === node) {
-        continue;
-      }
-      const siblingElement = document.querySelector('[data-layout-id="' + CSS.escape(sibling.id) + '"]');
-      if (!siblingElement) {
-        continue;
-      }
-      const rect = siblingElement.getBoundingClientRect();
-      const left = clamp(rect.left - parentRect.left, 0, parentWidth);
-      const right = clamp(rect.right - parentRect.left, 0, parentWidth);
-      if (i < index) {
-        minLeft = Math.max(minLeft, right);
-      } else if (i > index) {
-        maxRight = Math.min(maxRight, left);
-      }
-    }
-
-    return {
-      minLeft: minLeft,
-      maxRight: Math.max(minLeft + 24, maxRight)
-    };
-  }
-
   function intrinsicContentWidth(element) {
     if (!element || !element.parentElement) {
       return 24;
@@ -1754,495 +2119,523 @@
     return Math.max(24, Math.ceil(height));
   }
 
-  function minimumColumnWidth(node, element) {
-    const parsed = parseLengthValue(node.props.minWidth);
-    if (parsed && Number.isFinite(parsed.number)) {
-      const basePixels = unitBasePixels(parsed.unit, "width", element, element.getBoundingClientRect().width, parsed.number);
-      if (Number.isFinite(basePixels) && basePixels > 0) {
-        return Math.max(24, parsed.number * basePixels);
-      }
+  function axisForEdge(edge) {
+    if (edge === "left" || edge === "right") {
+      return RESIZE_AXIS.horizontal;
     }
-    return intrinsicContentWidth(element);
-  }
-
-  function maximumColumnWidth(node, element) {
-    const value = node.props.maxWidth || node.props["max-width"];
-    const parsed = parseLengthValue(value);
-    if (parsed && Number.isFinite(parsed.number)) {
-      const basePixels = unitBasePixels(parsed.unit, "width", element, element.getBoundingClientRect().width, parsed.number);
-      if (Number.isFinite(basePixels) && basePixels > 0) {
-        return Math.max(24, parsed.number * basePixels);
-      }
+    if (edge === "top" || edge === "bottom") {
+      return RESIZE_AXIS.vertical;
     }
-    return Number.POSITIVE_INFINITY;
+    return null;
   }
 
-  function minimumRowHeight(node, element) {
-    const value = node.props.minHeight || node.props["min-height"];
-    const parsed = parseLengthValue(value);
-    if (parsed && Number.isFinite(parsed.number)) {
-      const basePixels = unitBasePixels(parsed.unit, "height", element, element.getBoundingClientRect().height, parsed.number);
-      if (Number.isFinite(basePixels) && basePixels > 0) {
-        return Math.max(24, parsed.number * basePixels);
-      }
+  function edgeIsStart(edge, axis) {
+    return Boolean(axis && edge === axis.startEdge);
+  }
+
+  function numericStyleValue(style, name) {
+    const value = Number.parseFloat(style ? style[name] : "");
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function contentAxisBounds(element, axis) {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const startPadding = axis.name === "horizontal"
+      ? numericStyleValue(style, "paddingLeft")
+      : numericStyleValue(style, "paddingTop");
+    const endPadding = axis.name === "horizontal"
+      ? numericStyleValue(style, "paddingRight")
+      : numericStyleValue(style, "paddingBottom");
+    const start = rect[axis.rectStart] + startPadding;
+    const end = rect[axis.rectEnd] - endPadding;
+    return {
+      start: start,
+      end: Math.max(start, end),
+      size: Math.max(0, end - start),
+      gap: Math.max(0, numericStyleValue(style, axis.gapStyle)),
+      rect: rect,
+      style: style
+    };
+  }
+
+  function buildWasmLayoutOrderMap() {
+    const order = new Map();
+    const tree = createQHTMLDomTree(previewSource());
+    if (!tree) {
+      return order;
     }
-    return intrinsicContentHeight(element);
+    try {
+      const visit = (qhtmlNode) => {
+        if (!qhtmlNode) {
+          return;
+        }
+        const children = qhtmlChildArray(qhtmlNode);
+        const childIds = [];
+        children.forEach((child) => {
+          if (!child || typeof child.qhtmlType !== "function") {
+            return;
+          }
+          if (isLayoutQHTMLType(child.qhtmlType())) {
+            const id = qhtmlAssignmentValue(child, "data-layout-id");
+            if (id) {
+              childIds.push(id);
+            }
+          }
+        });
+        const ownId = qhtmlAssignmentValue(qhtmlNode, "data-layout-id");
+        if (ownId) {
+          order.set(ownId, childIds);
+        }
+        children.forEach(visit);
+      };
+      visit(tree);
+    } finally {
+      disposeQHTMLObject(tree);
+    }
+    return order;
   }
 
-  function rowHasVerticalFlowParent(node, parent) {
-    return node && parent && node.type === "q-row" && (parent.type === "q-layout" || parent.type === "q-col");
+  function orderedLayoutChildren(parent, orderMap) {
+    const modelChildren = (parent && parent.children ? parent.children : [])
+      .filter((child) => child && isLayoutType(child.type));
+    if (!parent || !orderMap || !orderMap.has(parent.id)) {
+      return modelChildren;
+    }
+    const byId = new Map(modelChildren.map((child) => [child.id, child]));
+    const ordered = [];
+    orderMap.get(parent.id).forEach((id) => {
+      const child = byId.get(id);
+      if (child) {
+        ordered.push(child);
+        byId.delete(id);
+      }
+    });
+    modelChildren.forEach((child) => {
+      if (byId.has(child.id)) {
+        ordered.push(child);
+      }
+    });
+    return ordered;
   }
 
-  function parentHasExplicitHeight(parent) {
-    if (!parent || !parent.props) {
+  function hasPreviousFlowSibling(node, parent, axis, orderMap) {
+    if (!node || !parent || layoutFlowAxis(parent) !== axis.name) {
       return false;
     }
-    const value = String(parent.props.height || "").trim().toLowerCase();
-    return Boolean(value && value !== DEFAULT_LAYOUT_VALUE && value !== "auto" && value !== "none");
+    const siblings = orderedLayoutChildren(parent, orderMap);
+    return siblings.indexOf(node) > 0;
   }
 
-  function rightEdgeColumnAccommodationPlan(node, parent, parentElement, parentWidth) {
-    if (!node || !parent || node.type !== "q-col" || parent.type !== "q-row" || !parentElement) {
-      return null;
-    }
-
-    const parentRect = parentElement.getBoundingClientRect();
-    const siblings = parent.children || [];
-    const index = siblings.indexOf(node);
-    const items = [];
-    let furthestRight = 0;
-    let shrinkCapacity = 0;
-
-    for (let i = index + 1; i < siblings.length; i += 1) {
-      const sibling = siblings[i];
-      const siblingElement = sibling
-        ? document.querySelector('[data-layout-id="' + CSS.escape(sibling.id) + '"]')
-        : null;
-      if (!siblingElement) {
-        continue;
-      }
-      const rect = siblingElement.getBoundingClientRect();
-      const right = rect.right - parentRect.left;
-      const props = normalizedPropsFor(sibling.type, sibling.props);
-      sibling.props = props;
-      const startWidth = rect.width;
-      const minWidth = Math.min(startWidth, minimumColumnWidth(sibling, siblingElement));
-      const capacity = Math.max(0, startWidth - minWidth);
-      items.push({
-        node: sibling,
-        element: siblingElement,
-        startWidth: startWidth,
-        minWidth: minWidth,
-        widthUnit: resizeUnitInfo(sibling, "width", siblingElement, startWidth)
+  function nodeResizeState(node, axis) {
+    if (!node._lbResizeState) {
+      Object.defineProperty(node, "_lbResizeState", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: {}
       });
-      shrinkCapacity += capacity;
-      furthestRight = Math.max(furthestRight, right);
     }
+    if (!node._lbResizeState[axis.name]) {
+      node._lbResizeState[axis.name] = {};
+    }
+    return node._lbResizeState[axis.name];
+  }
 
-    if (!items.length) {
+  function intrinsicAxisMinimum(element, axis) {
+    return axis.name === "horizontal"
+      ? intrinsicContentWidth(element)
+      : intrinsicContentHeight(element);
+  }
+
+  function constraintUnitInfo(node, element, axis, renderedPixels) {
+    const candidates = [axis.max, axis.min, axis.size];
+    for (let index = 0; index < candidates.length; index += 1) {
+      const propertyName = candidates[index];
+      if (parseLengthValue(node.props[propertyName])) {
+        return resizeUnitInfo(node, propertyName, element, renderedPixels);
+      }
+    }
+    return { unit: "px", basePixels: 1 };
+  }
+
+  function hardAxisMinimum(node, element, axis) {
+    const state = nodeResizeState(node, axis);
+    const intrinsic = intrinsicAxisMinimum(element, axis);
+    if (!Number.isFinite(state.hardMinimum)) {
+      const declared = lengthValueToPixels(node, axis.min, element, axis.size);
+      state.hardMinimum = Math.max(
+        RESIZE_MINIMUM_PIXELS,
+        intrinsic,
+        Number.isFinite(declared) ? declared : 0
+      );
+    }
+    return Math.max(RESIZE_MINIMUM_PIXELS, intrinsic, state.hardMinimum);
+  }
+
+  function captureConstraintItem(node, parent, parentElement, axis) {
+    const element = layoutElementById(node.id, parentElement);
+    if (!element) {
       return null;
     }
+    const rect = element.getBoundingClientRect();
+    const startSize = Math.max(RESIZE_MINIMUM_PIXELS, rect[axis.size]);
+    node.props = normalizedPropsFor(node.type, node.props);
+    return {
+      node: node,
+      parent: parent,
+      element: element,
+      rect: rect,
+      startSize: startSize,
+      minimum: Math.min(startSize, hardAxisMinimum(node, element, axis)),
+      unitInfo: constraintUnitInfo(node, element, axis, startSize)
+    };
+  }
 
-    const freeSpace = Math.max(0, parentWidth - furthestRight);
+  function parentWraps(parent, parentElement) {
+    const configured = String(parent && parent.props ? parent.props.wrap || "" : "")
+      .trim()
+      .toLowerCase();
+    if (configured === "wrap" || configured === "wrap-reverse") {
+      return true;
+    }
+    if (configured === "nowrap") {
+      return false;
+    }
+    const computed = parentElement ? window.getComputedStyle(parentElement).flexWrap : "";
+    return computed === "wrap" || computed === "wrap-reverse";
+  }
+
+  function captureFlowLevel(parent, selected, axis, edge, orderMap) {
+    if (!parent || !selected || layoutFlowAxis(parent) !== axis.name) {
+      return null;
+    }
+    const parentElement = layoutElementById(parent.id);
+    if (!parentElement) {
+      return null;
+    }
+    const children = orderedLayoutChildren(parent, orderMap);
+    const items = children
+      .map((child) => captureConstraintItem(child, parent, parentElement, axis))
+      .filter(Boolean);
+    const selectedIndex = items.findIndex((item) => item.node === selected);
+    if (selectedIndex < 0) {
+      return null;
+    }
+    const bounds = contentAxisBounds(parentElement, axis);
+    const nearestStart = items.reduce((value, item) => {
+      return Math.min(value, item.rect[axis.rectStart]);
+    }, bounds.end);
+    const furthestEnd = items.reduce((value, item) => {
+      return Math.max(value, item.rect[axis.rectEnd]);
+    }, bounds.start);
+    const startSide = edgeIsStart(edge, axis);
+    const sideIndexes = [];
+    if (startSide) {
+      for (let index = selectedIndex - 1; index >= 0; index -= 1) {
+        sideIndexes.push(index);
+      }
+    } else {
+      for (let index = selectedIndex + 1; index < items.length; index += 1) {
+        sideIndexes.push(index);
+      }
+    }
     return {
       parent: parent,
+      parentElement: parentElement,
+      axis: axis,
+      edge: edge,
       items: items,
-      freeSpace: freeSpace,
-      shrinkCapacity: shrinkCapacity
+      selectedIndex: selectedIndex,
+      sideIndexes: sideIndexes,
+      freeSpace: startSide
+        ? Math.max(0, nearestStart - bounds.start)
+        : Math.max(0, bounds.end - furthestEnd),
+      wraps: parentWraps(parent, parentElement),
+      bounds: bounds
     };
   }
 
-  function leftEdgeColumnResizePlan(node, parent, parentElement, selectedElement) {
-    if (!node || !parent || node.type !== "q-col" || parent.type !== "q-row" || !parentElement) {
-      return null;
-    }
-
-    const parentRect = parentElement.getBoundingClientRect();
-    const siblings = parent.children || [];
-    const index = siblings.indexOf(node);
-    if (index <= 0) {
-      return null;
-    }
-    const previousCols = [];
-    let leftmost = Number.POSITIVE_INFINITY;
-    let shrinkCapacity = 0;
-    let expandCapacity = 0;
-
-    for (let i = 0; i < index; i += 1) {
-      const sibling = siblings[i];
-      const siblingElement = sibling
-        ? document.querySelector('[data-layout-id="' + CSS.escape(sibling.id) + '"]')
-        : null;
-      if (!siblingElement) {
-        continue;
-      }
-      const rect = siblingElement.getBoundingClientRect();
-      const left = rect.left - parentRect.left;
-      const props = normalizedPropsFor(sibling.type, sibling.props);
-      sibling.props = props;
-      if (sibling.type === "q-col") {
-        const startWidth = rect.width;
-        const minWidth = Math.min(startWidth, minimumColumnWidth(sibling, siblingElement));
-        const maxWidth = maximumColumnWidth(sibling, siblingElement);
-        const item = {
-          node: sibling,
-          element: siblingElement,
-          startWidth: startWidth,
-          minWidth: minWidth,
-          maxWidth: Math.max(startWidth, maxWidth),
-          widthUnit: resizeUnitInfo(sibling, "width", siblingElement, startWidth)
-        };
-        previousCols.push(item);
-        shrinkCapacity += Math.max(0, startWidth - minWidth);
-        expandCapacity += Number.isFinite(item.maxWidth) ? Math.max(0, item.maxWidth - startWidth) : Number.POSITIVE_INFINITY;
-      }
-      leftmost = Math.min(leftmost, left);
-    }
-
-    const selectedWidth = selectedElement.getBoundingClientRect().width;
-    const selectedMinWidth = Math.min(selectedWidth, minimumColumnWidth(node, selectedElement));
-    return {
-      parent: parent,
-      previousCols: previousCols,
-      freeSpace: Number.isFinite(leftmost) ? Math.max(0, leftmost) : 0,
-      shrinkCapacity: shrinkCapacity,
-      expandCapacity: expandCapacity,
-      selectedMinWidth: selectedMinWidth
-    };
-  }
-
-  function topEdgeRowAccommodationPlan(node, parent, parentElement) {
-    if (!rowHasVerticalFlowParent(node, parent) || !parentElement) {
-      return null;
-    }
-
-    const parentRect = parentElement.getBoundingClientRect();
-    const siblings = parent.children || [];
-    const index = siblings.indexOf(node);
-    const items = [];
-    let topmost = Number.POSITIVE_INFINITY;
-    let shrinkCapacity = 0;
-
-    for (let i = 0; i < index; i += 1) {
-      const sibling = siblings[i];
-      const siblingElement = sibling && sibling.type === "q-row"
-        ? document.querySelector('[data-layout-id="' + CSS.escape(sibling.id) + '"]')
-        : null;
-      if (!siblingElement) {
-        continue;
-      }
-      const rect = siblingElement.getBoundingClientRect();
-      const top = rect.top - parentRect.top;
-      const props = normalizedPropsFor(sibling.type, sibling.props);
-      sibling.props = props;
-      const startHeight = rect.height;
-      const minHeight = Math.min(startHeight, minimumRowHeight(sibling, siblingElement));
-      const capacity = Math.max(0, startHeight - minHeight);
-      items.push({
-        node: sibling,
-        element: siblingElement,
-        startHeight: startHeight,
-        minHeight: minHeight,
-        heightUnit: resizeUnitInfo(sibling, "height", siblingElement, startHeight)
-      });
-      shrinkCapacity += capacity;
-      topmost = Math.min(topmost, top);
-    }
-
-    if (!items.length) {
-      return null;
-    }
-
-    return {
-      parent: parent,
-      items: items,
-      freeSpace: Number.isFinite(topmost) ? Math.max(0, topmost) : 0,
-      shrinkCapacity: shrinkCapacity
-    };
-  }
-
-  function bottomEdgeRowConstraintPlan(node, parent, parentElement, parentHeight, startBottom) {
-    if (!rowHasVerticalFlowParent(node, parent) || !parentElement || !parentHasExplicitHeight(parent)) {
-      return null;
-    }
-
-    const parentRect = parentElement.getBoundingClientRect();
-    const siblings = parent.children || [];
-    const index = siblings.indexOf(node);
-    let furthestBottom = startBottom;
-
-    for (let i = index + 1; i < siblings.length; i += 1) {
-      const sibling = siblings[i];
-      const siblingElement = sibling && sibling.type === "q-row"
-        ? document.querySelector('[data-layout-id="' + CSS.escape(sibling.id) + '"]')
-        : null;
-      if (!siblingElement) {
-        continue;
-      }
-      const rect = siblingElement.getBoundingClientRect();
-      furthestBottom = Math.max(furthestBottom, rect.bottom - parentRect.top);
-    }
-
-    return {
-      maxGrowth: Math.max(0, parentHeight - furthestBottom)
-    };
-  }
-
-  function isLastSibling(node, parent) {
-    const siblings = parent && parent.children ? parent.children : [];
-    return siblings.length > 0 && siblings[siblings.length - 1] === node;
-  }
-
-  function lastRowAncestorExpansionPlan(node, parent, element) {
-    if (!rowHasVerticalFlowParent(node, parent) || !isLastSibling(node, parent) || !element) {
-      return null;
-    }
-
-    const entries = [];
-    let current = parent;
+  function findAxisCarrier(container, axis) {
+    let current = container;
+    const bridge = [];
     while (current) {
-      const currentElement = document.querySelector('[data-layout-id="' + CSS.escape(current.id) + '"]');
-      if (!currentElement) {
-        break;
-      }
-      const rect = currentElement.getBoundingClientRect();
-      current.props = normalizedPropsFor(current.type, current.props);
-      entries.push({
-        node: current,
-        parent: findNodeById(current.id).parent,
-        element: currentElement,
-        startHeight: rect.height,
-        top: rect.top,
-        heightUnit: resizeUnitInfo(current, "height", currentElement, rect.height)
-      });
-
       const found = findNodeById(current.id);
-      if (!found || !found.parent || !isLastSibling(current, found.parent)) {
-        break;
+      if (!found || !found.parent) {
+        return null;
       }
+      if (layoutFlowAxis(found.parent) === axis.name) {
+        return {
+          carrier: current,
+          parent: found.parent,
+          bridge: bridge
+        };
+      }
+      bridge.push(current);
       current = found.parent;
     }
+    return null;
+  }
 
-    if (!entries.length) {
+  function terminalAxisNode(container, axis) {
+    let current = container;
+    let candidate = null;
+    while (current) {
+      if (!isBuilderRoot(current)) {
+        if (current.type === "q-layout" ||
+            (axis.name === "horizontal" && current.type === "q-col") ||
+            (axis.name === "vertical" && current.type === "q-row")) {
+          candidate = current;
+        }
+      }
+      const found = findNodeById(current.id);
+      current = found ? found.parent : null;
+    }
+    return candidate;
+  }
+
+  function captureResizePlan(found, element, edge) {
+    const axis = axisForEdge(edge);
+    if (!axis || !found || !found.node) {
       return null;
     }
+    const orderMap = buildWasmLayoutOrderMap();
+    const levels = [];
+    let currentContainer = found.parent;
+    let directLevel = null;
+    let selfItem = null;
+
+    if (found.parent && layoutFlowAxis(found.parent) === axis.name) {
+      directLevel = captureFlowLevel(found.parent, found.node, axis, edge, orderMap);
+      if (directLevel) {
+        levels.push(directLevel);
+      }
+    } else {
+      selfItem = captureConstraintItem(found.node, found.parent, element.parentElement, axis);
+    }
+
+    const visited = new Set();
+    while (currentContainer && !visited.has(currentContainer.id)) {
+      visited.add(currentContainer.id);
+      const carrier = findAxisCarrier(currentContainer, axis);
+      if (!carrier) {
+        break;
+      }
+      const level = captureFlowLevel(carrier.parent, carrier.carrier, axis, edge, orderMap);
+      if (!level) {
+        break;
+      }
+      level.bridge = carrier.bridge;
+      levels.push(level);
+      currentContainer = carrier.parent;
+    }
+
+    const terminalNode = terminalAxisNode(currentContainer || found.parent || found.node, axis);
+    const terminalParent = terminalNode ? (findNodeById(terminalNode.id) || {}).parent : null;
+    const terminalElement = terminalNode ? layoutElementById(terminalNode.id) : null;
+    const terminal = terminalNode && terminalElement &&
+      !levels.some((level) => level.items[level.selectedIndex].node === terminalNode)
+      ? captureConstraintItem(terminalNode, terminalParent, terminalElement.parentElement, axis)
+      : null;
 
     return {
-      entries: entries
+      axis: axis,
+      edge: edge,
+      levels: levels,
+      selfItem: selfItem,
+      terminal: terminal,
+      startPointer: 0
     };
   }
 
-  function distributeShrink(items, shrinkNeeded) {
-    const widths = items.map((item) => item.startWidth);
-    let remaining = Math.max(0, shrinkNeeded);
-    while (remaining > 0.5) {
-      const shrinkable = items
-        .map((item, index) => ({ item: item, index: index, capacity: widths[index] - item.minWidth }))
-        .filter((entry) => entry.capacity > 0.5);
-      if (!shrinkable.length) {
+  function distributeConstraintShrink(level, sizes, amount) {
+    let remaining = Math.max(0, amount);
+    while (remaining > RESIZE_EPSILON) {
+      const candidates = level.sideIndexes.filter((index) => {
+        return sizes[index] - level.items[index].minimum > RESIZE_EPSILON;
+      });
+      if (!candidates.length) {
         break;
       }
-      const share = remaining / shrinkable.length;
+      const share = remaining / candidates.length;
       let applied = 0;
-      shrinkable.forEach((entry) => {
-        const amount = Math.min(share, entry.capacity);
-        widths[entry.index] -= amount;
-        applied += amount;
+      candidates.forEach((index) => {
+        const capacity = sizes[index] - level.items[index].minimum;
+        const change = Math.min(capacity, share);
+        sizes[index] -= change;
+        applied += change;
       });
-      if (applied <= 0.5) {
+      if (applied <= RESIZE_EPSILON) {
         break;
       }
       remaining -= applied;
     }
-    return widths;
+    return Math.max(0, amount - remaining);
   }
 
-  function distributeExpandFromRight(items, expandNeeded) {
-    const widths = items.map((item) => item.startWidth);
-    let remaining = Math.max(0, expandNeeded);
-    for (let index = items.length - 1; index >= 0 && remaining > 0.5; index -= 1) {
-      const item = items[index];
-      const capacity = item.maxWidth - widths[index];
-      const amount = Number.isFinite(capacity) ? Math.min(remaining, Math.max(0, capacity)) : remaining;
-      widths[index] += amount;
-      remaining -= amount;
+  function distributeConstraintGrowth(level, sizes, amount) {
+    const candidates = level.sideIndexes.slice();
+    if (!candidates.length) {
+      return 0;
     }
-    return widths;
+    const growth = Math.max(0, amount);
+    sizes[candidates[0]] += growth;
+    return growth;
   }
 
-  function applyLeftColumnResizePlan(plan, delta) {
+  function clearAxisOffset(node, element, axis) {
+    const offsetProperty = axis.name === "horizontal" ? "x" : "y";
+    delete node.props[offsetProperty];
+    if (!node.props.x && !node.props.y) {
+      delete node.props.position;
+    }
+    if (element) {
+      if (axis.name === "horizontal") {
+        element.style.left = "";
+      } else {
+        element.style.top = "";
+      }
+      if (!node.props.position) {
+        element.style.position = "";
+      }
+    }
+  }
+
+  function applyConstraintItemSize(item, axis, pixels) {
+    const size = Math.max(item.minimum, pixels);
+    const value = formatLengthValue(size, item.unitInfo);
+    item.node.props = normalizedPropsFor(item.node.type, item.node.props);
+    const controlsParentFlow = item.parent && layoutFlowAxis(item.parent) === axis.name;
+    item.node.props[axis.size] = DEFAULT_LAYOUT_VALUE;
+    item.node.props[axis.min] = value;
+    item.node.props[axis.max] = value;
+    if (controlsParentFlow) {
+      item.node.props.flex = "0 0 " + value;
+    }
+    clearAxisOffset(item.node, item.element, axis);
+    if (item.element) {
+      item.element.style[axis.size] = "auto";
+      item.element.style[axis.min] = value;
+      item.element.style[axis.max] = value;
+      if (controlsParentFlow) {
+        item.element.style.flex = "0 0 " + value;
+      }
+      item.element.style.boxSizing = "border-box";
+    }
+    return size;
+  }
+
+  function expandWrappedContainer(level) {
+    if (!level.wraps || !level.parentElement) {
+      return;
+    }
+    const crossAxis = level.axis.name === "horizontal"
+      ? RESIZE_AXIS.vertical
+      : RESIZE_AXIS.horizontal;
+    const element = level.parentElement;
+    const rect = element.getBoundingClientRect();
+    const required = Math.max(rect[crossAxis.size], element[crossAxis.scrollSize] || 0);
+    if (required <= rect[crossAxis.size] + RESIZE_EPSILON) {
+      return;
+    }
+    const found = findNodeById(level.parent.id);
+    const item = captureConstraintItem(
+      level.parent,
+      found ? found.parent : null,
+      element.parentElement,
+      crossAxis
+    );
+    if (item) {
+      applyConstraintItemSize(item, crossAxis, required);
+    }
+  }
+
+  function solveFlowLevel(level, requestedGrowth) {
+    const sizes = level.items.map((item) => item.startSize);
+    const selected = level.items[level.selectedIndex];
+    const desired = Math.max(selected.minimum, selected.startSize + requestedGrowth);
+    const actualGrowth = desired - selected.startSize;
+    sizes[level.selectedIndex] = desired;
+    let residual = 0;
+
+    if (actualGrowth > RESIZE_EPSILON) {
+      const pressure = Math.max(0, actualGrowth - level.freeSpace);
+      const absorbed = distributeConstraintShrink(level, sizes, pressure);
+      residual = Math.max(0, pressure - absorbed);
+      if (residual > RESIZE_EPSILON && level.wraps) {
+        residual = 0;
+      }
+    } else if (actualGrowth < -RESIZE_EPSILON) {
+      const released = -actualGrowth;
+      const absorbed = distributeConstraintGrowth(level, sizes, released);
+      residual = -(released - absorbed);
+    }
+
+    level.items.forEach((item, index) => {
+      applyConstraintItemSize(item, level.axis, sizes[index]);
+    });
+    if (level.wraps) {
+      const wrap = String(level.parent.props.wrap || "").toLowerCase();
+      level.parentElement.style.flexWrap = wrap === "wrap-reverse" ? "wrap-reverse" : "wrap";
+      expandWrappedContainer(level);
+    }
+    return Math.abs(residual) <= RESIZE_EPSILON ? 0 : residual;
+  }
+
+  function solveStandaloneItem(item, axis, requestedGrowth) {
+    if (!item) {
+      return requestedGrowth;
+    }
+    const desired = Math.max(item.minimum, item.startSize + requestedGrowth);
+    const actual = desired - item.startSize;
+    applyConstraintItemSize(item, axis, desired);
+    return requestedGrowth - actual;
+  }
+
+  function applyConstraintResizePlan(plan, pointerPosition) {
     if (!plan) {
       return;
     }
-    let widths;
-    if (delta < -0.5) {
-      widths = distributeShrink(plan.previousCols, Math.max(0, -delta - plan.freeSpace));
-    } else if (delta > 0.5) {
-      widths = distributeExpandFromRight(plan.previousCols, delta);
-    } else {
-      widths = plan.previousCols.map((item) => item.startWidth);
-    }
-    plan.previousCols.forEach((item, index) => {
-      const value = formatLengthValue(widths[index], item.widthUnit);
-      applyLayoutWidth(item.node, plan.parent, item.element, value);
-    });
-  }
+    const pointerDelta = pointerPosition - plan.startPointer;
+    let growth = edgeIsStart(plan.edge, plan.axis) ? -pointerDelta : pointerDelta;
 
-  function applyColumnAccommodation(accommodationPlan, delta) {
-    if (!accommodationPlan) {
-      return;
+    if (plan.selfItem) {
+      const unconsumed = solveStandaloneItem(plan.selfItem, plan.axis, growth);
+      growth -= unconsumed;
     }
-    const shrinkNeeded = Math.max(0, delta - accommodationPlan.freeSpace);
-    const widths = distributeShrink(accommodationPlan.items, shrinkNeeded);
-    accommodationPlan.items.forEach((item, index) => {
-      const value = formatLengthValue(widths[index], item.widthUnit);
-      applyLayoutWidth(item.node, accommodationPlan.parent, item.element, value);
-    });
-  }
 
-  function distributeHeightShrink(items, shrinkNeeded) {
-    const heights = items.map((item) => item.startHeight);
-    let remaining = Math.max(0, shrinkNeeded);
-    while (remaining > 0.5) {
-      const shrinkable = items
-        .map((item, index) => ({ item: item, index: index, capacity: heights[index] - item.minHeight }))
-        .filter((entry) => entry.capacity > 0.5);
-      if (!shrinkable.length) {
-        break;
-      }
-      const share = remaining / shrinkable.length;
-      let applied = 0;
-      shrinkable.forEach((entry) => {
-        const amount = Math.min(share, entry.capacity);
-        heights[entry.index] -= amount;
-        applied += amount;
-      });
-      if (applied <= 0.5) {
-        break;
-      }
-      remaining -= applied;
-    }
-    return heights;
-  }
-
-  function applyRowAccommodation(accommodationPlan, delta) {
-    if (!accommodationPlan) {
-      return;
-    }
-    const shrinkNeeded = Math.max(0, delta - accommodationPlan.freeSpace);
-    const heights = distributeHeightShrink(accommodationPlan.items, shrinkNeeded);
-    accommodationPlan.items.forEach((item, index) => {
-      const value = formatLengthValue(heights[index], item.heightUnit);
-      applyLayoutHeight(item.node, accommodationPlan.parent, item.element, value);
-    });
-  }
-
-  function applyAncestorExpansion(expansionPlan, draggedPageBottom) {
-    if (!expansionPlan) {
-      return;
-    }
-    expansionPlan.entries.forEach((entry) => {
-      const overflow = draggedPageBottom - (entry.top + entry.startHeight);
-      if (overflow <= 0.5) {
+    let residual = growth;
+    plan.levels.forEach((level) => {
+      if (Math.abs(residual) <= RESIZE_EPSILON) {
         return;
       }
-      const heightValue = formatLengthValue(entry.startHeight + overflow, entry.heightUnit);
-      applyLayoutHeight(entry.node, entry.parent, entry.element, heightValue);
+      residual = solveFlowLevel(level, residual);
     });
-  }
 
-  function expandParentForRowHeight(found, interaction, bottom) {
-    if (!found.parent ||
-        found.node.type !== "q-row" ||
-        interaction.parentHeightConstrained ||
-        bottom <= interaction.parentHeight) {
-      return;
+    if (plan.terminal && Math.abs(residual) > RESIZE_EPSILON) {
+      const desired = Math.max(
+        plan.terminal.minimum,
+        plan.terminal.startSize + residual
+      );
+      applyConstraintItemSize(plan.terminal, plan.axis, desired);
+      residual = 0;
     }
-    const parentElement = document.querySelector('[data-layout-id="' + CSS.escape(found.parent.id) + '"]');
-    found.parent.props = normalizedPropsFor(found.parent.type, found.parent.props);
-    const heightValue = formatLengthValue(bottom, interaction.parentHeightUnit);
-    found.parent.props.height = heightValue;
-    interaction.parentHeight = bottom;
-    if (parentElement) {
-      parentElement.style.height = heightValue;
-    }
+
+    enforceRenderedFill(root, null);
   }
 
   function updateResize(event) {
-    const found = findNodeById(interaction.nodeId);
-    if (!found || !found.node) {
+    if (!interaction || interaction.type !== "resize" || !interaction.resizePlan) {
       return;
     }
-    const dx = event.clientX - interaction.startX;
-    const dy = event.clientY - interaction.startY;
-    const element = document.querySelector('[data-layout-id="' + CSS.escape(interaction.nodeId) + '"]');
-    if (interaction.edge === "left" || interaction.edge === "right") {
-      let left = interaction.startLeft;
-      let right = interaction.startRight;
-      if (interaction.edge === "right") {
-        right = clamp(interaction.startRight + dx, interaction.startLeft + interaction.minWidth, interaction.maxRight);
-        if (interaction.accommodationPlan) {
-          applyColumnAccommodation(interaction.accommodationPlan, Math.max(0, right - interaction.startRight));
-        }
-      } else {
-        left = clamp(interaction.startLeft + dx, interaction.minLeft, interaction.maxLeft);
-        if (interaction.leftColumnPlan) {
-          applyLeftColumnResizePlan(interaction.leftColumnPlan, left - interaction.startLeft);
-        } else if (interaction.accommodationPlan) {
-          applyColumnAccommodation(interaction.accommodationPlan, Math.max(0, interaction.startLeft - left));
-        }
-      }
-      const width = Math.max(24, Math.round(right - left));
-      const widthValue = formatLengthValue(width, interaction.widthUnit);
-      applyLayoutWidth(found.node, found.parent, element, widthValue);
-      if (interaction.edge === "left" && !interaction.leftColumnPlan && !interaction.accommodationPlan) {
-        const xOffset = left - interaction.flowLeft;
-        if (Math.abs(xOffset) > 0.5 || interaction.hadX) {
-          const xValue = formatLengthValue(xOffset, interaction.xUnit);
-          found.node.props.x = xValue;
-          found.node.props.position = found.node.props.position || "relative";
-          if (element) {
-            element.style.left = xValue;
-            element.style.position = "relative";
-          }
-        }
-      }
-    } else {
-      let top = interaction.startTop;
-      let bottom = interaction.startBottom;
-      const minHeight = interaction.minHeight || 24;
-      const maxBottom = interaction.maxBottom;
-      if (interaction.edge === "bottom") {
-        bottom = clamp(interaction.startBottom + dy, interaction.startTop + minHeight, maxBottom);
-        if (interaction.ancestorExpansionPlan) {
-          applyAncestorExpansion(interaction.ancestorExpansionPlan, interaction.parentPageTop + bottom);
-        }
-      } else {
-        top = clamp(interaction.startTop + dy, interaction.minTop, interaction.startBottom - minHeight);
-        if (interaction.rowAccommodationPlan) {
-          applyRowAccommodation(interaction.rowAccommodationPlan, Math.max(0, interaction.startTop - top));
-        }
-      }
-      expandParentForRowHeight(found, interaction, bottom);
-      const height = Math.max(24, Math.round(bottom - top));
-      const heightValue = formatLengthValue(height, interaction.heightUnit);
-      applyLayoutHeight(found.node, found.parent, element, heightValue);
-      if (interaction.edge === "top" && !interaction.rowAccommodationPlan) {
-        const yOffset = top - interaction.flowTop;
-        if (Math.abs(yOffset) > 0.5 || interaction.hadY) {
-          const yValue = formatLengthValue(yOffset, interaction.yUnit);
-          found.node.props.y = yValue;
-          found.node.props.position = found.node.props.position || "relative";
-          if (element) {
-            element.style.top = yValue;
-            element.style.position = "relative";
-          }
-        }
-      }
-    }
+    const axis = interaction.resizePlan.axis;
+    applyConstraintResizePlan(interaction.resizePlan, event[axis.coordinate]);
   }
 
   function insertNode(kind, placement) {
+    if (insertNodeViaDomTree(kind, placement)) {
+      return;
+    }
     const found = currentTarget();
     const target = found.node || root;
     const parent = found.parent;
@@ -2339,7 +2732,7 @@
   }
 
   function saveEditor() {
-    const value = editorValue();
+    const value = normalizeQHTMLThroughDomTree(editorValue());
     if (editorMode === "add-qhtml") {
       const target = currentTarget().node || root;
       const next = createNode("qhtml", []);
@@ -2349,7 +2742,7 @@
     } else {
       const found = findNodeById(editorTargetId);
       if (found && found.node) {
-        const parsed = parseLayoutSource(value);
+        const parsed = sourceHasSingleLayoutRoot(value) ? parseLayoutSource(value) : null;
         if (parsed && parsed.type !== "qhtml") {
           replaceNode(found.node, parsed);
           activeId = parsed.id;
@@ -2412,6 +2805,8 @@
     document.getElementById("lbPropGap").value = node.props.gap || "";
     document.getElementById("lbPropMinWidth").value = node.props.minWidth || node.props["min-width"] || "";
     document.getElementById("lbPropMinHeight").value = node.props.minHeight || node.props["min-height"] || "";
+    document.getElementById("lbPropMaxWidth").value = node.props.maxWidth || node.props["max-width"] || "";
+    document.getElementById("lbPropMaxHeight").value = node.props.maxHeight || node.props["max-height"] || "";
     document.getElementById("lbPropMinColWidth").value = node.props.minColWidth || node.props["min-col-width"] || "";
     document.getElementById("lbPropWrap").value = node.props.wrap || node.props.flexWrap || node.props["flex-wrap"] || "";
     document.getElementById("lbPropertiesDialog").showModal();
@@ -2431,10 +2826,14 @@
     props.gap = document.getElementById("lbPropGap").value.trim();
     props.minWidth = document.getElementById("lbPropMinWidth").value.trim();
     props.minHeight = document.getElementById("lbPropMinHeight").value.trim();
+    props.maxWidth = document.getElementById("lbPropMaxWidth").value.trim();
+    props.maxHeight = document.getElementById("lbPropMaxHeight").value.trim();
     props.minColWidth = document.getElementById("lbPropMinColWidth").value.trim();
     props.wrap = document.getElementById("lbPropWrap").value.trim();
     delete props["min-width"];
     delete props["min-height"];
+    delete props["max-width"];
+    delete props["max-height"];
     delete props["min-col-width"];
     delete props.flexWrap;
     delete props["flex-wrap"];
@@ -2460,7 +2859,8 @@
   function openFile(file) {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
-      const source = String(reader.result || "");
+      clearScopedImports();
+      const source = normalizeQHTMLThroughDomTree(String(reader.result || ""));
       const parsed = parseLayoutSource(source);
       root = wrapAsBuilderRoot(parsed || buildDefaultUserTree());
       activeId = firstUserRoot() ? firstUserRoot().id : root.id;
@@ -2517,102 +2917,28 @@
       event.preventDefault();
       return;
     }
-    if (!region.edge &&
-        rawEdge &&
-        found.node.type === "q-col" &&
-        found.parent &&
-        found.parent.type === "q-row" &&
-        (rawEdge === "left" || rawEdge === "right")) {
+    if (!region.edge && rawEdge) {
       event.preventDefault();
       return;
     }
+
     if (region.edge) {
-      const bounds = parentResizeBounds(element);
       found.node.props = normalizedPropsFor(found.node.type, found.node.props);
       if (found.parent) {
         found.parent.props = normalizedPropsFor(found.parent.type, found.parent.props);
       }
-      const siblingBounds = horizontalSiblingBounds(found.node, found.parent, element.parentElement, bounds.width);
-      const safeStartLeft = clamp(bounds.left, siblingBounds.minLeft, siblingBounds.maxRight - 24);
-      const safeStartRight = clamp(bounds.left + region.rect.width, safeStartLeft + 24, siblingBounds.maxRight);
-      const accommodationPlan = region.edge === "right"
-        ? rightEdgeColumnAccommodationPlan(found.node, found.parent, element.parentElement, bounds.width)
-        : null;
-      const leftColumnPlan = region.edge === "left"
-        ? leftEdgeColumnResizePlan(found.node, found.parent, element.parentElement, element)
-        : null;
-      const rawStartBottom = bounds.top + region.rect.height;
-      const rowAccommodationPlan = region.edge === "top"
-        ? topEdgeRowAccommodationPlan(found.node, found.parent, element.parentElement)
-        : null;
-      const rowConstraintPlan = region.edge === "bottom"
-        ? bottomEdgeRowConstraintPlan(found.node, found.parent, element.parentElement, bounds.height, rawStartBottom)
-        : null;
-      const ancestorExpansionPlan = region.edge === "bottom"
-        ? lastRowAncestorExpansionPlan(found.node, found.parent, element)
-        : null;
-      const parentHeightConstrained = found.node.type === "q-row" && found.parent
-        ? parentHasExplicitHeight(found.parent)
-        : true;
-      const xOffset = lengthValueToPixels(found.node, "x", element, "x");
-      const yOffset = lengthValueToPixels(found.node, "y", element, "y");
+      const resizePlan = captureResizePlan(found, element, region.edge);
+      if (!resizePlan) {
+        event.preventDefault();
+        return;
+      }
+      resizePlan.startPointer = event[resizePlan.axis.coordinate];
       interaction = {
         type: "resize",
         nodeId: id,
+        element: element,
         edge: region.edge,
-        startX: event.clientX,
-        startY: event.clientY,
-        startWidth: region.rect.width,
-        startHeight: region.rect.height,
-        startLeft: safeStartLeft,
-        startTop: bounds.top,
-        startRight: leftColumnPlan
-          ? bounds.left + region.rect.width
-          : safeStartRight,
-        startBottom: found.node.type === "q-row" ? rawStartBottom : Math.min(rawStartBottom, bounds.height),
-        flowLeft: safeStartLeft - xOffset,
-        flowTop: bounds.top - yOffset,
-        hadX: Object.prototype.hasOwnProperty.call(found.node.props, "x"),
-        hadY: Object.prototype.hasOwnProperty.call(found.node.props, "y"),
-        parentWidth: bounds.width,
-        parentHeight: bounds.height,
-        parentHeightConstrained: parentHeightConstrained,
-        parentPageTop: element.parentElement ? element.parentElement.getBoundingClientRect().top : 0,
-        minLeft: leftColumnPlan
-          ? Math.max(0, safeStartLeft - leftColumnPlan.freeSpace - leftColumnPlan.shrinkCapacity)
-          : siblingBounds.minLeft,
-        maxLeft: leftColumnPlan
-          ? Math.min(safeStartLeft + leftColumnPlan.expandCapacity,
-                     (bounds.left + region.rect.width) - leftColumnPlan.selectedMinWidth)
-          : safeStartRight - 24,
-        maxRight: accommodationPlan
-          ? (region.edge === "right"
-            ? safeStartRight + accommodationPlan.freeSpace + accommodationPlan.shrinkCapacity
-            : siblingBounds.maxRight)
-          : siblingBounds.maxRight,
-        accommodationPlan: accommodationPlan,
-        leftColumnPlan: leftColumnPlan,
-        rowAccommodationPlan: rowAccommodationPlan,
-        ancestorExpansionPlan: ancestorExpansionPlan,
-        minTop: rowAccommodationPlan && region.edge === "top"
-          ? Math.max(0, bounds.top - rowAccommodationPlan.freeSpace - rowAccommodationPlan.shrinkCapacity)
-          : 0,
-        maxBottom: rowConstraintPlan && region.edge === "bottom"
-          ? (ancestorExpansionPlan
-            ? Number.POSITIVE_INFINITY
-            : rawStartBottom + rowConstraintPlan.maxGrowth)
-          : found.node.type === "q-row" && !parentHeightConstrained
-            ? Number.POSITIVE_INFINITY
-            : bounds.height,
-        minHeight: found.node.type === "q-row" ? minimumRowHeight(found.node, element) : 24,
-        minWidth: found.node.type === "q-col" ? minimumColumnWidth(found.node, element) : 24,
-        widthUnit: resizeUnitInfo(found.node, "width", element, region.rect.width),
-        heightUnit: resizeUnitInfo(found.node, "height", element, region.rect.height),
-        xUnit: resizeUnitInfo(found.node, "x", element, bounds.left),
-        yUnit: resizeUnitInfo(found.node, "y", element, bounds.top),
-        parentHeightUnit: found.parent
-          ? resizeUnitInfo(found.parent, "height", element.parentElement, bounds.height)
-          : { unit: "px", basePixels: 1 }
+        resizePlan: resizePlan
       };
       setStatus("Resizing " + found.node.type + " " + region.edge);
     } else if (found.parent) {
@@ -2935,6 +3261,7 @@
 
   function bindToolbar() {
     document.getElementById("lbNew").addEventListener("click", () => {
+      clearScopedImports();
       root = buildDefaultTree();
       activeId = firstUserRoot() ? firstUserRoot().id : root.id;
       renderPreview();
@@ -3022,14 +3349,58 @@
   }
 
   function parseLayoutSource(source) {
-    const cleaned = stripComments(source);
-    const match = /\b(q-layout|q-row|q-col)\b\s*([A-Za-z_][\w-]*)?\s*\{/.exec(cleaned);
-    if (!match) {
+    const normalized = normalizeQHTMLThroughDomTree(source);
+    const split = splitTopLevelImports(normalized);
+    split.imports.forEach(addScopedImport);
+    const layoutSource = split.source;
+    const cleaned = stripComments(layoutSource);
+    const matches = topLevelLayoutMatches(cleaned);
+    if (!matches.length) {
       const qhtmlNode = createNode("qhtml", []);
-      qhtmlNode.source = source;
+      qhtmlNode.source = normalized;
       return qhtmlNode;
     }
-    return parseLayoutAt(cleaned, match.index);
+
+    if (matches.length === 1 && !cleaned.slice(0, matches[0].index).trim()) {
+      const open = matches[0].index + matches[0][0].lastIndexOf("{");
+      const close = findMatchingBrace(cleaned, open);
+      if (close >= 0 && !cleaned.slice(close + 1).trim()) {
+        return parseLayoutAt(cleaned, matches[0].index);
+      }
+    }
+
+    const children = [];
+    let cursor = 0;
+    for (const match of matches) {
+      const before = cleaned.slice(cursor, match.index).trim();
+      if (before) {
+        const qhtmlNode = createNode("qhtml", []);
+        qhtmlNode.source = before;
+        children.push(qhtmlNode);
+      }
+      const open = match.index + match[0].lastIndexOf("{");
+      const close = findMatchingBrace(cleaned, open);
+      if (close < 0) {
+        break;
+      }
+      const parsed = parseLayoutAt(cleaned, match.index);
+      if (parsed) {
+        children.push(parsed);
+      }
+      cursor = close + 1;
+    }
+    const tail = cleaned.slice(cursor).trim();
+    if (tail) {
+      const qhtmlNode = createNode("qhtml", []);
+      qhtmlNode.source = tail;
+      children.push(qhtmlNode);
+    }
+    return createBuilderRoot(children);
+  }
+
+  function firstTopLevelLayoutMatch(source) {
+    const matches = topLevelLayoutMatches(source);
+    return matches.length ? matches[0] : null;
   }
 
   function parseLayoutAt(source, start) {
@@ -3045,6 +3416,9 @@
     const node = createNode(type, [], { label: false });
     node.name = name;
     parseProps(body, node);
+    if (node.props["data-lb-builder-root"] === "1") {
+      node.builderRoot = true;
+    }
     parseChildren(body, node);
     return node;
   }
@@ -3117,9 +3491,8 @@
 
   function parseChildren(body, node) {
     let cursor = 0;
-    const childRe = /\b(q-layout|q-row|q-col)\b\s*([A-Za-z_][\w-]*)?\s*\{/g;
-    let match;
-    while ((match = childRe.exec(body))) {
+    const matches = topLevelLayoutMatches(body);
+    for (const match of matches) {
       const before = stripPropertyLines(body.slice(cursor, match.index));
       if (before) {
         const qhtmlNode = createNode("qhtml", []);
@@ -3136,7 +3509,6 @@
         node.children.push(parsed);
       }
       cursor = close + 1;
-      childRe.lastIndex = cursor;
     }
     const tail = body.slice(cursor).trim();
     const cleanedTail = stripPropertyLines(tail);
@@ -3145,6 +3517,59 @@
       qhtmlNode.source = cleanedTail;
       node.children.push(qhtmlNode);
     }
+  }
+
+  function topLevelLayoutMatches(source) {
+    const text = String(source || "");
+    const matches = [];
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    const layoutRe = /\b(q-layout|q-row|q-col)\b\s*([A-Za-z_][\w-]*)?\s*\{/y;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const ch = text[index];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+        continue;
+      }
+      if (ch === "}") {
+        depth = Math.max(0, depth - 1);
+        continue;
+      }
+      if (depth !== 0) {
+        continue;
+      }
+      layoutRe.lastIndex = index;
+      const match = layoutRe.exec(text);
+      if (match) {
+        const open = layoutRe.lastIndex - 1;
+        const close = findMatchingBrace(text, open);
+        matches.push({
+          index,
+          close,
+          0: match[0],
+          1: match[1],
+          2: match[2] || ""
+        });
+        index = close >= 0 ? close : layoutRe.lastIndex - 1;
+      }
+    }
+    return matches;
   }
 
   function createPreviewHost() {
