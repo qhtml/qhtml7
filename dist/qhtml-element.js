@@ -2169,28 +2169,18 @@
       return;
     }
 
+    const parameters = splitList(typeof functionNode.parameters === "function" ? functionNode.parameters() : "");
+    const body = String(typeof functionNode.body === "function" ? functionNode.body() : "");
     const boundFunction = function (...args) {
-      const serializedArgs = args.map((arg) => String(arg)).join(", ");
-      const body = typeof functionNode.call === "function"
-        ? functionNode.call(serializedArgs)
-        : (typeof functionNode.body === "function" ? functionNode.body() : "");
-      return executeFunctionBody(domElement, functionNode, args, body, null);
+      return executeScriptBody(domElement, parameters, args || [], body, domElement.__qhtmlRegistry);
     };
 
     boundFunction.__qhtmlElement = domElement;
     boundFunction.__qhtmlFunctionNode = functionNode;
-    boundFunction.__qhtmlFunctionBody = typeof functionNode.body === "function" ? functionNode.body() : "";
-    boundFunction.__qhtmlFunctionParameters = splitList(
-      typeof functionNode.parameters === "function" ? functionNode.parameters() : ""
-    );
+    boundFunction.__qhtmlFunctionBody = body;
+    boundFunction.__qhtmlFunctionParameters = parameters.slice();
     boundFunction.__qhtmlInvokeFromSignal = function (args, signalContext) {
-      return executeFunctionBody(
-        domElement,
-        functionNode,
-        args || [],
-        boundFunction.__qhtmlFunctionBody,
-        signalContext || null
-      );
+      return executeScriptBody(domElement, parameters, args || [], body, domElement.__qhtmlRegistry);
     };
 
     domElement[functionName] = boundFunction;
@@ -2893,14 +2883,34 @@
     if (!registry || !registry.loggersByUuid) {
       return 0;
     }
+    const delivered = new Set();
+    const emitToLogger = (candidate) => {
+      if (!candidate) {
+        return 0;
+      }
+      const loggerNode = candidate.qhtmlNode || null;
+      const loggerUuid = loggerNode ? qhtmlNodeUuid(loggerNode) : "";
+      const key = loggerUuid || candidate.qhtmlUUID || "";
+      if (key && delivered.has(key)) {
+        return 0;
+      }
+      if (candidate.log(message, category)) {
+        if (key) {
+          delivered.add(key);
+        }
+        return 1;
+      }
+      return 0;
+    };
+
     const logger = nearestRuntimeLogger(registry, owner);
-    if (logger && logger.log(message, category)) {
-      return 1;
+    if (logger) {
+      return emitToLogger(logger);
     }
     let count = 0;
     registry.loggersByUuid.forEach((candidate) => {
-      if (candidate && candidate.log(message, category)) {
-        count += 1;
+      if (count === 0) {
+        count += emitToLogger(candidate);
       }
     });
     return count;
