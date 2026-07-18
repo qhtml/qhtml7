@@ -4,6 +4,8 @@ QHTML7 is a declarative UI language for building HTML, custom elements, reusable
 
 It is designed around a simple idea: describe the interface as a tree of objects, let named objects become reusable, and keep component structure readable enough that the source still feels like the UI.
 
+All of the code was written using ChatGPT's codex combined with a massive number of detailed prompts (you can read them in language/qhtml7.txt)
+
 ```html
 <script src="/dist/qhtml.js"></script>
 
