@@ -47,8 +47,6 @@
     .lb-preview-host [data-lb-builder-root="1"] {
       width: max-content !important;
       height: max-content !important;
-      min-width: 75vw !important;
-      min-height: 75vh !important;
       padding: 5vh 5vw !important;
       overflow: visible !important;
       box-sizing: border-box !important;
@@ -541,6 +539,7 @@
       type: type,
       name: "",
       props: defaultPropsFor(type),
+      propEntries: [],
       source: type === "qhtml" ? DEFAULT_QHTML : "",
       children: nodeChildren
     };
@@ -675,6 +674,46 @@
     return ordered;
   }
 
+  function canonicalLayoutPropKey(key) {
+    const aliases = {
+      "min-width": "minWidth",
+      "min-height": "minHeight",
+      "max-width": "maxWidth",
+      "max-height": "maxHeight",
+      "min-col-width": "minColWidth",
+      "flex-wrap": "wrap",
+      flexWrap: "wrap"
+    };
+    return aliases[key] || key;
+  }
+
+  function recordPropertyEntry(node, key, kind) {
+    if (!node || !key) {
+      return;
+    }
+    if (!Array.isArray(node.propEntries)) {
+      node.propEntries = [];
+    }
+    const canonical = canonicalLayoutPropKey(key);
+    if (node.propEntries.some((entry) => entry && canonicalLayoutPropKey(entry.key) === canonical)) {
+      return;
+    }
+    node.propEntries.push({
+      key: key,
+      kind: kind || "assignment"
+    });
+  }
+
+  function setNodeProp(node, key, value, kind) {
+    if (!node || !key) {
+      return;
+    }
+    node.props = normalizedPropsFor(node.type, node.props);
+    const canonical = canonicalLayoutPropKey(key);
+    recordPropertyEntry(node, key, kind);
+    node.props[canonical] = value;
+  }
+
   function layoutFlowAxis(parent) {
     if (!parent) {
       return "";
@@ -767,14 +806,37 @@
       "minColWidth",
       "wrap"
     ];
+    const emitted = new Set();
+    (node.propEntries || []).forEach((entry) => {
+      if (!entry || !entry.key || entry.key === "data-layout-id") {
+        return;
+      }
+      const canonical = canonicalLayoutPropKey(entry.key);
+      if (emitted.has(canonical)) {
+        return;
+      }
+      const value = String(Object.prototype.hasOwnProperty.call(props, canonical) ? props[canonical] : props[entry.key] || "").trim();
+      if (!value) {
+        return;
+      }
+      const prefix = entry.kind === "q-property" ? "q-property " : "";
+      lines.push(indent(level) + prefix + entry.key + ': "' + escapeQhtmlString(value) + '"');
+      emitted.add(canonical);
+    });
+
     const keys = orderedKeys.concat(Object.keys(props).filter((key) => !orderedKeys.includes(key)).sort());
     keys.forEach((key) => {
       if (!Object.prototype.hasOwnProperty.call(props, key)) {
         return;
       }
+      const canonical = canonicalLayoutPropKey(key);
+      if (emitted.has(canonical) || key === "data-layout-id") {
+        return;
+      }
       const value = String(props[key] || "").trim();
       if (value) {
         lines.push(indent(level) + key + ': "' + escapeQhtmlString(value) + '"');
+        emitted.add(canonical);
       }
     });
     lines.push(indent(level) + 'data-layout-id: "' + escapeQhtmlString(node.id) + '"');
@@ -1972,6 +2034,61 @@
     return document.querySelector(selector);
   }
 
+  function layoutDescendantBounds(element) {
+    if (!element) {
+      return null;
+    }
+    const own = element.getBoundingClientRect();
+    const descendants = Array.from(element.querySelectorAll("*")).filter((child) => {
+      const rect = child.getBoundingClientRect();
+      return rect.width > 0 || rect.height > 0;
+    });
+    if (!descendants.length) {
+      return {
+        width: Math.max(RESIZE_MINIMUM_PIXELS, own.width),
+        height: Math.max(RESIZE_MINIMUM_PIXELS, own.height)
+      };
+    }
+
+    let left = own.left;
+    let top = own.top;
+    let right = own.left;
+    let bottom = own.top;
+    descendants.forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+    });
+    return {
+      width: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(right - own.left)),
+      height: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(bottom - own.top))
+    };
+  }
+
+  function renderedMinimumSize(node) {
+    const element = selectedElementForNode(node);
+    const bounds = layoutDescendantBounds(element);
+    if (!bounds) {
+      return {
+        width: RESIZE_MINIMUM_PIXELS,
+        height: RESIZE_MINIMUM_PIXELS
+      };
+    }
+    return bounds;
+  }
+
+  function applyRenderedMinimums(node) {
+    if (!node || !isLayoutType(node.type)) {
+      return;
+    }
+    node.props = normalizedPropsFor(node.type, node.props);
+    const minimum = renderedMinimumSize(node);
+    setNodeProp(node, "minWidth", Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(minimum.width)) + "px");
+    setNodeProp(node, "minHeight", Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(minimum.height)) + "px");
+  }
+
   function normalizeHexColor(value) {
     const text = String(value || "").trim();
     if (/^#[0-9a-f]{6}$/i.test(text)) {
@@ -2051,8 +2168,7 @@
     const state = cssEditState;
     const found = state ? findNodeById(state.nodeId) : null;
     if (found && found.node) {
-      found.node.props = normalizedPropsFor(found.node.type, found.node.props);
-      found.node.props[state.propertyName] = document.getElementById("lbCssColorText").value.trim();
+      setNodeProp(found.node, state.propertyName, document.getElementById("lbCssColorText").value.trim());
       activeId = found.node.id;
       renderPreview();
       setStatus("Updated " + (CSS_LABELS[state.propertyName] || state.propertyName));
@@ -2067,8 +2183,7 @@
     if (found && found.node) {
       const number = Number(document.getElementById("lbCssLengthNumber").value) || 0;
       const unit = document.getElementById("lbCssLengthUnit").value || "px";
-      found.node.props = normalizedPropsFor(found.node.type, found.node.props);
-      found.node.props[state.propertyName] = String(Number(number.toFixed(3))) + unit;
+      setNodeProp(found.node, state.propertyName, String(Number(number.toFixed(3))) + unit);
       activeId = found.node.id;
       renderPreview();
       setStatus("Updated " + (CSS_LABELS[state.propertyName] || state.propertyName));
@@ -2506,11 +2621,11 @@
     const value = formatLengthValue(size, item.unitInfo);
     item.node.props = normalizedPropsFor(item.node.type, item.node.props);
     const controlsParentFlow = item.parent && layoutFlowAxis(item.parent) === axis.name;
-    item.node.props[axis.size] = DEFAULT_LAYOUT_VALUE;
-    item.node.props[axis.min] = value;
-    item.node.props[axis.max] = value;
+    setNodeProp(item.node, axis.size, DEFAULT_LAYOUT_VALUE);
+    setNodeProp(item.node, axis.min, value);
+    setNodeProp(item.node, axis.max, value);
     if (controlsParentFlow) {
-      item.node.props.flex = "0 0 " + value;
+      setNodeProp(item.node, "flex", "0 0 " + value);
     }
     clearAxisOffset(item.node, item.element, axis);
     if (item.element) {
@@ -2760,6 +2875,48 @@
     setStatus("Saved editor changes");
   }
 
+  function setPropertyFieldEnabled(id, enabled) {
+    const field = document.getElementById(id);
+    if (field) {
+      field.disabled = !enabled;
+    }
+  }
+
+  function configurePropertyDialogForNode(node) {
+    const found = findNodeById(node ? node.id : "");
+    const rootOnly = isRestrictedRootPropertiesNode(node, found ? found.parent : null);
+    const editableForRoot = new Set([
+      "lbPropMinWidth",
+      "lbPropMinHeight",
+      "lbPropMaxWidth",
+      "lbPropMaxHeight",
+      "lbPropWrap"
+    ]);
+    [
+      "lbPropType",
+      "lbPropName",
+      "lbPropWidth",
+      "lbPropHeight",
+      "lbPropFlex",
+      "lbPropGap",
+      "lbPropMinWidth",
+      "lbPropMinHeight",
+      "lbPropMaxWidth",
+      "lbPropMaxHeight",
+      "lbPropMinColWidth",
+      "lbPropWrap"
+    ].forEach((id) => {
+      setPropertyFieldEnabled(id, !rootOnly || editableForRoot.has(id));
+    });
+  }
+
+  function isRestrictedRootPropertiesNode(node, parent) {
+    const userRoot = firstUserRoot();
+    return isBuilderRoot(node) ||
+      Boolean(node && node.type === "q-layout" &&
+        ((!parent || isBuilderRoot(parent)) || (userRoot && userRoot.id === node.id)));
+  }
+
   function replaceNode(oldNode, newNode) {
     const found = findNodeById(oldNode.id);
     if (!found || isBuilderRoot(found.node)) {
@@ -2791,12 +2948,11 @@
   function openProperties() {
     const found = currentTarget();
     const node = found.node || root;
-    if (isBuilderRoot(node)) {
-      hideMenus();
-      setStatus("The builder root has no editable properties");
-      return;
+    if (isLayoutType(node.type)) {
+      applyRenderedMinimums(node);
     }
     node.props = normalizedPropsFor(node.type, node.props);
+    configurePropertyDialogForNode(node);
     document.getElementById("lbPropType").value = node.type === "qhtml" ? "q-layout" : node.type;
     document.getElementById("lbPropName").value = node.name || "";
     document.getElementById("lbPropWidth").value = node.props.width || "";
@@ -2816,28 +2972,36 @@
   function saveProperties() {
     const found = currentTarget();
     const node = found.node || root;
-    const nextType = document.getElementById("lbPropType").value;
-    node.type = nextType;
-    node.name = document.getElementById("lbPropName").value.trim();
-    const props = Object.assign({}, node.props || {});
-    props.width = document.getElementById("lbPropWidth").value.trim();
-    props.height = document.getElementById("lbPropHeight").value.trim();
-    props.flex = document.getElementById("lbPropFlex").value.trim();
-    props.gap = document.getElementById("lbPropGap").value.trim();
-    props.minWidth = document.getElementById("lbPropMinWidth").value.trim();
-    props.minHeight = document.getElementById("lbPropMinHeight").value.trim();
-    props.maxWidth = document.getElementById("lbPropMaxWidth").value.trim();
-    props.maxHeight = document.getElementById("lbPropMaxHeight").value.trim();
-    props.minColWidth = document.getElementById("lbPropMinColWidth").value.trim();
-    props.wrap = document.getElementById("lbPropWrap").value.trim();
-    delete props["min-width"];
-    delete props["min-height"];
-    delete props["max-width"];
-    delete props["max-height"];
-    delete props["min-col-width"];
-    delete props.flexWrap;
-    delete props["flex-wrap"];
-    node.props = normalizedPropsFor(nextType, props);
+    const rootOnly = isRestrictedRootPropertiesNode(node, found.parent);
+    const nextType = rootOnly ? node.type : document.getElementById("lbPropType").value;
+    if (!rootOnly) {
+      node.type = nextType;
+      node.name = document.getElementById("lbPropName").value.trim();
+    }
+    node.props = normalizedPropsFor(nextType, node.props);
+    if (!rootOnly) {
+      setNodeProp(node, "width", document.getElementById("lbPropWidth").value.trim());
+      setNodeProp(node, "height", document.getElementById("lbPropHeight").value.trim());
+      setNodeProp(node, "flex", document.getElementById("lbPropFlex").value.trim());
+      setNodeProp(node, "gap", document.getElementById("lbPropGap").value.trim());
+      setNodeProp(node, "minColWidth", document.getElementById("lbPropMinColWidth").value.trim());
+    }
+    setNodeProp(node, "minWidth", document.getElementById("lbPropMinWidth").value.trim());
+    setNodeProp(node, "minHeight", document.getElementById("lbPropMinHeight").value.trim());
+    setNodeProp(node, "maxWidth", document.getElementById("lbPropMaxWidth").value.trim());
+    setNodeProp(node, "maxHeight", document.getElementById("lbPropMaxHeight").value.trim());
+    setNodeProp(node, "wrap", document.getElementById("lbPropWrap").value.trim());
+    delete node.props["min-width"];
+    delete node.props["min-height"];
+    delete node.props["max-width"];
+    delete node.props["max-height"];
+    delete node.props["min-col-width"];
+    delete node.props.flexWrap;
+    delete node.props["flex-wrap"];
+    node.props = normalizedPropsFor(nextType, node.props);
+    if (isLayoutType(node.type)) {
+      applyRenderedMinimums(node);
+    }
     document.getElementById("lbPropertiesDialog").close();
     renderPreview();
     setStatus("Properties updated");
@@ -3055,7 +3219,7 @@
       editButton.disabled = rootTarget;
     }
     if (propertiesButton) {
-      propertiesButton.disabled = rootTarget;
+      propertiesButton.disabled = false;
     }
     if (deleteButton) {
       deleteButton.disabled = rootTarget;
@@ -3467,24 +3631,25 @@
 
   function stripPropertyLines(source) {
     return String(source || "")
-      .replace(/^\s*[A-Za-z_][\w-]*\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)\s*;?/gm, "")
+      .replace(/^\s*(?:q-property\s+)?[A-Za-z_][\w-]*\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)\s*;?/gm, "")
       .trim();
   }
 
   function parseProps(body, node) {
     const propertySource = topLevelText(body);
-    const propRe = /^\s*([A-Za-z_][\w-]*)\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)/gm;
+    const propRe = /^\s*(q-property\s+)?([A-Za-z_][\w-]*)\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)/gm;
     let match;
     while ((match = propRe.exec(propertySource))) {
-      const key = match[1];
-      let value = match[2] || "";
+      const kind = match[1] ? "q-property" : "assignment";
+      const key = match[2];
+      let value = match[3] || "";
       if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\'/g, "'");
       }
       if (key === "data-layout-id") {
         node.id = value || nextId();
       } else {
-        node.props[key] = value;
+        setNodeProp(node, key, value, kind);
       }
     }
   }

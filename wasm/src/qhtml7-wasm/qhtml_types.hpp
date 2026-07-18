@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #if defined(QHTML_QUICKJS_ENABLED)
@@ -2025,6 +2026,16 @@ private:
     }
 
 protected:
+    struct LayoutChainItem {
+        const QHTMLNode *node = nullptr;
+        int minimumSize = 0;
+        int sizeHint = 0;
+        int maximumSize = 0;
+        int stretch = 0;
+        int pos = 0;
+        int size = 0;
+    };
+
     QString layoutClass() const
     {
         if (m_direction == QStringLiteral("row")) {
@@ -2056,6 +2067,282 @@ protected:
         bool ok = false;
         const int value = assignmentValue(name).toInt(&ok);
         return ok ? value : fallback;
+    }
+
+    static QString nodeAssignmentValue(const QHTMLNode *node,
+                                       const QStringList &names,
+                                       const QString &fallback = QString())
+    {
+        if (!node) {
+            return fallback;
+        }
+        for (QHTMLNode *child : node->children()) {
+            QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child);
+            if (!assignment) {
+                continue;
+            }
+            const QString assignmentName = assignment->qhtmlName().trimmed().toLower();
+            for (const QString &name : names) {
+                if (assignmentName == name.toLower()) {
+                    return cssValue(assignment->value());
+                }
+            }
+        }
+        return fallback;
+    }
+
+    static bool parsePixelLength(QString value, int *out)
+    {
+        value = cssValue(value).trimmed();
+        if (value.endsWith(QLatin1Char(';'))) {
+            value.chop(1);
+            value = value.trimmed();
+        }
+        if (value.endsWith(QStringLiteral("px"), Qt::CaseInsensitive)) {
+            value.chop(2);
+            value = value.trimmed();
+        }
+        bool ok = false;
+        const double number = value.toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        if (out) {
+            *out = qMax(0, qRound(number));
+        }
+        return true;
+    }
+
+    static int nodeAxisMinimum(const QHTMLNode *node, bool horizontal)
+    {
+        int value = 0;
+        const QStringList names = horizontal
+            ? QStringList{QStringLiteral("minWidth"), QStringLiteral("min-width"), QStringLiteral("minimumWidth"), QStringLiteral("minimum-width")}
+            : QStringList{QStringLiteral("minHeight"), QStringLiteral("min-height"), QStringLiteral("minimumHeight"), QStringLiteral("minimum-height")};
+        return parsePixelLength(nodeAssignmentValue(node, names), &value) ? value : 0;
+    }
+
+    static int nodeAxisMaximum(const QHTMLNode *node, bool horizontal)
+    {
+        int value = std::numeric_limits<int>::max() / 4;
+        const QStringList names = horizontal
+            ? QStringList{QStringLiteral("maxWidth"), QStringLiteral("max-width"), QStringLiteral("maximumWidth"), QStringLiteral("maximum-width")}
+            : QStringList{QStringLiteral("maxHeight"), QStringLiteral("max-height"), QStringLiteral("maximumHeight"), QStringLiteral("maximum-height")};
+        return parsePixelLength(nodeAssignmentValue(node, names), &value) ? value : std::numeric_limits<int>::max() / 4;
+    }
+
+    static int nodeAxisHint(const QHTMLNode *node, bool horizontal, int minimumSize)
+    {
+        int value = minimumSize;
+        QStringList names;
+        if (horizontal) {
+            names << QStringLiteral("sizeHint") << QStringLiteral("layoutHint") << QStringLiteral("width")
+                  << QStringLiteral("basis") << QStringLiteral("flexBasis") << QStringLiteral("flex-basis");
+        } else {
+            names << QStringLiteral("sizeHint") << QStringLiteral("layoutHint") << QStringLiteral("height")
+                  << QStringLiteral("basis") << QStringLiteral("flexBasis") << QStringLiteral("flex-basis");
+        }
+        return parsePixelLength(nodeAssignmentValue(node, names), &value) ? qMax(minimumSize, value) : minimumSize;
+    }
+
+    static int nodeAxisStretch(const QHTMLNode *node)
+    {
+        bool ok = false;
+        int stretch = nodeAssignmentValue(node, {QStringLiteral("stretch"), QStringLiteral("layoutStretch")}).toInt(&ok);
+        if (ok) {
+            return qMax(0, stretch);
+        }
+
+        const QString flexGrow = nodeAssignmentValue(node, {QStringLiteral("flexGrow"), QStringLiteral("flex-grow")});
+        stretch = flexGrow.toInt(&ok);
+        if (ok) {
+            return qMax(0, stretch);
+        }
+
+        const QString flex = nodeAssignmentValue(node, {QStringLiteral("flex")}).trimmed();
+        if (!flex.isEmpty()) {
+            const QString first = flex.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts).value(0);
+            stretch = first.toInt(&ok);
+            if (ok) {
+                return qMax(0, stretch);
+            }
+        }
+
+        return 1;
+    }
+
+    static void distributeLayoutChain(QVector<LayoutChainItem> &chain, int start, int available, int spacing)
+    {
+        if (chain.isEmpty() || start < 0 || start >= chain.size()) {
+            return;
+        }
+
+        const int count = chain.size() - start;
+        const int totalSpacing = qMax(0, count - 1) * qMax(0, spacing);
+        int space = qMax(0, available - totalSpacing);
+        int minimumTotal = 0;
+        int hintTotal = 0;
+        for (int i = start; i < chain.size(); ++i) {
+            LayoutChainItem &item = chain[i];
+            item.minimumSize = qMax(0, item.minimumSize);
+            item.maximumSize = qMax(item.minimumSize, item.maximumSize);
+            item.sizeHint = qBound(item.minimumSize, item.sizeHint, item.maximumSize);
+            item.stretch = qMax(0, item.stretch);
+            item.size = item.sizeHint;
+            minimumTotal += item.minimumSize;
+            hintTotal += item.sizeHint;
+        }
+
+        if (space <= minimumTotal) {
+            for (int i = start; i < chain.size(); ++i) {
+                chain[i].size = chain[i].minimumSize;
+            }
+        } else if (space < hintTotal) {
+            int shortage = hintTotal - space;
+            while (shortage > 0) {
+                int shrinkableCount = 0;
+                for (int i = start; i < chain.size(); ++i) {
+                    if (chain[i].size > chain[i].minimumSize) {
+                        ++shrinkableCount;
+                    }
+                }
+                if (shrinkableCount == 0) {
+                    break;
+                }
+                const int share = qMax(1, qCeil(double(shortage) / double(shrinkableCount)));
+                bool changed = false;
+                for (int i = start; i < chain.size() && shortage > 0; ++i) {
+                    LayoutChainItem &item = chain[i];
+                    const int capacity = item.size - item.minimumSize;
+                    if (capacity <= 0) {
+                        continue;
+                    }
+                    const int delta = qMin(capacity, qMin(share, shortage));
+                    item.size -= delta;
+                    shortage -= delta;
+                    changed = true;
+                }
+                if (!changed) {
+                    break;
+                }
+            }
+        } else {
+            int surplus = space - hintTotal;
+            while (surplus > 0) {
+                int availableStretch = 0;
+                int expandableCount = 0;
+                for (int i = start; i < chain.size(); ++i) {
+                    if (chain[i].size < chain[i].maximumSize) {
+                        availableStretch += chain[i].stretch;
+                        ++expandableCount;
+                    }
+                }
+                if (expandableCount == 0) {
+                    break;
+                }
+                const int divisor = availableStretch > 0 ? availableStretch : expandableCount;
+                const int passSurplus = surplus;
+                bool changed = false;
+                int allocated = 0;
+                for (int i = start; i < chain.size() && surplus > 0; ++i) {
+                    LayoutChainItem &item = chain[i];
+                    if (item.size >= item.maximumSize) {
+                        continue;
+                    }
+                    const int weight = availableStretch > 0 ? item.stretch : 1;
+                    if (weight <= 0) {
+                        continue;
+                    }
+                    const int requested = qMax(1, qRound(double(passSurplus) * double(weight) / double(divisor)));
+                    const int delta = qMin(item.maximumSize - item.size, qMin(requested, surplus));
+                    item.size += delta;
+                    surplus -= delta;
+                    allocated += delta;
+                    changed = true;
+                }
+                if (!changed || allocated <= 0) {
+                    break;
+                }
+            }
+        }
+
+        int cursor = 0;
+        for (int i = start; i < chain.size(); ++i) {
+            chain[i].pos = cursor;
+            cursor += chain[i].size + qMax(0, spacing);
+        }
+    }
+
+    QVector<LayoutChainItem> computedLayoutChain() const
+    {
+        const bool horizontal = m_direction == QStringLiteral("row");
+        int available = 0;
+        const QString axisValue = assignmentValue(horizontal ? QStringLiteral("width") : QStringLiteral("height"));
+        if (!parsePixelLength(axisValue, &available) || available <= 0) {
+            return {};
+        }
+
+        int spacing = 0;
+        parsePixelLength(assignmentValue(QStringLiteral("gap")), &spacing);
+
+        QVector<LayoutChainItem> chain;
+        for (QHTMLNode *child : children()) {
+            if (!child || isRuntimeLayoutChild(child)) {
+                continue;
+            }
+            LayoutChainItem item;
+            item.node = child;
+            item.minimumSize = nodeAxisMinimum(child, horizontal);
+            item.maximumSize = nodeAxisMaximum(child, horizontal);
+            item.sizeHint = nodeAxisHint(child, horizontal, item.minimumSize);
+            item.stretch = nodeAxisStretch(child);
+            chain.append(item);
+        }
+
+        distributeLayoutChain(chain, 0, available, spacing);
+        return chain;
+    }
+
+    QString computedItemStyleForChild(const QHTMLNode *child) const
+    {
+        if (!child) {
+            return QString();
+        }
+        const QVector<LayoutChainItem> chain = computedLayoutChain();
+        if (chain.isEmpty()) {
+            return QString();
+        }
+        const bool horizontal = m_direction == QStringLiteral("row");
+        for (const LayoutChainItem &item : chain) {
+            if (item.node != child) {
+                continue;
+            }
+            QStringList declarations;
+            declarations << QStringLiteral("--qhtml-layout-pos:") + QString::number(item.pos) + QStringLiteral("px");
+            declarations << QStringLiteral("--qhtml-layout-size:") + QString::number(item.size) + QStringLiteral("px");
+            declarations << QStringLiteral("flex:0 0 ") + QString::number(item.size) + QStringLiteral("px");
+            if (horizontal) {
+                declarations << QStringLiteral("width:") + QString::number(item.size) + QStringLiteral("px");
+                declarations << QStringLiteral("min-width:") + QString::number(item.minimumSize) + QStringLiteral("px");
+                if (item.maximumSize < std::numeric_limits<int>::max() / 8) {
+                    declarations << QStringLiteral("max-width:") + QString::number(item.maximumSize) + QStringLiteral("px");
+                }
+            } else {
+                declarations << QStringLiteral("height:") + QString::number(item.size) + QStringLiteral("px");
+                declarations << QStringLiteral("min-height:") + QString::number(item.minimumSize) + QStringLiteral("px");
+                if (item.maximumSize < std::numeric_limits<int>::max() / 8) {
+                    declarations << QStringLiteral("max-height:") + QString::number(item.maximumSize) + QStringLiteral("px");
+                }
+            }
+            return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
+        }
+        return QString();
+    }
+
+    QString parentComputedItemStyle() const
+    {
+        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(parent());
+        return layoutParent ? layoutParent->computedItemStyleForChild(this) : QString();
     }
 
     QString layoutStyle() const
@@ -2095,6 +2382,10 @@ protected:
         appendOptionalDeclaration(declarations, QStringLiteral("padding"));
         appendOptionalDeclaration(declarations, QStringLiteral("margin"));
         appendCssShortcutDeclarations(declarations);
+        const QString computedStyle = parentComputedItemStyle();
+        if (!computedStyle.isEmpty()) {
+            declarations << computedStyle;
+        }
         return declarations.join(QStringLiteral(";")) + QStringLiteral(";");
     }
 
@@ -2274,16 +2565,18 @@ protected:
         return QStringLiteral("1 1 0");
     }
 
-    QString itemStyle() const
+    QString itemStyle(const QHTMLNode *child = nullptr) const
     {
+        const QString computedStyle = computedItemStyleForChild(child);
         if (m_direction == QStringLiteral("row")) {
             const QString minWidth = rowChildMinWidth();
             const QString basis = minWidth == QStringLiteral("max-content") ? QStringLiteral("0") : minWidth;
             return QStringLiteral("flex:1 1 ") + basis +
                    QStringLiteral(";min-width:") + minWidth +
-                   QStringLiteral(";max-width:100%;min-height:0;box-sizing:border-box;");
+                   QStringLiteral(";max-width:100%;min-height:0;box-sizing:border-box;") +
+                   computedStyle;
         }
-        return QStringLiteral("flex:1 1 0;min-width:0;min-height:0;box-sizing:border-box;");
+        return QStringLiteral("flex:1 1 0;min-width:0;min-height:0;box-sizing:border-box;") + computedStyle;
     }
 
     QString rowChildMinWidth() const
@@ -2318,7 +2611,7 @@ protected:
                 out += child->renderHtmlInContext(contextNode);
             } else {
                 out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
-                       escapeAttribute(itemStyle()) + QStringLiteral("\">") +
+                       escapeAttribute(itemStyle(child)) + QStringLiteral("\">") +
                        child->renderHtmlInContext(contextNode) +
                        QStringLiteral("</div>");
             }
@@ -2372,7 +2665,7 @@ protected:
                                          generatedColStyle());
                     if (item) {
                         out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
-                               escapeAttribute(itemStyle()) + QStringLiteral("\">") +
+                               escapeAttribute(itemStyle(item)) + QStringLiteral("\">") +
                                item->renderHtmlInContext(contextNode) +
                                QStringLiteral("</div>");
                     }
