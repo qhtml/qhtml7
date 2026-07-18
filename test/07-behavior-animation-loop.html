@@ -173,6 +173,12 @@ q-component behavior-loop-bar {
 }
 
 behavior-loop-bar loopDemo { }
+q-timer startTimer {
+  interval: 1000
+  running: true
+  ontimeout { loopDemo.barWidth = 75 }
+  repeat: false
+}
       </q-html>
     </section>
   </main>

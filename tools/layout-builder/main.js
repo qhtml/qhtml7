@@ -3630,9 +3630,43 @@
   }
 
   function stripPropertyLines(source) {
-    return String(source || "")
-      .replace(/^\s*(?:q-property\s+)?[A-Za-z_][\w-]*\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)\s*;?/gm, "")
-      .trim();
+    const text = String(source || "");
+    const lines = text.split("\n");
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    const out = [];
+    const propertyLineRe = /^\s*(?:q-property\s+)?[A-Za-z_][\w-]*\s*:\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s{};]+)\s*;?\s*$/;
+
+    lines.forEach((line) => {
+      const startDepth = depth;
+      if (!(startDepth === 0 && propertyLineRe.test(line))) {
+        out.push(line);
+      }
+
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (quote) {
+          if (escape) {
+            escape = false;
+          } else if (ch === "\\") {
+            escape = true;
+          } else if (ch === quote) {
+            quote = "";
+          }
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") {
+          quote = ch;
+        } else if (ch === "{") {
+          depth += 1;
+        } else if (ch === "}") {
+          depth = Math.max(0, depth - 1);
+        }
+      }
+    });
+
+    return out.join("\n").trim();
   }
 
   function parseProps(body, node) {
