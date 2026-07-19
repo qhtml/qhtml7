@@ -2687,6 +2687,24 @@
     };
   }
 
+  function qEditorStaticHtmlFromQHtmlHost(host) {
+    const tree = host && host.qhtmlDomTree ? host.qhtmlDomTree : null;
+    if (tree && typeof tree.toHTML === 'function') {
+      return String(tree.toHTML());
+    }
+    if (tree && typeof tree.renderHtml === 'function') {
+      return String(tree.renderHtml());
+    }
+    const qdom = host && typeof host.qdom === 'function' ? host.qdom() : host && host.qhtmlDom ? host.qhtmlDom : null;
+    if (qdom && typeof qdom.toHTML === 'function') {
+      return String(qdom.toHTML());
+    }
+    if (qdom && typeof qdom.renderHtml === 'function') {
+      return String(qdom.renderHtml());
+    }
+    return host ? String(host.innerHTML || '') : '';
+  }
+
   function renderShadowPreviewError(previewNode, error) {
     const message = String(error && error.stack ? error.stack : error);
     const root = qEditorShadowPreviewRoot(previewNode);
@@ -3682,7 +3700,7 @@
       const shouldPopulateHtml = this._activeTab === 'html';
       const shouldPopulateQDom = this._activeTab === 'qdom';
       const shouldPopulatePreview = this._activeTab === 'preview';
-      const shouldBuildAdapter = shouldPopulateHtml || shouldPopulateQDom;
+      const shouldBuildAdapter = shouldPopulateQDom;
 
       if (!shouldBuildAdapter) {
         this._adapter = null;
@@ -3690,19 +3708,27 @@
         this._qdomDecoded = '';
         this._htmlOutput = '';
         this._componentNames = collectComponentNames(source);
-        globalScope.__QEDITOR_QDOM_SERIALIZED__ = this._qdomSerialized;
-        globalScope.__QEDITOR_QDOM_DECODED__ = this._qdomDecoded;
-        this.dispatchEvent(new CustomEvent('q-editor-output', { bubbles: true, composed: true }));
-        this._refreshQhtmlHighlight();
-        this._syncQhtmlScroll();
+        let htmlRaw = '';
+        let renderError = null;
+
         if (this._previewNode) {
-          if (shouldPopulatePreview) {
+          if (shouldPopulatePreview || shouldPopulateHtml) {
             try {
-              await qEditorEnsurePreviewRuntime();
+              const mounted = await mountShadowQHtmlPreview(this._previewNode, runtimeSource);
               if (version !== this._renderVersion) return;
-              this._generateSimplePreview(runtimeSource);
+              this._previewQHtmlNode = mounted.host;
+              this._previewMountBinding = mounted.mountBinding || null;
+              if (mounted.qdom) {
+                this._attachPreviewQScriptRules(mounted.qdom);
+              }
+              if (shouldPopulateHtml) {
+                htmlRaw = qEditorStaticHtmlFromQHtmlHost(mounted.host);
+              }
             } catch (error) {
-              renderShadowPreviewError(this._previewNode, error);
+              renderError = error;
+              if (shouldPopulatePreview) {
+                renderShadowPreviewError(this._previewNode, error);
+              }
             }
           } else {
             this._detachPreviewListeners();
@@ -3710,6 +3736,23 @@
             this._previewNode.innerHTML = '';
           }
         }
+
+        if (shouldPopulateHtml) {
+          this._htmlOutput = renderError ? '' : formatHtmlOutput(htmlRaw);
+          if (this._htmlNode) {
+            if (renderError) {
+              this._htmlNode.innerHTML = '<span class="qe-tok-comment">' + escapeHtml('QHTML render error:\n' + String(renderError && renderError.stack ? renderError.stack : renderError)) + '</span>';
+            } else {
+              this._htmlNode.innerHTML = highlightHtmlCode(this._htmlOutput, this._componentNames);
+            }
+          }
+        }
+
+        globalScope.__QEDITOR_QDOM_SERIALIZED__ = this._qdomSerialized;
+        globalScope.__QEDITOR_QDOM_DECODED__ = this._qdomDecoded;
+        this.dispatchEvent(new CustomEvent('q-editor-output', { bubbles: true, composed: true }));
+        this._refreshQhtmlHighlight();
+        this._syncQhtmlScroll();
         return;
       }
 

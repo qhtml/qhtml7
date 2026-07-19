@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>QHTML7 Social Media Example</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="../dist/qhtml.js"></script>
+  </head>
+  <body>
+    <q-html version="7">
+q-style socialPageStyle {
+  display: block
+  width: 100%
+  min-height: 100vh
+  box-sizing: border-box
+  padding: 96px 18px 0
+  background: #eef2f7
+  color: #1f2937
+  font-family: Arial, Helvetica, sans-serif
+}
+
+q-style topbarStyle {
+  position: fixed
+  top: 0
+  left: 0
+  right: 0
+  z-index: 20
+  min-height: 52px
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 10px
+  box-sizing: border-box
+  padding: 0 18px
+  background: #314653
+  color: #ffffff
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18)
+}
+
+q-style navGroupStyle {
+  display: flex
+  align-items: center
+  gap: 4px
+}
+
+q-style navItemStyle {
+  min-height: 52px
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  gap: 8px
+  box-sizing: border-box
+  padding: 0 16px
+  color: #ffffff
+  text-decoration: none
+  cursor: pointer
+}
+
+q-style navBrandStyle {
+  background: #22313a
+  font-weight: 800
+}
+
+q-style navBadgeStyle {
+  display: inline-grid
+  place-items: center
+  min-width: 22px
+  height: 22px
+  border-radius: 999px
+  background: #16a34a
+  color: #ffffff
+  font-size: 12px
+  font-weight: 800
+}
+
+q-style navAvatarStyle {
+  display: inline-block
+  width: 28px
+  height: 28px
+  border-radius: 999px
+  overflow: hidden
+}
+
+q-style mobileMenuStyle {
+  display: none
+  position: fixed
+  top: 52px
+  left: 0
+  right: 0
+  z-index: 19
+  background: #314653
+  color: #ffffff
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18)
+}
+
+q-style mobileLinkStyle {
+  display: block
+  box-sizing: border-box
+  padding: 14px 18px
+  color: #ffffff
+  text-decoration: none
+  border-top: 1px solid rgba(255, 255, 255, 0.12)
+}
+
+q-style pageShellStyle {
+  display: block
+  width: 100%
+  max-width: 1400px
+  margin: 0 auto
+}
+
+q-style contentGridStyle {
+  width: 100%
+  display: grid
+  grid-template-columns: minmax(230px, 0.85fr) minmax(320px, 2fr) minmax(210px, 0.7fr)
+  gap: 22px
+  align-items: start
+}
+
+q-style columnStackStyle {
+  display: grid
+  gap: 18px
+  align-items: start
+}
+
+q-style cardStyle {
+  display: block
+  box-sizing: border-box
+  padding: 18px
+  background: #ffffff
+  border: 1px solid rgba(148, 163, 184, 0.24)
+  border-radius: 8px
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08)
+}
+
+q-style compactCardStyle {
+  display: block
+  box-sizing: border-box
+  padding: 14px
+  background: #ffffff
+  border: 1px solid rgba(148, 163, 184, 0.24)
+  border-radius: 8px
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07)
+}
+
+q-style centeredStyle {
+  text-align: center
+}
+
+q-style titleStyle {
+  display: block
+  margin: 0
+  color: #111827
+  font-size: 20px
+  font-weight: 800
+}
+
+q-style subTitleStyle {
+  display: block
+  margin: 0
+  color: #475569
+  font-size: 14px
+  line-height: 1.5
+}
+
+q-style metaStyle {
+  display: block
+  color: #64748b
+  font-size: 13px
+}
+
+q-style avatarLargeStyle {
+  display: inline-block
+  width: 106px
+  height: 106px
+  border-radius: 999px
+  overflow: hidden
+}
+
+q-style avatarPostStyle {
+  display: inline-block
+  width: 60px
+  height: 60px
+  border-radius: 999px
+  overflow: hidden
+}
+
+q-style profileLineStyle {
+  display: block
+  margin: 10px 0
+  color: #334155
+  line-height: 1.45
+}
+
+q-style dividerStyle {
+  display: block
+  height: 1px
+  border: 0
+  background: #e2e8f0
+  margin: 16px 0
+}
+
+q-style stackButtonStyle {
+  width: 100%
+  min-height: 42px
+  display: flex
+  align-items: center
+  justify-content: flex-start
+  gap: 10px
+  box-sizing: border-box
+  padding: 0 14px
+  border: 0
+  background: #516b7a
+  color: #ffffff
+  font-weight: 800
+  cursor: pointer
+}
+
+q-style hiddenPanelStyle {
+  display: none
+  box-sizing: border-box
+  padding: 14px
+  background: #f8fafc
+  color: #334155
+}
+
+q-style photoGridStyle {
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: 10px
+}
+
+q-style fluidImageStyle {
+  width: 100%
+  display: block
+  border-radius: 6px
+  overflow: hidden
+}
+
+q-style imageBaseStyle {
+  width: 100%
+  height: 100%
+  display: block
+  object-fit: cover
+}
+
+q-style tagWrapStyle {
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+}
+
+q-style tagStyle {
+  display: inline-flex
+  align-items: center
+  min-height: 24px
+  padding: 0 9px
+  background: #dbeafe
+  color: #1e3a8a
+  border-radius: 999px
+  font-size: 12px
+  font-weight: 800
+}
+
+q-style alertStyle {
+  position: relative
+  display: block
+  box-sizing: border-box
+  padding: 18px 44px 18px 18px
+  background: #d9e7ee
+  border: 1px solid #b8ccd7
+  border-radius: 8px
+  color: #2f4858
+}
+
+q-style closeButtonStyle {
+  position: absolute
+  top: 0
+  right: 0
+  width: 38px
+  height: 38px
+  border: 0
+  background: #c2d5df
+  color: #263b47
+  cursor: pointer
+}
+
+q-style composerStyle {
+  display: grid
+  gap: 12px
+}
+
+q-style editorBoxStyle {
+  min-height: 46px
+  box-sizing: border-box
+  padding: 12px
+  border: 1px solid #cbd5e1
+  background: #ffffff
+  color: #334155
+}
+
+q-style primaryButtonStyle {
+  min-height: 39px
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  gap: 8px
+  box-sizing: border-box
+  padding: 0 15px
+  border: 0
+  background: #4f6978
+  color: #ffffff
+  font-weight: 800
+  cursor: pointer
+}
+
+q-style secondaryButtonStyle {
+  min-height: 39px
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  gap: 8px
+  box-sizing: border-box
+  padding: 0 15px
+  border: 0
+  background: #3f5664
+  color: #ffffff
+  font-weight: 800
+  cursor: pointer
+}
+
+q-style postHeaderStyle {
+  display: grid
+  grid-template-columns: 72px 1fr auto
+  align-items: center
+  gap: 0
+}
+
+q-style postActionsStyle {
+  display: flex
+  flex-wrap: wrap
+  gap: 10px
+  margin-top: 12px
+}
+
+q-style twoImageGridStyle {
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: 12px
+  margin: 0 -4px 12px
+}
+
+q-style sideImageStyle {
+  display: block
+  width: 100%
+  max-height: 170px
+  border-radius: 6px
+  overflow: hidden
+}
+
+q-style fullImageStyle {
+  display: block
+  width: 100%
+  max-height: 330px
+  border-radius: 6px
+  margin-bottom: 12px
+  overflow: hidden
+}
+
+q-style fullButtonStyle {
+  width: 100%
+}
+
+q-style requestGridStyle {
+  display: grid
+  grid-template-columns: 1fr 1fr
+  gap: 0
+  opacity: 0.86
+}
+
+q-style acceptButtonStyle {
+  width: 100%
+  min-height: 38px
+  border: 0
+  background: #22c55e
+  color: #ffffff
+  cursor: pointer
+}
+
+q-style declineButtonStyle {
+  width: 100%
+  min-height: 38px
+  border: 0
+  background: #ef4444
+  color: #ffffff
+  cursor: pointer
+}
+
+q-style footerOneStyle {
+  display: block
+  box-sizing: border-box
+  padding: 18px
+  background: #3f5664
+  color: #ffffff
+}
+
+q-style footerTwoStyle {
+  display: block
+  box-sizing: border-box
+  padding: 12px 18px
+  background: #22313a
+  color: #ffffff
+}
+
+q-theme socialTheme {
+  social-page { socialPageStyle }
+  social-topbar { topbarStyle }
+  social-nav-group { navGroupStyle }
+  social-nav-item { navItemStyle }
+  social-nav-brand { navBrandStyle navItemStyle }
+  social-nav-badge { navBadgeStyle }
+  social-mobile-menu { mobileMenuStyle }
+  social-mobile-link { mobileLinkStyle }
+  social-shell { pageShellStyle }
+  social-grid { contentGridStyle }
+  social-column { columnStackStyle }
+  social-card { cardStyle }
+  social-compact-card { compactCardStyle }
+  social-center { centeredStyle }
+  social-title { titleStyle }
+  social-subtitle { subTitleStyle }
+  social-meta { metaStyle }
+  social-profile-line { profileLineStyle }
+  social-divider { dividerStyle }
+  social-stack-button { stackButtonStyle }
+  social-hidden-panel { hiddenPanelStyle }
+  social-photo-grid { photoGridStyle }
+  social-tag-wrap { tagWrapStyle }
+  social-tag { tagStyle }
+  social-alert { alertStyle }
+  social-close-button { closeButtonStyle }
+  social-composer { composerStyle }
+  social-editor-box { editorBoxStyle }
+  social-primary-button { primaryButtonStyle }
+  social-secondary-button { secondaryButtonStyle }
+  social-post-header { postHeaderStyle }
+  social-post-actions { postActionsStyle }
+  social-two-image-grid { twoImageGridStyle }
+  social-request-grid { requestGridStyle }
+  social-accept-button { acceptButtonStyle }
+  social-decline-button { declineButtonStyle }
+  social-footer-one { footerOneStyle }
+  social-footer-two { footerTwoStyle }
+  social-nav-avatar { navAvatarStyle }
+  social-avatar-large { avatarLargeStyle }
+  social-avatar-post { avatarPostStyle }
+  social-fluid-image { fluidImageStyle }
+  social-side-image { sideImageStyle }
+  social-full-image { fullImageStyle }
+  social-full-button { fullButtonStyle primaryButtonStyle }
+  img { imageBaseStyle }
+}
+
+socialTheme {
+  social-page {
+    social-topbar {
+      social-nav-group {
+        social-nav-brand {
+          text { Home }
+        }
+        social-nav-item { text { News } }
+        social-nav-item { text { Account } }
+        social-nav-item { text { Messages } }
+        social-nav-item {
+          text { Notifications }
+          social-nav-badge { text { 3 } }
+        }
+      }
+      social-nav-group {
+        social-nav-item {
+          onclick {
+            var menu = document.getElementById("social-mobile-menu");
+            menu.style.display = menu.style.display === "block" ? "none" : "block";
+          }
+          text { Menu }
+        }
+        social-nav-avatar {
+          img {
+            src: "https://www.w3schools.com/w3images/avatar2.png"
+            alt: "Avatar"
+          }
+        }
+      }
+    }
+
+    social-mobile-menu {
+      id: "social-mobile-menu"
+      social-mobile-link { text { Link 1 } }
+      social-mobile-link { text { Link 2 } }
+      social-mobile-link { text { Link 3 } }
+      social-mobile-link { text { My Profile } }
+    }
+
+    social-shell {
+      social-grid {
+        social-column {
+          social-card {
+            social-center {
+              social-title { text { My Profile } }
+              p {
+                social-avatar-large {
+                  img {
+                    src: "https://www.w3schools.com/w3images/avatar3.png"
+                    alt: "Avatar"
+                  }
+                }
+              }
+            }
+            social-divider { }
+            social-profile-line { text { Designer, UI } }
+            social-profile-line { text { London, UK } }
+            social-profile-line { text { April 1, 1988 } }
+          }
+
+          social-compact-card {
+            social-stack-button {
+              onclick {
+                var panel = document.getElementById("social-groups");
+                panel.style.display = panel.style.display === "block" ? "none" : "block";
+              }
+              text { My Groups }
+            }
+            social-hidden-panel {
+              id: "social-groups"
+              p { text { Some text.. } }
+            }
+            social-stack-button {
+              onclick {
+                var panel = document.getElementById("social-events");
+                panel.style.display = panel.style.display === "block" ? "none" : "block";
+              }
+              text { My Events }
+            }
+            social-hidden-panel {
+              id: "social-events"
+              p { text { Some other text.. } }
+            }
+            social-stack-button {
+              onclick {
+                var panel = document.getElementById("social-photos");
+                panel.style.display = panel.style.display === "block" ? "none" : "block";
+              }
+              text { My Photos }
+            }
+            social-hidden-panel {
+              id: "social-photos"
+              social-photo-grid {
+                social-fluid-image {
+                  img {
+                    src: "https://www.w3schools.com/w3images/lights.jpg"
+                    alt: "Lights"
+                  }
+                }
+                social-fluid-image {
+                  img {
+                    src: "https://www.w3schools.com/w3images/nature.jpg"
+                    alt: "Nature"
+                  }
+                }
+                social-fluid-image {
+                  img {
+                    src: "https://www.w3schools.com/w3images/mountains.jpg"
+                    alt: "Mountains"
+                  }
+                }
+                social-fluid-image {
+                  img {
+                    src: "https://www.w3schools.com/w3images/forest.jpg"
+                    alt: "Forest"
+                  }
+                }
+                social-fluid-image {
+                  img {
+                    src: "https://www.w3schools.com/w3images/nature.jpg"
+                    alt: "Nature"
+                  }
+                }
+                social-fluid-image {
+                  img {
+                    src: "https://www.w3schools.com/w3images/snow.jpg"
+                    alt: "Snow"
+                  }
+                }
+              }
+            }
+          }
+
+          social-card {
+            social-subtitle { text { Interests } }
+            social-tag-wrap {
+              social-tag { text { News } }
+              social-tag { text { QHTML } }
+              social-tag { text { Labels } }
+              social-tag { text { Games } }
+              social-tag { text { Friends } }
+              social-tag { text { Food } }
+              social-tag { text { Design } }
+              social-tag { text { Art } }
+              social-tag { text { Photos } }
+            }
+          }
+
+          social-alert {
+            id: "social-profile-alert"
+            social-close-button {
+              onclick {
+                document.getElementById("social-profile-alert").style.display = "none";
+              }
+              text { x }
+            }
+            p { text { Hey! } }
+            p { text { People are looking at your profile. Find out who. } }
+          }
+        }
+
+        social-column {
+          social-card {
+            social-composer {
+              social-meta { text { Social Media template rebuilt in QHTML7 } }
+              social-editor-box {
+                contenteditable: "true"
+                text { Status: Feeling Blue }
+              }
+              social-primary-button {
+                text { Post }
+              }
+            }
+          }
+
+          social-card {
+            social-post-header {
+              social-avatar-post {
+                img {
+                  src: "https://www.w3schools.com/w3images/avatar2.png"
+                  alt: "Avatar"
+                }
+              }
+              social-title { text { John Doe } }
+              social-meta { text { 1 min } }
+            }
+            social-divider { }
+            p {
+              text { Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. }
+            }
+            social-two-image-grid {
+              social-side-image {
+                img {
+                  src: "https://www.w3schools.com/w3images/lights.jpg"
+                  alt: "Northern Lights"
+                }
+              }
+              social-side-image {
+                img {
+                  src: "https://www.w3schools.com/w3images/nature.jpg"
+                  alt: "Nature"
+                }
+              }
+            }
+            social-post-actions {
+              social-primary-button { text { Like } }
+              social-secondary-button { text { Comment } }
+            }
+          }
+
+          social-card {
+            social-post-header {
+              social-avatar-post {
+                img {
+                  src: "https://www.w3schools.com/w3images/avatar5.png"
+                  alt: "Avatar"
+                }
+              }
+              social-title { text { Jane Doe } }
+              social-meta { text { 16 min } }
+            }
+            social-divider { }
+            p {
+              text { Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. }
+            }
+            social-post-actions {
+              social-primary-button { text { Like } }
+              social-secondary-button { text { Comment } }
+            }
+          }
+
+          social-card {
+            social-post-header {
+              social-avatar-post {
+                img {
+                  src: "https://www.w3schools.com/w3images/avatar6.png"
+                  alt: "Avatar"
+                }
+              }
+              social-title { text { Angie Jane } }
+              social-meta { text { 32 min } }
+            }
+            social-divider { }
+            p { text { Have you seen this? } }
+            social-full-image {
+              img {
+                src: "https://www.w3schools.com/w3images/nature.jpg"
+                alt: "Nature"
+              }
+            }
+            p {
+              text { Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. }
+            }
+            social-post-actions {
+              social-primary-button { text { Like } }
+              social-secondary-button { text { Comment } }
+            }
+          }
+        }
+
+        social-column {
+          social-card {
+            social-center {
+              social-subtitle { text { Upcoming Events } }
+              social-fluid-image {
+                img {
+                  src: "https://www.w3schools.com/w3images/forest.jpg"
+                  alt: "Forest"
+                }
+              }
+              p { text { Holiday } }
+              p { text { Friday 15:00 } }
+              social-full-button { text { Info } }
+            }
+          }
+
+          social-card {
+            social-center {
+              social-subtitle { text { Friend Request } }
+              social-avatar-large {
+                img {
+                  src: "https://www.w3schools.com/w3images/avatar6.png"
+                  alt: "Avatar"
+                }
+              }
+              p { text { Jane Doe } }
+              social-request-grid {
+                social-accept-button { text { Accept } }
+                social-decline-button { text { Decline } }
+              }
+            }
+          }
+
+          social-compact-card {
+            social-center {
+              p { text { ADS } }
+            }
+          }
+
+          social-compact-card {
+            social-center {
+              p { text { More } }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  social-footer-one {
+    h5 { text { Footer } }
+  }
+
+  social-footer-two {
+    p {
+      text { Made with QHTML7 }
+    }
+  }
+}
+    </q-html>
+  </body>
+</html>

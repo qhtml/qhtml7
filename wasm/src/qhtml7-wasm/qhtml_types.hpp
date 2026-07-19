@@ -203,6 +203,8 @@ class QHTMLParticleEmitter;
 class QHTMLLogger;
 class QHTMLNode;
 class QHTMLJavaScriptRuntime;
+struct QHTMLWebExportOptions;
+struct QHTMLWebBundle;
 
 inline void qhtmlBindLoggerToNode(QHTMLLogger *logger, QHTMLNode *node);
 inline QString qhtmlInterpolateTextForContext(QString value, const QHTMLNode *contextNode);
@@ -399,6 +401,18 @@ public:
     }
 
     QStringList keys() const { return m_references.keys(); }
+    QStringList visibleKeys() const
+    {
+        QStringList out = m_references.keys();
+        if (m_parentContext) {
+            for (const QString &key : m_parentContext->visibleKeys()) {
+                if (!out.contains(key)) {
+                    out.append(key);
+                }
+            }
+        }
+        return out;
+    }
     int size() const { return m_references.size(); }
 
 private:
@@ -683,6 +697,19 @@ public:
         return qhtmlContext ? qhtmlContext->resolveTypeJs(key) : std::string();
     }
 
+    emscripten::val contextKeysJs() const
+    {
+        emscripten::val out = emscripten::val::array();
+        if (!qhtmlContext) {
+            return out;
+        }
+        const QStringList keys = qhtmlContext->visibleKeys();
+        for (int i = 0; i < keys.size(); ++i) {
+            out.set(i, keys.at(i).toStdString());
+        }
+        return out;
+    }
+
     virtual void runtime()
     {
         for (QHTMLNode *child : children()) {
@@ -727,6 +754,8 @@ public:
     int fromQHTMLJs(const std::string &source) { return fromQHTML(QString::fromStdString(source)); }
 
     QString toHTML() const;
+    QString toHTML(const QHTMLWebExportOptions &options) const;
+    QHTMLWebBundle toWebBundle(const QHTMLWebExportOptions &options) const;
     std::string toHTMLJs() const { return toHTML().toStdString(); }
 
     QJsonValue toJsonValue() const;
@@ -2785,6 +2814,8 @@ protected:
                type == QStringLiteral("QHTMLEventHandler") ||
                type == QStringLiteral("QHTMLConnect") ||
                type == QStringLiteral("QHTMLStyle") ||
+               type == QStringLiteral("QHTMLTransition") ||
+               type == QStringLiteral("QHTMLTransitionApplication") ||
                type == QStringLiteral("QHTMLTheme") ||
                type == QStringLiteral("QHTMLScript") ||
                type == QStringLiteral("QHTMLWorker") ||
@@ -3434,6 +3465,10 @@ private:
             out += renderChildrenWithSlots(node, context);
             out += QStringLiteral("</q-style-application>");
             return out;
+        }
+
+        if (node->qhtmlType() == QStringLiteral("QHTMLTransitionApplication")) {
+            return QString();
         }
 
         if (node->qhtmlType() == QStringLiteral("QHTMLThemeApplication")) {
@@ -6198,7 +6233,7 @@ public:
     QString renderHtml() const override { return QString(); }
     QString sourceQHTML(int indentLevel = 0) const override
     {
-        QString header = propagate() ? QStringLiteral("propagate ") + m_eventName : m_eventName;
+        QString header = propagate() ? QStringLiteral("propagate on") + m_eventName : QStringLiteral("on") + m_eventName;
         if (!parameterList().isEmpty()) {
             header += QStringLiteral("(") + parameterList() + QStringLiteral(")");
         }
@@ -6416,6 +6451,8 @@ private:
                type == QStringLiteral("QHTMLSignal") ||
                type == QStringLiteral("QHTMLFunction") ||
                type == QStringLiteral("QHTMLStyle") ||
+               type == QStringLiteral("QHTMLTransition") ||
+               type == QStringLiteral("QHTMLTransitionApplication") ||
                type == QStringLiteral("QHTMLScript") ||
                type == QStringLiteral("QHTMLWorker");
     }
@@ -7454,7 +7491,7 @@ public:
         setProperty(QStringLiteral("kind"), QStringLiteral("property-animation"));
         m_startedSignal = appendBuiltInSignal(QStringLiteral("started"));
         m_stoppedSignal = appendBuiltInSignal(QStringLiteral("stopped"));
-        m_steppedSignal = appendBuiltInSignal(QStringLiteral("stepped"), QStringLiteral("stepNum, value"));
+        m_steppedSignal = appendBuiltInSignal(QStringLiteral("stepped"), QStringLiteral("value, currentStep"));
         m_endedSignal = appendBuiltInSignal(QStringLiteral("ended"));
         m_finishedSignal = appendBuiltInSignal(QStringLiteral("finished"));
     }
@@ -7576,8 +7613,8 @@ public:
             ++m_currentStep;
             if (m_steppedSignal) {
                 emitted += m_steppedSignal->emitSignal({
-                    QString::number(m_currentStep),
-                    QString::number(x, 'g', 16)
+                    QString::number(x, 'g', 16),
+                    QString::number(m_currentStep)
                 }, this);
             }
         }
@@ -8086,6 +8123,137 @@ public:
 
 private:
     QString m_body;
+};
+
+class QHTMLTransition final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLTransition(const QString &name = QString(),
+                             const QHash<QString, QString> &attributes = {},
+                             const QString &body = QString())
+        : QHTMLTypedNode(QStringLiteral("q-transition"), name, attributes),
+          m_body(body.trimmed())
+    {
+        setQHTMLType(QStringLiteral("QHTMLTransition"));
+        setProperty(QStringLiteral("kind"), QStringLiteral("transition"));
+    }
+
+    QString body() const { return m_body; }
+    std::string bodyJs() const { return m_body.toStdString(); }
+    void setBody(const QString &body) { m_body = body.trimmed(); }
+    void setBodyJs(const std::string &body) { setBody(QString::fromStdString(body)); }
+
+    QString field(const QString &fieldName, const QString &fallback = QString()) const
+    {
+        QRegularExpression rx(QStringLiteral("(^|[\\s;])") +
+                                  QRegularExpression::escape(fieldName) +
+                                  QStringLiteral("\\s*(?::|\\{)\\s*([^};]+)\\s*\\}?"),
+                              QRegularExpression::DotMatchesEverythingOption);
+        const QRegularExpressionMatch match = rx.match(m_body);
+        if (!match.hasMatch()) {
+            return fallback;
+        }
+        return match.captured(2).trimmed();
+    }
+
+    std::string fieldJs(const std::string &fieldName, const std::string &fallback = std::string()) const
+    {
+        return field(QString::fromStdString(fieldName), QString::fromStdString(fallback)).toStdString();
+    }
+
+    QString property() const { return field(QStringLiteral("property")); }
+    QString duration() const { return field(QStringLiteral("duration"), QStringLiteral("0")); }
+    QString timing() const { return field(QStringLiteral("timing"), QStringLiteral("ease")); }
+    QString delay() const { return field(QStringLiteral("delay"), QStringLiteral("0")); }
+
+    std::string propertyJs() const { return property().toStdString(); }
+    std::string durationJs() const { return duration().toStdString(); }
+    std::string timingJs() const { return timing().toStdString(); }
+    std::string delayJs() const { return delay().toStdString(); }
+
+    QString renderHtml() const override { return QString(); }
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        return sourceBlock(QStringLiteral("q-transition ") + qhtmlName(), m_body, indentLevel);
+    }
+    QHTMLTransition *cloneTransition() const { return new QHTMLTransition(qhtmlName(), attributes(), m_body); }
+
+private:
+    QString m_body;
+};
+
+class QHTMLTransitionApplication final : public QHTMLTypedNode
+{
+public:
+    explicit QHTMLTransitionApplication(QHTMLTransition *transition = nullptr)
+        : QHTMLTypedNode(QStringLiteral("q-transition-application"), transition ? transition->qhtmlName() : QString())
+    {
+        setQHTMLType(QStringLiteral("QHTMLTransitionApplication"));
+        m_transition = transition;
+        setProperty(QStringLiteral("kind"), QStringLiteral("transition-application"));
+    }
+
+    QHTMLTransition *transition() const { return m_transition; }
+    QHTMLTransition *transitionJs() const { return m_transition; }
+    QString transitionUUID() const { return m_transition ? m_transition->qhtmlUUID() : QString(); }
+    std::string transitionUUIDJs() const { return transitionUUID().toStdString(); }
+
+    QString propertyList() const
+    {
+        if (!m_propertyList.trimmed().isEmpty()) {
+            return m_propertyList.trimmed();
+        }
+        QStringList parts;
+        for (QHTMLNode *child : children()) {
+            if (!child) {
+                continue;
+            }
+            if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(child)) {
+                parts.append(text->value());
+            } else if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(child)) {
+                parts.append(html->value());
+            } else if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(child)) {
+                parts.append(unknown->value());
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                parts.append(assignment->qhtmlName());
+            } else {
+                parts.append(child->sourceQHTML(0));
+            }
+        }
+        return parts.join(QLatin1Char(' ')).trimmed();
+    }
+    std::string propertyListJs() const { return propertyList().toStdString(); }
+    void setPropertyList(const QString &propertyList) { m_propertyList = propertyList.trimmed(); }
+    void setPropertyListJs(const std::string &propertyList) { setPropertyList(QString::fromStdString(propertyList)); }
+
+    QString renderHtml() const override { return QString(); }
+    QString renderHtmlInContext(const QHTMLNode *) const override { return QString(); }
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        return sourceBlock(qhtmlName(), propertyList(), indentLevel);
+    }
+    QHTMLTransitionApplication *cloneApplication() const
+    {
+        QHTMLTransitionApplication *cloned = new QHTMLTransitionApplication(m_transition);
+        cloned->setQHTMLName(qhtmlName());
+        cloned->setPropertyList(m_propertyList);
+        for (QHTMLNode *child : children()) {
+            if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(child)) {
+                cloned->appendChild(new QHTMLTextFragment(text->value()));
+            } else if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(child)) {
+                cloned->appendChild(new QHTMLHTMLFragment(html->value()));
+            } else if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(child)) {
+                cloned->appendChild(new QHTMLUnknownFragment(unknown->value()));
+            } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(child)) {
+                cloned->appendChild(assignment->cloneAssignment());
+            }
+        }
+        return cloned;
+    }
+
+private:
+    QHTMLTransition *m_transition = nullptr;
+    QString m_propertyList;
 };
 
 class QHTMLTheme final : public QHTMLTypedNode
@@ -8646,6 +8814,8 @@ public:
     QHTMLJavaScriptRuntime *qhtmlJavaScriptRuntime = nullptr;
 
     void loadFromAST(QHTMLAstNode *astRoot);
+    void loadFromASTWithContext(QHTMLAstNode *astRoot, QHTMLNode *contextNode);
+    void loadFromASTWithContextJs(QHTMLAstNode *astRoot, QHTMLNode *contextNode) { loadFromASTWithContext(astRoot, contextNode); }
     void clear() { clearChildren(); }
     QHTMLNode *root() { return this; }
     QHTMLNode *rootJs() { return this; }
@@ -8684,11 +8854,13 @@ private:
     bool hasLocalReference(QHTMLNode *scope, const QString &name) const;
     QHTMLComponentDefinition *resolveComponentDefinition(QHTMLNode *scope, const QString &path) const;
     QHTMLStyle *resolveStyle(QHTMLNode *scope, const QString &path) const;
+    QHTMLTransition *resolveTransition(QHTMLNode *scope, const QString &path) const;
     QHTMLTheme *resolveTheme(QHTMLNode *scope, const QString &path) const;
     QHTMLNode *resolveDotPath(QHTMLNode *scope, const QString &path) const;
     QHTMLNode *componentInstanceFrom(QHTMLTypedNode *node, QHTMLComponentDefinition *definition) const;
     QHTMLNode *anonymousComponentInstanceFrom(QHTMLDomElement *node, QHTMLComponentDefinition *definition) const;
     QHTMLNode *styleApplicationFrom(QHTMLDomElement *node, QHTMLStyle *style) const;
+    QHTMLNode *transitionApplicationFrom(QHTMLNode *node, QHTMLTransition *transition) const;
     QHTMLNode *themeApplicationFrom(QHTMLDomElement *node, QHTMLTheme *theme) const;
     static void moveChildren(QHTMLNode *from, QHTMLNode *to);
 };
@@ -9015,40 +9187,6 @@ inline QString qhtmlScriptElementText(QString value)
 inline QString qhtmlBase64EncodeUtf8(const QString &value);
 inline QString qhtmlBase64DecodeUtf8(const QString &value);
 inline void qhtmlInsertBase64Body(QJsonObject &object, const QString &body);
-
-inline QString QHTMLNode::toHTML() const
-{
-    const QString rollId = qhtmlUUID().trimmed().isEmpty()
-                               ? QHTMLReference::createUUID()
-                               : qhtmlUUID();
-    const QString html = renderHtml();
-    const QString jsonPayload = qhtmlBase64EncodeUtf8(toJSONText());
-    QString out;
-    out += QStringLiteral("<div data-qhtml-rolled-root=\"") + escapeAttribute(rollId) +
-           QStringLiteral("\" style=\"display: contents;\">");
-    out += html;
-    out += QStringLiteral("\n");
-    out += QStringLiteral("<script>");
-    out += QStringLiteral("(function(script){");
-    out += QStringLiteral("var done=false;");
-    out += QStringLiteral("function run(){");
-    out += QStringLiteral("if(done)return;done=true;");
-    out += QStringLiteral("var root=script.closest('[data-qhtml-rolled-root=\"") +
-           escapeAttribute(rollId) + QStringLiteral("\"]');");
-    out += QStringLiteral("var obj=document.createElement('q-html');");
-    out += QStringLiteral("var json=new TextDecoder().decode(Uint8Array.from(atob(") +
-           qhtmlJsStringLiteral(jsonPayload) +
-           QStringLiteral("),function(ch){return ch.charCodeAt(0);}));");
-    out += QStringLiteral("obj.fromJSON(JSON.parse(json));");
-    out += QStringLiteral("root.replaceWith(obj);");
-    out += QStringLiteral("}");
-    out += QStringLiteral("document.addEventListener('QHTML7Ready',run,{once:true});");
-    out += QStringLiteral("if(window.QHTML7Ready){window.QHTML7Ready.then(run);}");
-    out += QStringLiteral("})(document.currentScript);");
-    out += QStringLiteral("</script>");
-    out += QStringLiteral("</div>");
-    return out;
-}
 
 inline QJsonObject qhtmlStringHashToJsonObject(const QHash<QString, QString> &values)
 {
@@ -9516,6 +9654,7 @@ inline bool qhtmlNodeConsumesJavaScriptBlock(const QHTMLNode *node)
            dynamic_cast<const QHTMLScriptAction *>(node) ||
            dynamic_cast<const QHTMLClass *>(node) ||
            dynamic_cast<const QHTMLStyle *>(node) ||
+           dynamic_cast<const QHTMLTransition *>(node) ||
            dynamic_cast<const QHTMLTheme *>(node) ||
            dynamic_cast<const QHTMLPainter *>(node) ||
            dynamic_cast<const QHTMLForNode *>(node) ||
@@ -9733,6 +9872,18 @@ inline QJsonObject QHTMLNode::toJsonObject() const
         object.insert(QStringLiteral("body"), style->body());
         object.insert(QStringLiteral("qhtmlCssText"), style->cssText());
         object.insert(QStringLiteral("cssText"), style->cssText());
+    } else if (const QHTMLTransition *transition = dynamic_cast<const QHTMLTransition *>(this)) {
+        object.insert(QStringLiteral("qhtmlContents"), transition->body());
+        object.insert(QStringLiteral("body"), transition->body());
+        object.insert(QStringLiteral("property"), transition->property());
+        object.insert(QStringLiteral("duration"), transition->duration());
+        object.insert(QStringLiteral("timing"), transition->timing());
+        object.insert(QStringLiteral("delay"), transition->delay());
+    } else if (const QHTMLTransitionApplication *transitionApplication = dynamic_cast<const QHTMLTransitionApplication *>(this)) {
+        object.insert(QStringLiteral("qhtmlTransitionUUID"), transitionApplication->transitionUUID());
+        object.insert(QStringLiteral("transitionUUID"), transitionApplication->transitionUUID());
+        object.insert(QStringLiteral("qhtmlProperties"), transitionApplication->propertyList());
+        object.insert(QStringLiteral("properties"), transitionApplication->propertyList());
     } else if (const QHTMLTheme *theme = dynamic_cast<const QHTMLTheme *>(this)) {
         object.insert(QStringLiteral("qhtmlContents"), theme->body());
         object.insert(QStringLiteral("body"), theme->body());
@@ -9913,6 +10064,8 @@ inline QHTMLNode *QHTMLNode::nodeFromJsonObject(const QJsonObject &object, QHTML
         node = new QHTMLScriptAction(name, attributes, body);
     } else if (type == QStringLiteral("QHTMLStyle")) {
         node = new QHTMLStyle(name, attributes, body);
+    } else if (type == QStringLiteral("QHTMLTransition")) {
+        node = new QHTMLTransition(name, attributes, body);
     } else if (type == QStringLiteral("QHTMLTheme")) {
         node = new QHTMLTheme(keyword.isEmpty() ? QStringLiteral("q-theme") : keyword, name, attributes, body);
     } else if (type == QStringLiteral("QHTMLClass")) {
@@ -9978,6 +10131,11 @@ inline QHTMLNode *QHTMLNode::nodeFromJsonObject(const QJsonObject &object, QHTML
     } else if (type == QStringLiteral("QHTMLStyleApplication")) {
         node = new QHTMLStyleApplication(nullptr);
         node->setQHTMLName(name);
+    } else if (type == QStringLiteral("QHTMLTransitionApplication")) {
+        QHTMLTransitionApplication *application = new QHTMLTransitionApplication(nullptr);
+        application->setQHTMLName(name);
+        application->setPropertyList(qhtmlFirstJsonString(object, {"qhtmlProperties", "properties"}));
+        node = application;
     } else if (type == QStringLiteral("QHTMLThemeApplication")) {
         node = new QHTMLThemeApplication(nullptr);
         node->setQHTMLName(name);
@@ -10122,6 +10280,8 @@ inline bool QHTMLNode::fromJsonObject(const QJsonObject &object)
         action->setBody(qhtmlBodyFromJsonObject(object));
     } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(this)) {
         style->setBody(qhtmlBodyFromJsonObject(object));
+    } else if (QHTMLTransition *transition = dynamic_cast<QHTMLTransition *>(this)) {
+        transition->setBody(qhtmlBodyFromJsonObject(object));
     } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(this)) {
         theme->setBody(qhtmlBodyFromJsonObject(object));
     } else if (QHTMLClass *classNode = dynamic_cast<QHTMLClass *>(this)) {

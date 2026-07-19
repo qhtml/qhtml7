@@ -295,9 +295,15 @@ button-base-03i,button {
     </section>
 
     <section>
-      <h2>10. q-transition and q-style-transition</h2>
+      <h2>10. q-transition direct applications and q-style-transition</h2>
       <q-html>
 q-transition transition-03j {
+  duration { 800 }
+  timing { ease-in-out }
+  delay { 0 }
+}
+
+q-transition legacy-transition-03j {
   property { opacity }
   duration { 800 }
   timing { ease-in-out }
@@ -305,7 +311,8 @@ q-transition transition-03j {
 }
 
 q-style transition-style-03j {
-  q-style-transition { transition-03j }
+  q-style-transition { legacy-transition-03j }
+  transition-03j { opacity }
 }
 
 q-style transition-surface-03j {
@@ -319,23 +326,38 @@ q-style transition-surface-03j {
   fontWeight: 800
 }
 
+q-component transition-component-03j {
+  transition-03j { opacity color paddingTop }
+  opacity: 1
+  color: #155e75
+  paddingTop: 8px
+
+  div#transition-component-inner-03j {
+    text { PASSED component transition target }
+  }
+}
+
 q-theme transition-theme-03j {
   .target { transition-style-03j transition-surface-03j }
 }
 
 transition-theme-03j {
   div#transition-box-03j.target {
-    text { PASSED transition target }
+    text { PASSED style transition target }
   }
 }
 
+transition-component-03j comp03j { }
+
 button {
-  text { Toggle opacity }
+  text { Toggle transitions }
   onclick {
     var box = document.querySelector("#transition-box-03j");
-    if (box) {
-      box.style.opacity = box.style.opacity === "0.25" ? "1" : "0.25";
-    }
+    var comp = document.querySelector("transition-component-03j");
+    box.style.opacity = box.style.opacity === "0.25" ? "1" : "0.25";
+    comp.opacity = comp.opacity === "0.25" ? "1" : "0.25";
+    comp.color = comp.color === "#0f766e" ? "#155e75" : "#0f766e";
+    comp.paddingTop = comp.paddingTop === "24px" ? "8px" : "24px";
   }
 }
       </q-html>

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QHTML HTML Roller</title>
+  <script src="../dist/qhtml.js"></script>
   <script src="../dist/qhtml-wasm.js"></script>
   <style>
     :root {
@@ -267,7 +268,7 @@
   <main>
     <header>
       <h1>QHTML HTML Roller</h1>
-      <p>Select a local folder, scan HTML files for <code>&lt;q-html&gt;</code> blocks, replace each block with <code>.toHTML()</code> output, and save the updated files back to disk.</p>
+      <p>Select a local folder, scan HTML files for <code>&lt;q-html&gt;</code> blocks, replace each block with <code>.toHTML()</code> output, remove unused QHTML runtime scripts, and save pure static HTML back to disk.</p>
     </header>
 
     <section class="panel">
@@ -427,12 +428,17 @@
       }
 
       async function fileHandleAtPath(path) {
-        const parts = normalizePath(path).split("/").filter(Boolean);
+        const normalized = normalizePath(path);
+        const parts = normalized.split("/").filter(Boolean);
         let directory = state.rootHandle;
-        for (let index = 0; index < parts.length - 1; index += 1) {
-          directory = await directory.getDirectoryHandle(parts[index]);
+        try {
+          for (let index = 0; index < parts.length - 1; index += 1) {
+            directory = await directory.getDirectoryHandle(parts[index]);
+          }
+          return directory.getFileHandle(parts[parts.length - 1]);
+        } catch (error) {
+          throw new Error("Missing local import file: " + normalized + " (" + (error && error.message ? error.message : String(error)) + ")");
         }
-        return directory.getFileHandle(parts[parts.length - 1]);
       }
 
       async function readTextAtPath(path) {
@@ -446,6 +452,31 @@
         const handle = await fileHandleAtPath(path);
         const file = await handle.getFile();
         return file.text();
+      }
+
+      function hasQhtmlHosts(source) {
+        return /<q-html(?:6|7)?\b/i.test(String(source || ""));
+      }
+
+      function scriptSrcFromTag(tag) {
+        const quoted = String(tag || "").match(/\bsrc\s*=\s*(["'])(.*?)\1/i);
+        if (quoted) {
+          return quoted[2];
+        }
+        const unquoted = String(tag || "").match(/\bsrc\s*=\s*([^\s>]+)/i);
+        return unquoted ? unquoted[1] : "";
+      }
+
+      function isQhtmlRuntimeScript(src) {
+        const path = String(src || "").split(/[?#]/)[0].replace(/\\/g, "/").toLowerCase();
+        return /(^|\/)(qhtml|qhtml-wasm|qhtml-element|qhtml7-wasm)\.js$/.test(path) ||
+          /(^|\/)qhtml6\/qhtml\.js$/.test(path);
+      }
+
+      function removeQhtmlRuntimeScripts(source) {
+        return String(source || "").replace(/<script\b(?=[^>]*\bsrc\s*=)[^>]*>\s*<\/script>/gi, (tag) => {
+          return isQhtmlRuntimeScript(scriptSrcFromTag(tag)) ? "" : tag;
+        });
       }
 
       async function* walkDirectory(directoryHandle, prefix) {
@@ -608,6 +639,12 @@
               declaration,
               source: await expandLocalImports(importedSource, importPath, activeImports)
             });
+          } catch (error) {
+            throw new Error(
+              declaration.kind + " {" + declaration.path + "} in " + filePath +
+              " resolved to " + importPath + ": " +
+              (error && error.message ? error.message : String(error))
+            );
           } finally {
             activeImports.delete(importPath);
           }
@@ -641,7 +678,7 @@
       }
 
       async function replaceQHtmlBlocks(source, filePath) {
-        const pattern = /<q-html\b[^>]*>([\s\S]*?)<\/q-html>/gi;
+        const pattern = /<(q-html7?)\b[^>]*>([\s\S]*?)<\/\1>/gi;
         let output = "";
         let lastIndex = 0;
         let blocks = 0;
@@ -649,11 +686,14 @@
         while (match) {
           blocks += 1;
           output += source.slice(lastIndex, match.index);
-          output += await convertQhtmlSource(match[1], filePath);
+          output += await convertQhtmlSource(match[2], filePath);
           lastIndex = match.index + match[0].length;
           match = pattern.exec(source);
         }
         output += source.slice(lastIndex);
+        if (blocks > 0 && !hasQhtmlHosts(output)) {
+          output = removeQhtmlRuntimeScripts(output);
+        }
         return { output, blocks };
       }
 
@@ -666,9 +706,9 @@
         }
         const file = await entry.handle.getFile();
         const source = await file.text();
-        if (!/<q-html\b/i.test(source)) {
+        if (!/<q-html7?\b/i.test(source)) {
           addStat("skipped", 1);
-          logRow("skipped", entry.path, "No q-html blocks");
+          logRow("skipped", entry.path, "No q-html/q-html7 blocks");
           return;
         }
         const result = await replaceQHtmlBlocks(source, entry.path);

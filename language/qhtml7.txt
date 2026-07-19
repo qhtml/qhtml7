@@ -10,7 +10,7 @@ QHTML7 specifications prompt.
 
 3a. The next step, once the source is captured will be to clear the entire inner contents of the <q-html> </q-html> element leaving just an empty element with the .qhtmlSource property and an attribute that is "ready" set to "0". Now, the CustomElement will pass the source code to the WebAssembly QHTML7 parser. There will be a base class called QHTMLASTNode() which has the functions to scan arbitrary text as public methods for different shapes which all other AST-related objects will inherit methods from. This QHTML7 parser will first create a new QHTMLAstNode(<inner contents>) which in the constructor will access the method to scan the text using AST parsing to break it down into different shapes.  QHTMLAstNode will have a member which is a typed as `QHash<int, QHTMLAstNode*>` named `astChildren`. Any shape found that is not inside of brackets matching any of the following shapes shall be instantiated as a new class which will inherit the QHTMLAstNode base class and then added in order to this 'astChildren' QHash using index-based storage.
 
-3b. The first shape to scan for will be constructs that contain this format:  `<word>[#id][.class1][.class2][,<word2>[.class2a][.class2b]][,<word3>[#id3][.class3]][,<wordN>[.classN][#idN]] { <arbitrary text> }`  This is a basic anonymous object definition.  Anytime this exact style is used, it is for creating anonymous HTML elements, and if #id is attached to it in any way (optionally), that becomes the "ID" attribute which can be used to access via `querySelector("#id")`.  THe same goes for .class1, .class2 etc if they are added (optionally) to the <word> then that becomes the class attribute so `div.class1#ok { }`  translates into an AST tag that will become an object class of QHTMLAstAnonNode(word, attributes, <arbitrary text inside of the { }>). The AST parser will have numerous classes used internally to identify different types of patterns, this is a simple one. The new QHTMLAstAnonNode class inherits from QHTMLAstNode so that when its constructed, it will automatically scan/parse any arbitrary text inside and populate its own .astChildren QHash file (inherited from base class QHTMLAstNode).  Providing a , will create  a nested object, so `div,span { }`  would create one `QHTMLAstAnonNode("div", QVariantList(), "span { }")`  which would then parse out `span { }` into another node.  Infinite commas can be applied to create deeply nested hierarchies like div,span,table,tr,td { text { hello world } } which would make  QHTMLAstAnonNode with 5 descendants. You cannot place a named component inside of a comma chain of anonymous elements, typed QHTMLAstTypeNodes must be in a separate declaration separate from any QHTMLAstAnonNode objects with their own set of { } afterwards. QHTMLAstTypeNodes follow a slightly different pattern, which will be explained next. Also if the node is html { } or text { } then it is a special case node and can be included at the end of a comma separated chain of QHTMLAnonNode entries, but cannot appear in the beginning or anywhere in the middle of such a chain. text {} and html {} must be immediately followed by a {.
+3b. The first shape to scan for will be constructs that contain this format:  `<word>[#id][.class1][.class2][,<word2>[.class2a][.class2b]][,<word3>[#id3][.class3]][,<wordN>[.classN][#idN]] { <arbitrary text> }`  This is a basic anonymous object definition.  Anytime this exact style is used, it is for creating anonymous HTML elements, and if #id is attached to it in any way (optionally), that becomes the "ID" attribute which can be used to access via `querySelector("#id")`.  THe same goes for .class1, .class2 etc if they are added (optionally) to the <word> then that becomes the class attribute so `div.class1#ok { }`  translates into an AST tag that will become an object class of QHTMLAstAnonNode(word, attributes, <arbitrary text inside of the { }>). The AST parser will have numerous classes used internally to identify different types of patterns, this is a simple one. The new QHTMLAstAnonNode class inherits from QHTMLAstNode so that when its constructed, it will automatically scan/parse any arbitrary text inside and populate its own .astChildren QHash file (inherited from base class QHTMLAstNode).  Providing a `,` (comma) will create  a nested object, so `div,span { }`  would create one `QHTMLAstAnonNode("div", QVariantList(), "span { }")`  which would then parse out `span { }` into another node.  Infinite commas can be applied to create deeply nested hierarchies like div,span,table,tr,td { text { hello world } } which would make  QHTMLAstAnonNode with 5 descendants. You cannot place a named component inside of a comma chain of anonymous elements, typed QHTMLAstTypeNodes must be in a separate declaration separate from any QHTMLAstAnonNode objects with their own set of { } afterwards. QHTMLAstTypeNodes follow a slightly different pattern, which will be explained next. Also if the node is html { } or text { } then it is a special case node and can be included at the end of a comma separated chain of QHTMLAnonNode entries, but cannot appear in the beginning or anywhere in the middle of such a chain. text {} and html {} must be immediately followed by a {.
 
 3c. The AST Parser's next pattern to look out for will be called QHTMLAstTypeNode, which will also inherit QHTMLAstNode to allow deep parsing.   This class will be also defined in the Webassembly code as a class and used internally for the AST parser just like QHTMLAstAnonNode. This typed object will follow the same rules, the only difference is that it follows this syntax :  <type-specification-keyword> <word>[#id][.class1][.class2] { <arbitrary text> }  where type-specification for now can be any individual word [a-zA-Z_\+\-]+ but not two words and cannot contain [#.*$] The constructor will be like this new QHTMLAstNamedTypeNode(<keyword>, <word>, attributes, innerText) and the object will be added to .astChildren once created. May have to use some form of type casting to store properly as QHTMLAstNode after instantiation as a different class.
 
@@ -24,7 +24,7 @@ QHTML7 specifications prompt.
 3g. We now have the basic framework where we can store any of the different QHTML types of objects into a single data structure. Once our data structure is built, we can create the QHTMLDomTree which is a class all its own which will be populated via a method .loadFromAST(<QHTMLAstNode*>) that will grab the .toQHTMLNode() on the root node, which will return the QHTMLNode object itself, which should be populated with all of the children QHTMLNode* data already. We will do a deep copy here and forget the QHTMLAstNode once the root node and descendants are copied over into the QHTMLDomTree.
 
 3h. Now that we have our QHTMLNode setup with our keywords and named references added to QHTMLNode::resolve(<arbitrary word>) which will find the object based on the .qhtmlReferences hash. This hash will have shallow reference pointers to objects which will be parented elsewhere, but their pointers shall remain valid and bound to their UUID through a series of link QHash tables throughout the QHTMLDomTree and its .qhtmlChildren. Care must be taken not to iterate over elements that have already been iterated over, for example, if there is an object defined as
-QHTMLComponentInstance myInstance = new QHTMLComponentInstance(); myInstance.qhtmlUUID = "20281-af322r";  Then when enumerating, we would skip enumeration by adding "20281-af322r" to a list of already enumerated objects. Also when setting pu the context, we want to skip anything that already exists in the context, like if "20281-af322r" matches a QHTMLComponentInstance in `context` and is a member of .qhtmlChildren, then we would not iterate over it again to avoid endlessly looping over QHTMLNode* objects when setting up references since the references for that QHTMLNode* object would already have been resolved.
+QHTMLComponentInstance myInstance = new QHTMLComponentInstance(); myInstance.qhtmlUUID = "20281-af322r";  Then when enumerating, we would skip enumeration by adding "20281-af322r" to a list of already enumerated objects. Also when setting up the context, we want to skip anything that already exists in the context, like if "20281-af322r" matches a QHTMLComponentInstance in `context` and is a member of .qhtmlChildren, then we would not iterate over it again to avoid endlessly looping over QHTMLNode* objects when setting up references since the references for that QHTMLNode* object would already have been resolved.
 
 When all is said and done, QHTMLDomTree* root should have .qhtmlProperties, .qhtmlUUID, .qhtmlChildren with various different QHTMLDomNode*-inherting objects, which each of them will also contain their own .qhtmlChildren.  There should also be a .qhtmlContext which will have pointers to all parent QHTMLContext references as well as any defined directly in this QHTMLNode* (but not in the children node). There should be .parent() and .children() which return the .qhtmlParent QDOMNode pointer and iteratee over thee .qhtmlChildren QHash returning a QVector list of pointers to all children. There should be a .qhtmlContext which contains strings and pointers as well as a .resolve(string) that matches strings to references, and a .runtime() method that will be per-class type, so QHTMLComponentInstance will have a different .runtime() and QHTMLModelView's .runtime() and so on for every class that inherits from QDomNode. The runtime() will be called once all of the objects are fully parsed into the QDomTree() in order by executing the runtime() for an object, which will determine the next actions to take whether it be calling runtime() on children, or implementing some special syntax from the child nodes or whatever.
 
@@ -282,14 +282,19 @@ q-component acomp {
   q-property prop5: 24%
   q-property prop6: 25vw
   q-property prop7: 30px
-  q-property prop8: obj1.genericfunction /* allows prop8 to be callable */
   q-property prop9: obj1.genericfunction() /* makes prop9 whatever the return value is of genericfunction() */
+  width: 24%
 }
 
 acomp obj7 { }
+
+/* Results:
+/* --------- */
 /* obj7.prop1 == 24 */
-/* obj7.prop8 = Function */
-/* obj7.prop8() = obj1.genericfunction() return value */
+/* obj7.prop7 == 30
+/* obj7.prop6 == 25% of viewport */
+/* obj7.prop5 == 24% of 0 since there is nothing to multiply 24% by */
+/* obj7.width == 24% of the width of the parent DOM element stored as `style="width: 24%;`
 
 -------------------------------------------------- end of section -------------------------------------
 ---------------------- next section -------------------------
@@ -474,6 +479,43 @@ q-theme mytheme2 {
 ```
 
 The order that the items appear in the theme control the final result with the exception of q-default-theme which always allows q-theme to take precedence when multiple styles are conflicting.
+
+14e. q-transition. A q-transition is a named transition object that can be applied directly to a QHTML element or component instance, or from inside a q-style.
+
+```
+q-transition fadeMove {
+  duration { 800 }
+  timing { ease-in-out }
+  delay { 0 }
+}
+
+div {
+  fadeMove { opacity color paddingTop }
+}
+
+q-component panel {
+  fadeMove { opacity }
+}
+
+panel { }
+```
+
+When a transition is applied directly to a component instance, assignments such as `panel.opacity = 0.4` write through to the component host element's CSS style. Camel-case CSS shortcut names such as `paddingTop` are converted to their CSS property names when the transition is installed.
+
+The previous q-style compatibility syntax remains supported:
+
+```
+q-transition fadeOnly {
+  property { opacity }
+  duration { 800 }
+  timing { ease-in-out }
+  delay { 0 }
+}
+
+q-style fadingSurface {
+  q-style-transition { fadeOnly }
+}
+```
 
 ------------------ completed -------------------------------
 ---------------------------------- end of section ----------------------------------------

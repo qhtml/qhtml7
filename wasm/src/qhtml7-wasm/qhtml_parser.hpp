@@ -180,6 +180,7 @@ protected:
             QStringLiteral("style"),
             QStringLiteral("q-style"),
             QStringLiteral("q-style-class"),
+            QStringLiteral("q-transition"),
             QStringLiteral("q-theme"),
             QStringLiteral("q-default-theme"),
             QStringLiteral("q-child-theme"),
@@ -456,6 +457,9 @@ private:
         }
         if (qhtmlKeyword == QStringLiteral("q-style") || qhtmlKeyword == QStringLiteral("style")) {
             return new QHTMLStyle(qhtmlName, m_attributes, qhtmlContent);
+        }
+        if (qhtmlKeyword == QStringLiteral("q-transition")) {
+            return new QHTMLTransition(qhtmlName, m_attributes, qhtmlContent);
         }
         if (qhtmlKeyword == QStringLiteral("q-theme") || qhtmlKeyword == QStringLiteral("q-default-theme")) {
             return new QHTMLTheme(qhtmlKeyword, qhtmlName, m_attributes, qhtmlContent);
@@ -1616,6 +1620,22 @@ inline QHTMLAstNode *nodeFromStatement(const QString &statement)
                                         QString());
     }
 
+    static const QRegularExpression eventHandlerRx(
+        QStringLiteral("^\\s*(?:(propagate|propogate)\\s+)?on([A-Za-z_][A-Za-z0-9_+\\-]*)(?:\\s*\\((.*?)\\))?\\s*\\{([\\s\\S]*)\\}\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch eventHandlerMatch = eventHandlerRx.match(statement);
+    if (eventHandlerMatch.hasMatch()) {
+        QHash<QString, QString> attributes;
+        attributes.insert(QStringLiteral("parameters"), eventHandlerMatch.captured(3).trimmed());
+        if (!eventHandlerMatch.captured(1).trimmed().isEmpty()) {
+            attributes.insert(QStringLiteral("propagate"), QStringLiteral("true"));
+        }
+        return new QHTMLAstNamedTypeNode(QStringLiteral("q-event-handler"),
+                                        eventHandlerMatch.captured(2).trimmed().toLower(),
+                                        attributes,
+                                        eventHandlerMatch.captured(4));
+    }
+
     static const QRegularExpression assignmentRx(
         QStringLiteral("^\\s*([A-Za-z_][A-Za-z0-9_+\\-]*)\\s*:\\s*(.*?)\\s*$"),
         QRegularExpression::DotMatchesEverythingOption);
@@ -1736,7 +1756,16 @@ inline void QHTMLAstNode::scan(const QString &source)
 
 inline void QHTMLDomTree::loadFromAST(QHTMLAstNode *astRoot)
 {
+    loadFromASTWithContext(astRoot, nullptr);
+}
+
+inline void QHTMLDomTree::loadFromASTWithContext(QHTMLAstNode *astRoot, QHTMLNode *contextNode)
+{
     clearChildren();
+    if (qhtmlContext) {
+        qhtmlContext->clear();
+        qhtmlContext->setParentContext(contextNode ? contextNode->qhtmlContext : nullptr);
+    }
     if (!astRoot) {
         return;
     }
@@ -1815,6 +1844,14 @@ inline void QHTMLDomTree::indexComponentDefinitionsFor(QHTMLNode *scope)
             }
             if (style->qhtmlContext) {
                 style->qhtmlContext->updateObjectReference(style->qhtmlName(), style);
+            }
+        }
+        if (QHTMLTransition *transition = dynamic_cast<QHTMLTransition *>(child)) {
+            if (scope->qhtmlContext) {
+                scope->qhtmlContext->updateObjectReference(transition->qhtmlName(), transition);
+            }
+            if (transition->qhtmlContext) {
+                transition->qhtmlContext->updateObjectReference(transition->qhtmlName(), transition);
             }
         }
         if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(child)) {
@@ -2068,10 +2105,22 @@ inline void QHTMLDomTree::instantiateStyleThemeApplicationsFor(QHTMLNode *scope)
                 scope->qhtmlChildren.insert(i, application);
                 delete element;
                 child = application;
+            } else if (QHTMLTransition *transition = resolveTransition(element, element->tagName())) {
+                QHTMLNode *application = transitionApplicationFrom(element, transition);
+                scope->qhtmlChildren.insert(i, application);
+                delete element;
+                child = application;
             } else if (QHTMLTheme *theme = resolveTheme(element, element->tagName())) {
                 QHTMLNode *application = themeApplicationFrom(element, theme);
                 scope->qhtmlChildren.insert(i, application);
                 delete element;
+                child = application;
+            }
+        } else if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(child)) {
+            if (QHTMLTransition *transition = resolveTransition(typed, typed->keyword())) {
+                QHTMLNode *application = transitionApplicationFrom(typed, transition);
+                scope->qhtmlChildren.insert(i, application);
+                delete typed;
                 child = application;
             }
         }
@@ -2127,10 +2176,12 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
                 dynamic_cast<QHTMLForNode *>(typed) ||
                 dynamic_cast<QHTMLImportNode *>(typed) ||
                 dynamic_cast<QHTMLStyle *>(typed) ||
+                dynamic_cast<QHTMLTransition *>(typed) ||
                 dynamic_cast<QHTMLTheme *>(typed) ||
                 dynamic_cast<QHTMLClass *>(typed) ||
                 dynamic_cast<QHTMLScript *>(typed) ||
                 dynamic_cast<QHTMLStyleApplication *>(typed) ||
+                dynamic_cast<QHTMLTransitionApplication *>(typed) ||
                 dynamic_cast<QHTMLThemeApplication *>(typed);
             if (!alreadyConcreteComponent) {
                 if (QHTMLComponentDefinition *definition = resolveComponentDefinition(typed, typed->keyword())) {
@@ -2205,6 +2256,37 @@ inline void QHTMLDomTree::ensureReadySignal(QHTMLNode *scope)
     scope->appendChild(ready);
 }
 
+inline bool qhtmlNodeIsInheritedContextDeclaration(QHTMLNode *node)
+{
+    if (!node || node->qhtmlName().trimmed().isEmpty()) {
+        return false;
+    }
+    return dynamic_cast<QHTMLComponentDefinition *>(node) ||
+           dynamic_cast<QHTMLComponentInstance *>(node) ||
+           dynamic_cast<QHTMLFunction *>(node) ||
+           dynamic_cast<QHTMLProperty *>(node) ||
+           dynamic_cast<QHTMLArray *>(node) ||
+           dynamic_cast<QHTMLMap *>(node) ||
+           dynamic_cast<QHTMLModel *>(node) ||
+           dynamic_cast<QHTMLModelView *>(node) ||
+           dynamic_cast<QHTMLTimer *>(node) ||
+           dynamic_cast<QHTMLPropertyAnimation *>(node) ||
+           dynamic_cast<QHTMLAnimationGroup *>(node) ||
+           dynamic_cast<QHTMLScriptAction *>(node) ||
+           dynamic_cast<QHTMLBehavior *>(node) ||
+           dynamic_cast<QHTMLStyle *>(node) ||
+           dynamic_cast<QHTMLTransition *>(node) ||
+           dynamic_cast<QHTMLTheme *>(node) ||
+           dynamic_cast<QHTMLClass *>(node) ||
+           dynamic_cast<QHTMLScript *>(node) ||
+           dynamic_cast<QHTMLWorker *>(node) ||
+           dynamic_cast<QHTMLPainter *>(node) ||
+           dynamic_cast<QHTMLCanvas *>(node) ||
+           dynamic_cast<QHTMLVideo *>(node) ||
+           dynamic_cast<QHTMLParticleEmitter *>(node) ||
+           dynamic_cast<QHTMLLayout *>(node);
+}
+
 inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
 {
     if (!scope || !scope->qhtmlContext) {
@@ -2213,7 +2295,7 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
 
     for (int i = 0; i < scope->qhtmlChildren.size(); ++i) {
         QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
-        if (!child || child->qhtmlName().isEmpty()) {
+        if (!child) {
             continue;
         }
 
@@ -2234,31 +2316,7 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
             scriptAction->setSignalBus(qhtmlSignalBus);
         }
 
-        if (dynamic_cast<QHTMLFunction *>(child) ||
-            dynamic_cast<QHTMLSignal *>(child) ||
-            dynamic_cast<QHTMLProperty *>(child) ||
-            dynamic_cast<QHTMLEventHandler *>(child) ||
-            dynamic_cast<QHTMLConnect *>(child) ||
-            dynamic_cast<QHTMLForNode *>(child) ||
-           dynamic_cast<QHTMLModelView *>(child) ||
-            dynamic_cast<QHTMLModel *>(child) ||
-            dynamic_cast<QHTMLArray *>(child) ||
-            dynamic_cast<QHTMLMap *>(child) ||
-            dynamic_cast<QHTMLComponentSlot *>(child) ||
-            dynamic_cast<QHTMLSlotDefault *>(child) ||
-            dynamic_cast<QHTMLPropertyAssignment *>(child) ||
-            dynamic_cast<QHTMLTimer *>(child) ||
-            dynamic_cast<QHTMLPropertyAnimation *>(child) ||
-            dynamic_cast<QHTMLAnimationGroup *>(child) ||
-            dynamic_cast<QHTMLScriptAction *>(child) ||
-            dynamic_cast<QHTMLImportNode *>(child) ||
-            dynamic_cast<QHTMLStyle *>(child) ||
-            dynamic_cast<QHTMLTheme *>(child) ||
-            dynamic_cast<QHTMLClass *>(child) ||
-            dynamic_cast<QHTMLScript *>(child) ||
-            dynamic_cast<QHTMLWorker *>(child) ||
-            dynamic_cast<QHTMLComponentDefinition *>(child) ||
-            dynamic_cast<QHTMLComponentInstance *>(child)) {
+        if (qhtmlNodeIsInheritedContextDeclaration(child)) {
             scope->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
             if (child->qhtmlContext) {
                 child->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
@@ -2353,6 +2411,8 @@ inline void QHTMLDomTree::cloneDefinitionMembers(QHTMLComponentInstance *instanc
             instance->appendChild(clonedScriptAction);
         } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(definitionChild)) {
             instance->appendChild(style->cloneStyle());
+        } else if (QHTMLTransitionApplication *transitionApplication = dynamic_cast<QHTMLTransitionApplication *>(definitionChild)) {
+            instance->appendChild(transitionApplication->cloneApplication());
         } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(definitionChild)) {
             instance->appendChild(theme->cloneTheme());
         }
@@ -2388,6 +2448,12 @@ inline QHTMLStyle *QHTMLDomTree::resolveStyle(QHTMLNode *scope, const QString &p
 {
     QHTMLNode *resolved = resolveDotPath(scope, path);
     return dynamic_cast<QHTMLStyle *>(resolved);
+}
+
+inline QHTMLTransition *QHTMLDomTree::resolveTransition(QHTMLNode *scope, const QString &path) const
+{
+    QHTMLNode *resolved = resolveDotPath(scope, path);
+    return dynamic_cast<QHTMLTransition *>(resolved);
 }
 
 inline QHTMLTheme *QHTMLDomTree::resolveTheme(QHTMLNode *scope, const QString &path) const
@@ -2457,6 +2523,18 @@ inline QHTMLNode *QHTMLDomTree::anonymousComponentInstanceFrom(QHTMLDomElement *
 inline QHTMLNode *QHTMLDomTree::styleApplicationFrom(QHTMLDomElement *node, QHTMLStyle *style) const
 {
     QHTMLStyleApplication *application = new QHTMLStyleApplication(style);
+    application->setQHTMLUUID(node->qhtmlUUID());
+    application->qhtmlParent = node->qhtmlParent;
+    if (application->qhtmlContext && node->qhtmlContext) {
+        application->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
+    }
+    moveChildren(node, application);
+    return application;
+}
+
+inline QHTMLNode *QHTMLDomTree::transitionApplicationFrom(QHTMLNode *node, QHTMLTransition *transition) const
+{
+    QHTMLTransitionApplication *application = new QHTMLTransitionApplication(transition);
     application->setQHTMLUUID(node->qhtmlUUID());
     application->qhtmlParent = node->qhtmlParent;
     if (application->qhtmlContext && node->qhtmlContext) {
@@ -2551,6 +2629,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("updateNamedReference", &QHTMLNode::updateNamedReferenceJs)
         .function("resolve", &QHTMLNode::resolveJs, allow_raw_pointers())
         .function("resolveType", &QHTMLNode::resolveTypeJs)
+        .function("contextKeys", &QHTMLNode::contextKeysJs)
         .function("evaluateExpression", &QHTMLNode::evaluateExpressionJs)
         .function("runtime", &QHTMLNode::runtime)
         .function("renderHtml", &QHTMLNode::renderHtmlJs)
@@ -2581,6 +2660,14 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("keyword", &QHTMLTypedNode::keywordJs)
         .function("attribute", &QHTMLTypedNode::attributeJs);
     class_<QHTMLWorker, base<QHTMLTypedNode>>("QHTMLWorker");
+    class_<QHTMLTransition, base<QHTMLTypedNode>>("QHTMLTransition")
+        .function("body", &QHTMLTransition::bodyJs)
+        .function("field", &QHTMLTransition::fieldJs)
+        .function("property", &QHTMLTransition::propertyJs)
+        .function("duration", &QHTMLTransition::durationJs)
+        .function("timing", &QHTMLTransition::timingJs)
+        .function("delay", &QHTMLTransition::delayJs)
+        .function("setBody", &QHTMLTransition::setBodyJs);
     class_<QHTMLFunction, base<QHTMLTypedNode>>("QHTMLFunction")
         .function("parameters", &QHTMLFunction::parameterListJs)
         .function("body", &QHTMLFunction::bodyJs)
@@ -2868,6 +2955,11 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     class_<QHTMLStyleApplication, base<QHTMLTypedNode>>("QHTMLStyleApplication")
         .function("style", &QHTMLStyleApplication::styleJs, allow_raw_pointers())
         .function("styleUUID", &QHTMLStyleApplication::styleUUIDJs);
+    class_<QHTMLTransitionApplication, base<QHTMLTypedNode>>("QHTMLTransitionApplication")
+        .function("transition", &QHTMLTransitionApplication::transitionJs, allow_raw_pointers())
+        .function("transitionUUID", &QHTMLTransitionApplication::transitionUUIDJs)
+        .function("propertyList", &QHTMLTransitionApplication::propertyListJs)
+        .function("setPropertyList", &QHTMLTransitionApplication::setPropertyListJs);
     class_<QHTMLThemeApplication, base<QHTMLTypedNode>>("QHTMLThemeApplication")
         .function("theme", &QHTMLThemeApplication::themeJs, allow_raw_pointers())
         .function("themeUUID", &QHTMLThemeApplication::themeUUIDJs);
@@ -2897,6 +2989,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     class_<QHTMLDomTree, base<QHTMLDomNode>>("QHTMLDomTree")
         .constructor<>()
         .function("loadFromAST", &QHTMLDomTree::loadFromAST, allow_raw_pointers())
+        .function("loadFromASTWithContext", &QHTMLDomTree::loadFromASTWithContextJs, allow_raw_pointers())
         .function("clear", &QHTMLDomTree::clear)
         .function("root", &QHTMLDomTree::rootJs, allow_raw_pointers())
         .function("signalBus", &QHTMLDomTree::signalBusJs, allow_raw_pointers())

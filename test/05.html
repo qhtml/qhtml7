@@ -100,17 +100,17 @@
     <q-html id="animation-root">
 q-component stress-rect {
   q-property label: "0"
-
+  q-property numSteps: 150
   q-property-animation widthAnim {
     target: this
     property: "width"
-    duration: 1400
-    steps: 2000
+    duration: 140
+    steps: this.numSteps
     easing: "linear"
     repeat: false
     from: 84
     to: 520
-    running: false
+    running: true
 
     onstepped(value, currentStep) {
       var status = this.ownerElement.querySelector(".rect-status");
@@ -121,7 +121,7 @@ q-component stress-rect {
 
     onended {
       var oldFrom = this.from;
-      this.from = this.to;
+        this.from = this.to;
       this.to = oldFrom;
       this.start();
     }
@@ -136,11 +136,11 @@ q-component stress-rect {
     repeat: false
     from: 0.58
     to: 1
-    running: false
+    running: true
 
     onended {
       var oldFrom = this.from;
-      this.from = this.to;
+      this.from = this.to ;
       this.to = oldFrom;
       this.start();
     }
@@ -148,14 +148,10 @@ q-component stress-rect {
 
   onready {
     var rect = this;
-    setTimeout(function () {
-      if (rect.widthAnim) {
-        rect.widthAnim.start();
-      }
-      if (rect.opacityAnim) {
-        rect.opacityAnim.start();
-      }
-    }, 0);
+    this.widthAnim.to = this.widthAnim.to + this.numSteps;
+    this.widthAnim.duration = this.widthAnim.duration + (10 * this.numSteps);
+        this.widthAnim.start();
+        this.opacityAnim.start();
   }
 
   div.rect-body {
@@ -168,12 +164,12 @@ q-component stress-rect {
 }
 
 q-component stress-stage {
-  q-property somearray: [1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7]
-
+  q-property somearray: [5, 10, 15, 20, 25, 30, 35, 40, 45, 100, 200, 300, 400]
   div.animation-stage {
-    for (num in somearray) {
+    for (num in this.somearray) {
       stress-rect {
         label: num
+        numSteps: num
       }
     }
   }
