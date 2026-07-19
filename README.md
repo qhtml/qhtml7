@@ -4,6 +4,8 @@ QHTML7 is a compact language and WebAssembly runtime for building web UIs with r
 
 It is designed around a simple idea: describe the interface as a tree of objects, let the WebAssembly runtime keep the source-of-truth tree, and keep the source readable enough that the code still feels like the UI.
 
+Language design, specifications, and tests created by humans; implementation by ChatGPT 5.6 Codex.
+
 - Dev testbed: `test/demo.html`
 - Layout builder: `tools/layout-builder.html`
 - Page builder: `tools/page-builder.html`
