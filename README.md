@@ -1,89 +1,70 @@
 # QHTML7 - v7.3.8
 
-QHTML7 is a declarative UI language for building HTML, custom elements, reusable components, themed interfaces, signals, slots, data-driven loops, layouts, and component libraries with a compact block syntax.
+QHTML7 is a compact language and WebAssembly runtime for building web UIs with readable block syntax, hard-coded QHTML runtime nodes, signals, themes, layouts, data helpers, and live QHTMLDomTree editing.
 
-It is designed around a simple idea: describe the interface as a tree of objects, let named objects become reusable, and keep component structure readable enough that the source still feels like the UI.
+It is designed around a simple idea: describe the interface as a tree of objects, let the WebAssembly runtime keep the source-of-truth tree, and keep the source readable enough that the code still feels like the UI.
 
-All of the code was written using ChatGPT's codex combined with a massive number of detailed prompts (you can read them in language/qhtml7.txt)
+- Dev testbed: `test/demo.html`
+- Layout builder: `tools/layout-builder.html`
+- Page builder: `tools/page-builder.html`
+- Language notes: `language/qhtml7.txt`
+
+## Whats New in QHTML7
+
+- QHTML7 is backed by a QtCore-only WebAssembly parser/runtime.
+- `<q-html>` is the QHTML7 host element.
+- `dist/qhtml.js` is the entry point. It loads the runtime files from `dist/` and routes QHTML7 documents through the WebAssembly-backed runtime.
+- The persistent source-of-truth object model lives in `QHTMLDomTree` and QHTML node objects exposed by the WebAssembly module.
+- `q-layout`, `q-row`, and `q-col` provide declarative layout primitives for builder tools and authored pages.
+- Hard-coded runtime syntax includes DOM element blocks, selector shorthand, attributes, text/html/style blocks, q-style, q-theme, q-default-theme, q-script, q-var, q-array, q-map, q-model, q-model-view, for loops, q-switch, q-canvas, q-timer, particle-emitter, q-painter, q-logger, q-import, and q-require.
+
+## 1. Quick Start
+
+### Project setup
+
+Copy the contents of `dist/` to your web server. The simplest layout is:
+
+```text
+/path/to/site/dist/qhtml.js
+/path/to/site/dist/qhtml-wasm.js
+/path/to/site/dist/qhtml-element.js
+/path/to/site/dist/qhtml7-wasm.js
+/path/to/site/dist/qhtml7-wasm.wasm
+```
+
+Then include the QHTML entry point from your page:
+
+```html
+<script src="/dist/qhtml.js"></script>
+```
+
+`qhtml.js` loads the QHTML7 WebAssembly runtime and bridge files from the same `dist/` directory.
+
+### Write QHTML in a `<q-html>` tag
 
 ```html
 <script src="/dist/qhtml.js"></script>
 
 <q-html>
-  div.app-shell {
-    h1 { text { Hello QHTML7 } }
-    p  { text { Declarative components, styles, signals, slots, and data. } }
-  }
+  h1 { text { Hello QHTML7 } }
+  p { text { Your first QHTML7 render is running. } }
 </q-html>
 ```
 
-This README focuses on the language surface and declarative runtime behavior. It intentionally avoids implementation internals.
-
-## Highlights
-
-- HTML-like output from a compact block syntax.
-- Selector shorthand for tags, IDs, classes, and nested selector chains.
-- Reusable `q-component` definitions with slots, properties, functions, signals, and inheritance.
-- Declarative `for (item in collection)` loops over JSON-like arrays.
-- JSON-style object and array literals in properties.
-- Named `q-style`, scoped `q-theme`, overridable `q-default-theme`, and inline `style { ... }`.
-- Declarative layout primitives: `q-layout`, `q-row`, and `q-col`.
-- Event handlers and lifecycle hooks such as `onclick`, `onready`, and `on<signal>`.
-- `q-connect` for wiring signals to functions.
-- `q-import` and `q-require` for composing QHTML files.
-- Paint hooks for declarative custom backgrounds, borders, and masks.
-- Component-library patterns such as `q-tabs`, `q-form-*`, and reusable themed controls.
-
-## Quick Start
-
-### Installation
-
-Copy the contents of `dist/` to the `dist/` directory on your web server, then include the QHTML entry point in any page that uses QHTML:
+Resulting HTML:
 
 ```html
-<script src="/dist/qhtml.js"></script>
-```
-
-The entry point loads the QHTML7 WebAssembly runtime and compatibility routing files from the same `dist/` directory.
-
-### Developer Tools
-
-The layout builder and page builder share the same QHTML7 layout editor module. The reusable QHTML is in `tools/layout-builder/main.qhtml`, the editor logic is in `tools/layout-builder/main.js`, and `tools/page-builder.html` embeds that editor with the QHTML7 palette from `tools/page-builder/palette.qhtml` and `tools/page-builder/palette.js`.
-
-Load the QHTML runtime, then place QHTML inside a `<q-html>` element.
-
-```html
-<!doctype html>
-<html>
-<head>
-  <script src="/dist/qhtml.js"></script>
-</head>
-<body>
-  <q-html>
-    h1 { text { Product Card } }
-    p  { text { Rendered from QHTML7 source. } }
-  </q-html>
-</body>
-</html>
+<h1>Hello QHTML7</h1>
+<p>Your first QHTML7 render is running.</p>
 ```
 
 QHTML blocks render into normal DOM elements. `text { ... }` escapes text content; `html { ... }` inserts raw HTML.
 
-```qhtml
-div.card {
-  text { plain text }
-}
-
-div.raw {
-  html { <strong>trusted HTML</strong> }
-}
-```
-
 Use `html { ... }` only when the content is trusted.
 
-## Core Syntax
+## 2. Core Syntax
 
-### Elements
+### Elements and nesting
 
 Anonymous element blocks use the tag name followed by `{ ... }`.
 
@@ -94,647 +75,870 @@ section {
 }
 ```
 
-### IDs And Classes
+Resulting HTML:
 
-Use CSS-like shorthand directly on element names.
-
-```qhtml
-div#main.card.featured {
-  h2.title { text { Main Panel } }
-}
+```html
+<section>
+  <h2>Overview</h2>
+  <p>A readable UI tree.</p>
+</section>
 ```
 
-This renders a `div` with `id="main"` and classes `card featured`.
-
-### Selector Chains
+### Selector chains (creates nested elements)
 
 Comma chains create nested elements.
 
 ```qhtml
-div,section,article,h3 {
-  text { Nested headline }
+div,section,h3 { text { Nested } }
+```
+
+Resulting HTML:
+
+```html
+<div><section><h3>Nested</h3></section></div>
+```
+
+Chains are useful for compact structure, but deeply nested chains should be used sparingly when the structure needs to be edited visually.
+
+### Class and id shorthand
+
+```qhtml
+div#main.card.featured {
+  p { text { Card body } }
 }
 ```
 
-This is equivalent to:
+Resulting HTML:
 
 ```html
-<div><section><article><h3>Nested headline</h3></article></section></div>
+<div id="main" class="card featured">
+  <p>Card body</p>
+</div>
 ```
 
-Chains are useful for compact structure, but named component instances should be declared separately instead of being buried inside anonymous chains.
+Multiple selectors with shorthand:
 
-### Attributes And Properties On DOM Elements
+```qhtml
+div#my-id.my-class,span.my-class,h2#id2 { text { hello world } }
+```
+
+Resulting HTML:
+
+```html
+<div id="my-id" class="my-class">
+  <span class="my-class">
+    <h2 id="id2">hello world</h2>
+  </span>
+</div>
+```
+
+### Attributes
 
 Simple assignments inside DOM blocks become attributes.
 
 ```qhtml
-button.primary {
-  type: "button"
-  aria-label: "Save changes"
-  text { Save }
+a {
+  href: "https://example.com"
+  target: "_blank"
+  text { Open Example }
 }
 ```
 
-Inline `style { ... }` creates a local QHTML style object and applies it to that parent element.
+Resulting HTML:
+
+```html
+<a href="https://example.com" target="_blank">Open Example</a>
+```
+
+The same rule applies to unknown/custom HTML elements:
 
 ```qhtml
-div.notice {
+my-element {
+  someattribute: "1"
+  otherthing: "2"
+}
+```
+
+Resulting HTML:
+
+```html
+<my-element someattribute="1" otherthing="2"></my-element>
+```
+
+If an assignment name is a known CSS shortcut or `style`, QHTML treats it as style data instead of a plain HTML attribute.
+
+### CSS numeric values
+
+CSS numeric literals can be written without quotes in property and style value positions:
+
+```qhtml
+div#box {
+  width: 100px
+  height: 50vh
+  left: 20px
+  top: 10px
+  position: "absolute"
+  text { Numeric CSS values }
+}
+```
+
+Supported units include `px`, `%`, `vw`, `vh`, `rem`, `em`, and unitless numbers. QHTML7 keeps CSS-ready values as strings when rendering style or attribute output.
+
+Existing quoted values such as `"100px"` remain compatible.
+
+### `text`, `html`, and `style` blocks
+
+```qhtml
+p {
+  style { font-size: 20px; margin: 0; }
+  text { Plain text content }
+}
+
+div { html { <strong>Real HTML fragment</strong> } }
+```
+
+Resulting HTML:
+
+```html
+<p style="font-size: 20px; margin: 0;">Plain text content</p>
+<div><strong>Real HTML fragment</strong></div>
+```
+
+## 3. Layout Syntax
+
+`q-layout`, `q-row`, and `q-col` are hard-coded QHTML7 layout nodes. They render as normal DOM layout containers and are also used by the visual layout/page builder tools.
+
+### Basic layout
+
+```qhtml
+q-layout {
+  width: "100%"
+  height: "80vh"
+  gap: "12px"
+
+  q-row {
+    height: "20vh"
+
+    q-col {
+      width: "20vw"
+      text { Left column }
+    }
+
+    q-col {
+      width: "60vw"
+      text { Main column }
+    }
+  }
+}
+```
+
+`q-layout` and `q-col` flow vertically by default. `q-row` flows horizontally. Columns can be dropped into rows or layouts; rows can be dropped into columns or layouts.
+
+### Responsive sizing
+
+Use CSS units directly:
+
+```qhtml
+q-row {
+  width: "100%"
+  gap: "16px"
+  wrap: "wrap"
+
+  q-col { width: "20vw" minWidth: "12rem" }
+  q-col { width: "40vw" minWidth: "18rem" }
+}
+```
+
+When an explicit pixel size is available on the flow axis, QHTML7 applies a Qt-style min/hint/max/stretch sizing pass internally. Otherwise it leaves the layout fluid and lets CSS flex behavior handle responsive sizing.
+
+Useful layout properties:
+
+- `width`, `height`
+- `minWidth`, `minHeight`
+- `maxWidth`, `maxHeight`
+- `gap`
+- `flex`
+- `wrap`
+- `minColWidth`
+- `stretch` / `layoutStretch`
+- `sizeHint` / `layoutHint`
+
+## 4. Data Helpers
+
+### `q-array` and `q-map`
+
+`q-array` and `q-map` declare named runtime data values in the current QHTML scope.
+
+```qhtml
+q-array names { "ada", "grace", "katherine" }
+
+q-map settings {
+  theme: "dark"
+  count: 3
+}
+
+ul {
+  for (name in names) {
+    li { text { ${name} } }
+  }
+}
+```
+
+### `q-model` basics
+
+`q-model` normalizes model data and exposes a consistent runtime API such as `count()`, `at()`, `values()`, `add()`, `insert()`, and `remove()` regardless of source shape.
+
+```qhtml
+q-model scores { q-array { 5, 10 } }
+
+q-script {
+  scores.add(15);
+  console.log(scores.count());
+}
+```
+
+### `q-model-view` basics
+
+`q-model-view` renders its child template once per model entry using the alias defined by `as { ... }`.
+
+```qhtml
+q-array people { q-map { name: "ada" }, q-map { name: "grace" } }
+
+q-model-view {
+  q-model { people }
+  as { item }
+  div { text { ${item.name} } }
+}
+```
+
+### `for` keyword (template iteration)
+
+Use `for` when you want inline repeated template expansion:
+
+```qhtml
+q-array items { "one", "two", "three" }
+
+ul {
+  for (item in items) {
+    li { text { ${item} } }
+  }
+}
+```
+
+Accepted source inputs:
+
+- q-array and JavaScript arrays
+- q-map / plain object values
+- q-model helpers such as `.values()` / `.keys()`
+- function return values that evaluate to arrays or objects
+- primitive values, treated as single-entry iteration
+
+Notes:
+
+- `for` expression scope follows runtime inline expression rules.
+- For stable builder output, keep layout structure outside loop bodies when possible and render repeated content inside a contained element.
+
+### `q-var` (scoped runtime variable)
+
+`q-var` declares a named runtime value in the current QHTML scope. The block is evaluated as JavaScript and is intended for stored strings, numbers, objects, arrays, and functions.
+
+```qhtml
+q-var names { ["ada", "grace", "katherine"] }
+q-var settings { ({ tone: "calm", count: names.length }) }
+q-var makeLabel { function(name) { return settings.tone + ": " + name; } }
+
+ul {
+  li { text { ${makeLabel(names[0])} } }
+  li { text { total=${settings.count} } }
+}
+```
+
+Every q-var handle exposes:
+
+- `.value`: the current value.
+- `.get()`: returns the current value.
+- `.set(value)`: updates the stored value.
+
+```qhtml
+q-var count { 0 }
+
+button {
+  text { increment }
+  onclick { count.set(count.value + 1); }
+}
+```
+
+### `q-switch` / `switch` (named lookup function)
+
+`q-switch` declares a named runtime function that maps primitive keys to JavaScript expression results. The shorthand `switch` parses the same way.
+
+```qhtml
+q-switch labelFor {
+  15: { "hello world" }
+  "test": { 32 }
+  false: { "false is preserved" }
+  *: { "fallback" }
+}
+
+div { text { ${labelFor(15)} } }
+button {
+  text { run switch }
+  onclick {
+    console.log(labelFor("test"));
+  }
+}
+```
+
+Falsey case results such as `0`, `false`, and `""` are returned as real matches; the `*` case is used only when no key matches.
+
+## 5. Timers, Canvas, and Particles
+
+### `q-timer` (keyword-level timer)
+
+`q-timer` is a named top-level construct that declares a runtime timer directly:
+
+```qhtml
+q-timer myTimer {
+  interval: 3000
+  repeat: true
+  running: true
+  onTimeout {
+    console.log("timer fired");
+  }
+}
+```
+
+Behavior:
+
+- `repeat: true` uses native `setInterval(...)`.
+- `repeat: false` uses native `setTimeout(...)`.
+- The named timer handle is exported by name in QHTML runtime scope.
+- On host re-render/unmount, runtime-managed keyword timers for that host are cleared and re-created from current declarations.
+
+Recommendation: use unique timer names per host to avoid handle collisions.
+
+### `q-canvas` (keyword-level canvas)
+
+`q-canvas` declares a named canvas element and exports that handle by name:
+
+```qhtml
+q-canvas myCanvas {
+  width: 320
+  height: 180
+}
+
+button {
+  text { Draw }
+  onclick {
+    myCanvas.context.clearRect(0, 0, 320, 180);
+    myCanvas.context.fillStyle = "rgba(16,185,129,0.9)";
+    myCanvas.context.fillRect(20, 20, 120, 80);
+  }
+}
+```
+
+Notes:
+
+- `q-canvas <name>` exports the canvas handle as a named runtime object.
+- `<name>.context` points to the `2d` rendering context for that specific canvas.
+- Canvas rendering can be timer-driven or signal-driven.
+
+### `particle-emitter` (canvas-backed particle effects)
+
+`particle-emitter` is the native custom element registered by QHTML7. It can be declared directly in QHTML without any extra JavaScript file.
+
+```qhtml
+div#energy-field {
   style {
-    border: 1px solid #93c5fd;
-    background: #eff6ff;
-    padding: 12px;
+    position: relative;
+    width: 420px;
+    height: 220px;
+    overflow: hidden;
+    background: #07111f;
   }
 
-  text { Saved successfully. }
-}
-```
-
-## Components
-
-Define a component with `q-component`, then instantiate it by using its name as a QHTML type.
-
-```qhtml
-q-component user-card {
-  q-property name: "Anonymous"
-
-  article.user-card {
-    h3 { text { ${this.name} } }
-    slot actions { text { No actions } }
-  }
-}
-
-user-card adaCard {
-  name: "Ada"
-
-  actions {
-    button { text { Message } }
-  }
-}
-```
-
-Component instances become custom elements in the DOM and can be styled or queried like other elements.
-
-### Properties
-
-`q-property` declares component state and defaults.
-
-```qhtml
-q-component metric-card {
-  q-property label: "Requests"
-  q-property value: 0
-  q-property unit: "ms"
-
-  div.metric {
-    span.metric-label { text { ${this.label} } }
-    strong { text { ${this.value}${this.unit} } }
+  particle-emitter energyEmitter {
+    id: "energy-emitter"
+    emitRate: 84
+    lifetime: 3600
+    lifetimeVariation: 900
+    x: 210
+    y: 214
+    xVariation: 145
+    yVariation: 8
+    xVelocity: 0.35
+    yVelocity: -1.25
+    xVelocityVariation: 0.45
+    yVelocityVariation: 0.4
+    xAcceleration: 0.015
+    yAcceleration: -0.018
+    startSize: 10
+    endSize: 30
+    startOpacity: 0.35
+    endOpacity: 0.02
+    maxActiveParticles: 96
+    running: false
+    interval: 18
+    src: "tools/assets/particle.png"
+    emitterMask: "tools/assets/particle-mask-star.svg"
   }
 }
 
-metric-card latency {
-  label: "Latency"
-  value: 42
+button { text { Start } onclick { document.querySelector("#energy-emitter").running = true; } }
+button { text { Stop } onclick { document.querySelector("#energy-emitter").running = false; } }
+button { text { Burst } onclick { document.querySelector("#energy-emitter").burst(210, 120, 24); } }
+```
+
+Useful attributes:
+
+- `emitRate`: particles created per second while `running` is true.
+- `running`: boolean emission switch.
+- `lifetime` / `lifetimeVariation`: how long each particle lives, in milliseconds.
+- `x`, `y`, `xVariation`, `yVariation`: spawn origin and randomized spawn spread inside the emitter container.
+- `xVelocity`, `yVelocity`, `xAcceleration`, `yAcceleration`: per-frame movement controls.
+- `startSize`, `endSize`, `startOpacity`, `endOpacity`: interpolation values over each particle lifetime.
+- `maxActiveParticles`: maximum simultaneous particles.
+- `src`, `mask`, `color`, `colorOpacity`: sprite source, optional per-particle alpha mask, and tint color.
+- `emitterMask`: optional emitter-area alpha mask.
+
+Useful methods:
+
+- `start()` / `stop()`: toggles continuous emission.
+- `clear()`: removes current particles and pending bursts.
+- `burst(x, y, num)`: queues `num` particles emitted at the current emit rate from the supplied origin.
+
+## 6. Styles and Themes
+
+`q-style` + `q-theme` are the preferred styling model for new code.
+
+### Basic reusable style
+
+```qhtml
+q-style panel {
+  backgroundColor: #eff6ff
+  color: #1e293b
+  border: 1px solid #93c5fd
+  padding: 16px
 }
 ```
 
-Instance assignments override defaults:
+### Apply style directly in selector chain
 
 ```qhtml
-metric-card apiLatency {
-  value: 128
+panel,div { text { Styled panel } }
+```
+
+### Use `q-style-class` for utility-class composition
+
+`q-style-class` lets a style definition add CSS classes and inline properties together.
+
+```qhtml
+q-style card-shell {
+  q-style-class { w3-card w3-round-large w3-padding }
+  borderColor: #cbd5e1
 }
 ```
 
-### JSON-Like Data
+Notes:
 
-Arrays and objects can be declared in properties.
+- `q-style-class` merges class names into the element `class` attribute.
+- Inline `q-style` declarations are still applied via `style=""`.
+- If both class CSS and inline declarations target the same property, inline wins.
 
-```qhtml
-q-component product-list {
-  q-property products: [
-    { name: "Desk Mat", price: 22.50 },
-    { name: "Travel Bottle", price: 29.00 }
-  ]
-
-  ul {
-    for (product in products) {
-      li {
-        text { ${product.name} - $${product.price} }
-      }
-    }
-  }
-}
-```
-
-Object keys can be used from loops with dotted interpolation paths such as `${product.name}` and `${product.price}`.
-
-### Component Inheritance
-
-Components can inherit properties, functions, and signals from other component definitions with `extends`.
+### Theme maps selectors to styles
 
 ```qhtml
-q-component base-button {
-  q-property label: "Button"
-  q-signal activated(label)
+q-style title-accent { color: #1d4ed8 }
+q-style body-muted   { color: #64748b }
 
-  function activate() {
-    this.activated(this.label);
-  }
+q-theme article-theme {
+  h3 { title-accent }
+  p  { body-muted }
 }
 
-q-component danger-button extends base-button {
-  label: "Delete"
-}
-
-danger-button deleteAction { }
-```
-
-Multiple bases are allowed:
-
-```qhtml
-q-component icon-danger-button extends icon-button, danger-button {
-  label: "Remove"
-}
-```
-
-Inheritance is intentionally narrow: it inherits `q-property`, `function`, and `q-signal` members. The child component's own declarations and matching property assignments override inherited defaults in source order.
-
-## Slots
-
-Slots let component instances inject QHTML into named positions.
-
-```qhtml
-q-component panel {
-  section.panel {
-    header { slot title { text { Untitled } } }
-    div.panel-body { slot body { text { Empty } } }
-  }
-}
-
-panel settingsPanel {
-  title { h2 { text { Settings } } }
-  body  { p { text { Configure the application. } } }
-}
-```
-
-Use slots for reusable components that own layout but let the caller provide content.
-
-## Functions, Signals, And Events
-
-Functions declared inside components become callable methods on instances.
-
-```qhtml
-q-component notifier {
-  q-property message: "Ready"
-
-  function announce() {
-    console.log(this.message);
-  }
-}
-
-notifier appNotifier {
-  message: "Loaded"
-}
-```
-
-Signals define component-level events.
-
-```qhtml
-q-component task-row {
-  q-property label: "Task"
-  q-signal completed(label)
-
-  button {
-    text { Complete ${this.label} }
-    onclick {
-      this.completed(this.label);
-    }
+article-theme {
+  article {
+    h3 { text { Title } }
+    p  { text { Description } }
   }
 }
 ```
 
-Handle signals with `on<signal>`:
+Theme rules can also include anonymous `q-style { ... }` blocks when the style is only used by that selector:
 
 ```qhtml
-task-row item1 {
-  label: "Build README"
-
-  oncompleted(label) {
-    console.log("Done:", label);
-  }
+q-theme article-theme {
+  h3 { q-style { color: #1d4ed8 } }
+  .summary { q-style { color: #334155 } }
 }
 ```
 
-DOM event handlers use the same `on...` block shape:
+### `q-default-theme` fallback layer
+
+`q-default-theme` is a fallback theme. It applies first, and any conflicting `q-theme` rules in scope replace it.
+
+```qhtml
+q-style panel-base { backgroundColor: #eef3fb color: #0f172a }
+q-style panel-override { backgroundColor: #ffedd5 color: #7c2d12 }
+
+q-default-theme card-theme {
+  .card { panel-base }
+}
+
+q-theme card-demo-theme {
+  card-theme { }
+  .card { panel-override }
+}
+```
+
+### Compose themes
+
+```qhtml
+q-theme base-theme {
+  button { q-style { padding: 10px 14px; borderRadius: 8px; } }
+}
+
+q-theme admin-theme {
+  base-theme { }
+  .danger { q-style { color: #b91c1c } }
+}
+```
+
+### `q-transition` + `q-style-transition`
+
+`q-transition` defines a named CSS transition recipe, and `q-style-transition` attaches one or more transition recipes to a style.
+
+```qhtml
+q-transition fade-in {
+  property { opacity }
+  delay { 50 }
+  timing { ease-in-out }
+  duration { 300 }
+}
+
+q-style panel-style {
+  q-style-transition { fade-in }
+}
+
+q-theme app-theme {
+  .panel { panel-style }
+}
+```
+
+Notes:
+
+- `timing` accepts CSS timing-function values directly.
+- Numeric `duration` / `delay` values are interpreted as milliseconds.
+- Multiple transition references can be listed in `q-style-transition` and are combined into a comma-separated CSS `transition` value.
+
+### `q-painter` + paint hooks
+
+`q-painter` defines a named paint worklet body using declarative `q-property` defaults plus an `onpaint { ... }` block.
+
+```qhtml
+q-painter panel-painter {
+  q-property fill: "rgba(40,80,160,0.9)"
+  onpaint {
+    this.fillStyle = this.fill;
+    this.fillRect(0, 0, this.width, this.height);
+  }
+}
+
+q-style panel-style {
+  width: 84px
+  height: 26px
+  q-style-painter {
+    background { panel-painter }
+  }
+}
+
+panel-style,div { text { Painted } }
+```
+
+`q-style-painter` supports semantic slots:
+
+- `background { painterName }` -> `background-image: paint(...)`
+- `border { painterName }` -> `border-image-source: paint(...)`
+- `mask { painterName }` -> `mask-image` / `-webkit-mask-image`
+
+Notes:
+
+- Painter names are resolved by QHTML scope/context, then registered with internally unique worklet names.
+- `q-property` entries in `q-painter` are exposed to `onpaint` as `this.<property>`.
+- If `CSS.paintWorklet` is unavailable, QHTML skips painter attachment.
+
+## 7. `q-script`
+
+`q-script {}` runs JavaScript and replaces itself with the returned value:
+
+- If the return looks like QHTML, it is parsed as QHTML.
+- Otherwise, it becomes a text node.
+
+### Inline replacement
+
+```qhtml
+div {
+  q-script { return "p { text { Inserted by q-script } }"; }
+}
+```
+
+### Assignment form
+
+```qhtml
+div {
+  data-note: q-script { return "n:" + (4 + 1) }
+  text { q-script { return "script-inline"; } }
+}
+```
+
+## 8. `${expression}` inline expressions
+
+`${expression}` is inline expression syntax for string content.
+
+- It resolves when the final HTML string value is rendered.
+- It is not a watcher by itself.
+- Re-evaluation is explicit.
+
+### Works in rendered text/attribute strings
+
+```qhtml
+q-var currentUser { "Ada" }
+
+div {
+  title: "Current user: ${currentUser}"
+  text { Hello ${currentUser} }
+}
+```
+
+### Cannot be used for keyword-level symbols
+
+```qhtml
+${tagName} { text { hi } }         // invalid
+q-keyword ${alias} { div }         // invalid
+```
+
+## 9. Signals and Events
+
+DOM event handlers use `on<event>` blocks. The handler runs with the rendered DOM element as `this` and receives the browser event as `event`.
 
 ```qhtml
 button {
   text { Click me }
-
-  onclick(event) {
+  onclick {
     this.textContent = "Clicked";
   }
 }
 ```
 
-Lifecycle hooks are also declarative:
+`q-signal name { ... }` defines a named signal-style event shape. Calling the signal syntax dispatches a DOM `CustomEvent` with slot payload data.
 
 ```qhtml
-q-component ready-card {
-  onready {
-    this.classList.add("is-ready");
-  }
-
-  div { text { Ready } }
-}
-```
-
-See `test/04.html` for signal-focused examples, including `q-signal`, `on<signal>`, and `q-connect`.
-
-## Connecting Objects
-
-`q-connect` wires a signal to a function declaratively.
-
-```qhtml
-q-component sender {
-  q-signal sent(message)
-
-  function sendNow() {
-    this.sent("hello");
-  }
-}
-
-q-component receiver {
-  function accept(message) {
-    this.querySelector(".out").textContent = message;
-  }
-
-  div.out { text { waiting } }
-}
-
-sender source { }
-receiver target { }
-
-q-connect { source.sent target.accept }
-```
-
-Dot paths and `this` paths are supported where the named objects are in scope.
-
-## Declarative Loops
-
-Loops generate repeated QHTML from an array-like property.
-
-```qhtml
-q-component number-list {
-  q-property numbers: [1, 2, 3, 4]
-
-  ul {
-    for (num in numbers) {
-      li { text { ${num} } }
-    }
-  }
-}
-
-number-list { }
-```
-
-Loops can instantiate components:
-
-
-See `test/05.html` for a loop-driven component stress example using `for (...)`, properties, and property animation.
-
-## Styling
-
-### Named Styles
-
-`q-style` defines a reusable style object.
-
-```qhtml
-q-style card-surface {
-  background: #ffffff;
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  padding: 16px;
-}
-
-card-surface {
-  div { text { Styled card } }
-}
-```
-
-Styles can include framework classes using `q-style-class`.
-
-```qhtml
-q-style toolbar-row {
-  q-style-class { w3-row w3-padding }
-  gap: 8px;
-}
-```
-
-### Themes
-
-`q-theme` maps selectors to styles.
-
-```qhtml
-q-style title-style {
-  color: #1d4ed8;
-  font-weight: 800;
-}
-
-q-style body-style {
-  color: #334155;
-  line-height: 1.5;
-}
-
-q-theme article-theme {
-  h2 { title-style }
-  p  { body-style }
-}
-
-article-theme {
-  article {
-    h2 { text { Themed title } }
-    p  { text { Themed body copy. } }
-  }
-}
-```
-
-### Default Themes
-
-`q-default-theme` is for reusable components. It provides component defaults that can be overridden by an applied `q-theme`.
-
-```qhtml
-q-default-theme card-defaults {
-  .card {
-    q-style {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      padding: 12px;
-    }
-  }
-}
-
-q-component card {
-  card-defaults {
-    div.card {
-      slot { default }
-    }
-  }
-}
-```
-
-### Theme Composition
-
-Themes can pull in other themes.
-
-```qhtml
-q-theme dark-theme {
-  body {
-    q-style {
-      background: #0f172a;
-      color: #f8fafc;
-    }
-  }
-}
-
-q-theme dashboard-theme {
-  dark-theme { }
-
-  .panel {
-    q-style {
-      border-color: #334155;
-    }
-  }
-}
-```
-
-Inside `q-theme`, treating another theme like a child imports that theme's selector rules into the parent. `q-child-theme { otherTheme }` is also supported.
-
-### Inline Anonymous Styles
-
-Inline style objects are supported inside themes and elements:
-
-```qhtml
-q-theme compact-theme {
-  .row {
-    q-style {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-  }
+q-signal menuItemClicked {
+  slot { itemId }
 }
 
 div {
-  style {
-    max-width: 720px;
-    margin: 0 auto;
-  }
+  menuItemClicked { itemId { A } }
+  p { text { signal-syntax-ok } }
 }
 ```
 
-## Layout
+Use direct DOM events for normal browser interaction and `q-signal` when QHTML source needs to describe a reusable event payload shape.
 
-QHTML includes simple flex layout primitives.
+## 10. Imports and Requirements
+
+`q-import { ... }` includes another QHTML file before the current source is rendered. `q-require { ... }` is available for required resource-style dependencies.
 
 ```qhtml
-q-layout {
-  width: 80vw
-  height: 480px
-  gap: 12px
+q-import { ./shared/theme.qhtml }
 
-  q-row {
-    div { text { Left } }
-
-    q-col {
-      div { text { Top right } }
-      div { text { Bottom right } }
-    }
-  }
+main-theme {
+  section { text { Imported theme available } }
 }
 ```
 
-- `q-layout` is the parent layout container.
-- `q-row` arranges children horizontally.
-- `q-col` arranges children vertically.
-- Layout children fill available space by default.
-- `width`, `height`, `gap`, `padding`, `margin`, `alignItems`, `justifyContent`, `overflow`, and `flex` can be assigned declaratively.
+Imports are resolved relative to the host page URL unless the path is absolute.
 
-## Imports
+## 11. QHTMLDomTree API
 
-Use `q-import` or `q-require` to compose `.qhtml` files.
+QHTML7 uses the WebAssembly-backed `QHTMLDomTree` object as the source-of-truth document model.
 
-```qhtml
-q-import { ../dist/q-components.qhtml }
-q-require { ./components/base-controls.qhtml }
+The common flow is:
+
+1. Create a tree.
+2. Load QHTML source with `.fromQHTML(source)`.
+3. Read or mutate the QHTML node tree.
+4. Serialize with `.toQHTML()`, `.toHTML()`, `.toJSON()`, or `.toJSONText()`.
+5. Load serialized state with `.fromJSON(value)`, `.fromJSONText(text)`, or `.fromQHTML(source)`.
+
+```html
+<script src="/dist/qhtml.js"></script>
+<script>
+document.addEventListener("QHTML7Ready", function () {
+  const tree = new QHTML7.Module.QHTMLDomTree();
+  tree.fromQHTML('section { h2 { text { Hello } } }');
+
+  const html = tree.toHTML();
+  const qhtml = tree.toQHTML();
+  const json = tree.toJSON();
+
+  console.log(html, qhtml, json);
+});
+</script>
 ```
 
-Use `q-import` for normal composition and `q-require` when the imported source must be available before parsing continues.
+### Serialize / Deserialize
 
-Relative paths are resolved from the file that contains the import. If `components/base.qhtml` imports `./button.qhtml`, that nested path resolves relative to `components/base.qhtml`, not the original page.
+```js
+const tree = new QHTML7.Module.QHTMLDomTree();
+tree.fromQHTML('ul { li { text { One } } }');
 
-Cache hints are supported:
+const jsonText = tree.toJSONText();
+const next = new QHTML7.Module.QHTMLDomTree();
+next.fromJSONText(jsonText);
 
-```qhtml
-q-import { ./components/widgets.qhtml cache }
-q-import { ./components/live.qhtml nocache }
+console.log(next.toQHTML());
 ```
 
+### Child traversal
 
+Every QHTMLDomNode-based object exposes child helpers from the WebAssembly side.
 
-## Timers And Property Animation
+```js
+const tree = new QHTML7.Module.QHTMLDomTree();
+tree.fromQHTML('q-layout { q-row { q-col { text { Cell } } } }');
 
-Timers are declarative objects with a built-in timeout signal.
+const children = tree.childList();
+const layouts = tree.findChildrenByType('QHTMLLayout');
+```
+
+Useful node methods include:
+
+- `.childList()`
+- `.childCount()`
+- `.childAt(index)`
+- `.findChildrenByType(typeName)`
+- `.sourceQHTML()` / `.toQHTML()`
+- `.renderHtml()` / `.toHTML()` where available
+- `.setPropertyText(name, value)` for WebAssembly-side property assignment updates
+
+### Host helpers
+
+Mounted `<q-html>` elements expose high-level helpers that use the same QHTMLDomTree internally.
+
+```js
+const host = document.querySelector('q-html');
+host.fromQHTML('div { text { Replaced source } }');
+console.log(host.toHTML());
+console.log(host.toQHTML());
+```
+
+For SEO/static output, `QHTMLDomTree.toHTML()` can be used to generate HTML from QHTML source, and `tools/roller.html` can process local HTML files containing `<q-html>` blocks.
+
+## 12. Builder and Editor
+
+- `test/demo.html` is the QHTML7 usage gallery.
+- `tools/layout-builder.html` is a visual layout editor for `q-layout`, `q-row`, and `q-col` trees.
+- `tools/page-builder.html` embeds the layout editor with a page-building shell and palette.
+- `<q-editor>` supports authoring live QHTML and previewing output.
+
+### `<q-editor>` (inline QHTML source)
+
+`<q-editor>` takes QHTML as literal text content, not nested `<q-html>`.
+
+```html
+<q-editor>
+  h3 { text { Hello from q-editor } }
+</q-editor>
+```
+
+### Layout builder files
+
+The layout builder is split into shared files:
+
+```text
+tools/layout-builder.html
+tools/layout-builder/main.qhtml
+tools/layout-builder/main.js
+```
+
+The page builder imports the same layout editor and adds page-builder files:
+
+```text
+tools/page-builder.html
+tools/page-builder/palette.qhtml
+tools/page-builder/palette.js
+```
+
+## 13. Debug Tips
+
+```js
+window.QHTML_RUNTIME_DEBUG = true;
+```
+
+Wait for QHTML7 runtime readiness before calling WebAssembly APIs directly:
+
+```js
+document.addEventListener("QHTML7Ready", function (event) {
+  console.log(event.detail.Module);
+});
+```
+
+Mounted documents dispatch `QHTMLContentLoaded` after QHTML content has been processed:
+
+```js
+document.addEventListener("QHTMLContentLoaded", function () {
+  console.log("QHTML content loaded");
+});
+```
+
+### `q-logger` (scoped debug logging)
+
+`q-logger` attaches a scoped runtime logger to the current QHTML node.
 
 ```qhtml
-q-timer pulseTimer {
-  interval: 400
-  running: true
-  repeat: true
+q-logger { q-signal q-property }
+q-property count: 0
+q-signal ping(value)
+```
 
-  ontimeout {
-    console.log("pulse");
-  }
+Supported category names include:
+
+- `q-property`
+- `q-signal`
+- `function`
+- `slot`
+- `model`
+- `instantiation`
+- `all`
+
+QHTML7 logging is primarily intended for runtime-node debugging. It is safe to remove `q-logger` blocks from production source.
+
+## 14. Escape sequences
+
+### Escaping `{` and `}` in block content
+
+Use `\{` and `\}` when you want literal braces inside block bodies.
+
+```qhtml
+div {
+  text { hello \} world }
 }
 ```
 
-Property animations declare a target, property, timing, and lifecycle handlers.
+Resulting HTML:
 
-```qhtml
-q-property-animation widthAnim {
-  target: this
-  property: "width"
-  duration: 1400
-  steps: 120
-  easing: "linear"
-  from: 84
-  to: 520
-  running: false
-
-  onended {
-    this.start();
-  }
-}
+```html
+<div>hello } world</div>
 ```
 
-`test/05.html` shows this pattern in a loop-generated animation test.
+## Development Notes
 
-## Paint Hooks
+QHTML7 is a WebAssembly-first project. The JavaScript files in `js/` and generated files in `dist/` bridge the browser APIs that cannot be owned by WebAssembly directly, but parsing, document state, and runtime object behavior should stay in the C++ WebAssembly implementation whenever practical.
 
-Components can declare custom paint hooks:
+Do not edit generated `dist/*.js` files directly. Modify source files under `js/` or the WebAssembly source, then run:
 
-```qhtml
-q-component painted-card {
-  q-property fill: "#2563eb"
-  q-property radius: 12
-  q-property paintvars: [this.fill, this.radius]
-
-  onPaintBackground(paintvars) {
-    this.setFill(fill);
-    this.drawRoundRect(0, 0, width, height, radius);
-  }
-
-  div {
-    text { Painted background }
-  }
-}
+```bash
+source /home/mike/build/emsdk/emsdk_env.sh
+./build-release.sh
 ```
-
-Supported paint hooks:
-
-- `onPaintBackground(properties)`
-- `onPaintBorder(properties)`
-- `onPaintMask(properties)`
-
-The `properties` argument should reference a property containing the values exposed to the paint handler.
-
-## Selector Helper In Handlers
-
-Event and function bodies can use `$()` as a compact selector helper.
-
-```qhtml
-q-component filter-panel {
-  button {
-    text { Activate }
-
-    onclick {
-      $("#status").textContent = "Active";
-      $(".row", function (row) {
-        row.classList.add("selected");
-      });
-    }
-  }
-
-  div#status { text { Waiting } }
-}
-```
-
-- `$("#id")` returns the first matching element.
-- `$(".class", fn)` and other selector forms can iterate matches when a callback is provided.
-
-## Language Cheat Sheet
-
-```qhtml
-/* DOM */
-div#id.class { text { hello } }
-div,span,strong { text { nested } }
-html { <b>raw</b> }
-
-/* Components */
-q-component name { ... }
-q-component child extends base { ... }
-name instanceName { prop: "value" }
-
-/* Properties and data */
-q-property count: 1
-q-property rows: [{ label: "A" }, { label: "B" }]
-
-/* Slots */
-slot title { text { Default title } }
-title { h2 { text { Custom title } } }
-
-/* Loops */
-for (row in rows) {
-  div { text { ${row.label} } }
-}
-
-/* Styles and themes */
-q-style surface { padding: 12px; }
-q-theme appTheme { .card { surface } }
-q-default-theme defaults { .card { surface } }
-style { color: red; }
-
-/* Signals and handlers */
-q-signal saved(id)
-onsaved(id) { console.log(id); }
-onclick(event) { this.classList.toggle("active"); }
-q-connect { source.saved target.handleSaved }
-
-/* Layout */
-q-layout { q-row { q-col { div { text { cell } } } } }
-
-/* Imports */
-q-import { ./components.qhtml }
-q-require { ./base.qhtml }
-```
-
-## Example Files
-
-The current test pages are useful as focused feature references:
-
-- `test/04.html`: signals, lifecycle hooks, `q-connect`, and event binding patterns.
-- `test/05.html`: declarative arrays, `for` loops, component instantiation inside loops, and property animation.
-
-## Design Direction
-
-QHTML7 is moving toward a small set of composable declarative primitives:
-
-- Components own structure.
-- Properties own state.
-- Slots own extension points.
-- Signals own communication.
-- Themes own presentation.
-- Loops own repeated structure.
-- Imports own composition across files.
-
-The result is a language that keeps reusable UI definitions compact while still rendering to ordinary HTML and custom elements.
