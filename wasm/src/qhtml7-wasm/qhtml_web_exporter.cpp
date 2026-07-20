@@ -686,7 +686,7 @@ QJsonObject manifestForState(const CompileState &state)
 {
     QJsonObject manifest;
     manifest.insert(QStringLiteral("format"), QStringLiteral("qhtml7-standalone-web"));
-    manifest.insert(QStringLiteral("version"), QString::fromLatin1(QHTML_VERSION));
+    manifest.insert(QStringLiteral("version"), qhtmlVersionString());
     manifest.insert(QStringLiteral("rootId"), state.rootId);
     manifest.insert(QStringLiteral("rootAttribute"), state.options->rootAttribute);
 
@@ -1875,7 +1875,7 @@ QHTMLWebBundle QHTMLWebExporter::exportNode(const QHTMLNode &node) const
     document.append(QStringLiteral("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"));
     if (m_options.includeGeneratorMetadata) {
         document.append(QStringLiteral("  <meta name=\"generator\" content=\"QHTML7 standalone web exporter ") +
-                        attributeEscape(QString::fromLatin1(QHTML_VERSION)) + QStringLiteral("\">"));
+                        attributeEscape(qhtmlVersionString()) + QStringLiteral("\">"));
     }
     document.append(QStringLiteral("  <title>") + htmlEscape(m_options.documentTitle) + QStringLiteral("</title>"));
     if (!bundle.css.isEmpty()) {

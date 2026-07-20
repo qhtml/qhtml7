@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
+        <file>resources/qhtml7/version.txt</file>
         <file>resources/qhtml7/q-components.qhtml</file>
         <file>resources/qhtml7/q-components/dark-theme.qhtml</file>
         <file>resources/qhtml7/q-components/expand-collapse.svg</file>

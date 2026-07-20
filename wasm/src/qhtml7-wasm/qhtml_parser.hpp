@@ -2596,7 +2596,6 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     using emscripten::constant;
     using emscripten::function;
 
-    constant("QHTML_VERSION", std::string(QHTML_VERSION));
     constant("QHTML_QUICKJS_ENABLED", true);
     constant("QHTML_QUICKJS_SIZE_BUDGET_BYTES", QHTML_QUICKJS_SIZE_BUDGET_BYTES);
     function("qhtmlVersion", &qhtmlVersionJs);

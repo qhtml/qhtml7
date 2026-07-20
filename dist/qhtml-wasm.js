@@ -1,3 +1,8 @@
+(function (globalScope) {
+  const QHTML_VERSION = "4.3.12";
+  globalScope.QHTML_VERSION = QHTML_VERSION;
+})(typeof globalThis !== "undefined" ? globalThis : window);
+
 var Module;
 
 (function () {
@@ -5,7 +10,7 @@ var Module;
 
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const currentScript = document.currentScript;
-  const QHTML_VERSION = "v7.3.8";
+  const QHTML_VERSION = String(globalScope.QHTML_VERSION || "4.3.7");
 
   if (!currentScript || !currentScript.src) {
     throw new Error("qhtml-wasm.js must be loaded from a script URL");
@@ -13,10 +18,31 @@ var Module;
 
   const base = new URL(".", currentScript.src).href;
 
+  function qhtmlVersionQuery() {
+    const value = String(QHTML_VERSION || "").trim();
+    return value ? "v" + value.replace(/^v/i, "") : "";
+  }
+
+  function versionedUrl(src) {
+    const text = String(src || "");
+    const version = qhtmlVersionQuery();
+    if (!version || text.includes("?" + version) || text.includes("&" + version)) {
+      return text;
+    }
+    const hashIndex = text.indexOf("#");
+    const beforeHash = hashIndex >= 0 ? text.slice(0, hashIndex) : text;
+    const hash = hashIndex >= 0 ? text.slice(hashIndex) : "";
+    return beforeHash + (beforeHash.includes("?") ? "&" : "?") + version + hash;
+  }
+
+  function isWasmPath(path) {
+    return String(path || "").split(/[?#]/, 1)[0].endsWith(".wasm");
+  }
+
   if (globalScope.QHTML_ENTRYPOINT_EXECUTED !== true &&
       globalScope.QHTML_JS_ENTRYPOINT_EXECUTED !== true) {
     const entryScript = document.createElement("script");
-    entryScript.src = base + "qhtml.js";
+    entryScript.src = versionedUrl(base + "qhtml.js");
     entryScript.async = false;
     entryScript.onerror = () => {
       throw new Error("qhtml-wasm.js direct load failed to delegate to qhtml.js");
@@ -61,15 +87,29 @@ var Module;
     throw new Error("qhtml7-wasm.js did not register a QHTML7 module factory");
   }
 
-  async function boot() {
-    await loadScript(base + "qhtml7-wasm.js");
+  async function loadWasmBinary() {
+    const response = await fetch(base + "qhtml7-wasm.wasm", {
+      cache: "no-store",
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      throw new Error("Failed to load qhtml7-wasm.wasm: " + response.status + " " + response.statusText);
+    }
+    return response.arrayBuffer();
+  }
 
+  async function boot() {
+    await loadScript(versionedUrl(base + "qhtml7-wasm.js"));
+
+    const wasmBinary = await loadWasmBinary();
     const qtModule = await resolveFactory()({
+      wasmBinary,
       locateFile(path) {
-        if (path === "qhtml7-wasm.wasm" || path.endsWith(".wasm")) {
-          return base + "qhtml7-wasm.wasm";
+        if (isWasmPath(path)) {
+          const cleanPath = String(path || "").split(/[?#]/, 1)[0];
+          return new URL(cleanPath || "qhtml7-wasm.wasm", base).href;
         }
-        return base + path;
+        return versionedUrl(base + path);
       }
     });
 
@@ -84,7 +124,7 @@ var Module;
       version: QHTML_VERSION
     });
 
-    await loadScript(base + "qhtml-element.js");
+    await loadScript(versionedUrl(base + "qhtml-element.js"));
 
     document.dispatchEvent(new CustomEvent("QHTML7Ready", {
       detail: { Module: qtModule, QHTML7: globalScope.QHTML7 }

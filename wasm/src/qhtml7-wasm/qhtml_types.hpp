@@ -9,8 +9,10 @@
 #include <QtCore/QJsonValue>
 #include <QtCore/QList>
 #include <QtCore/QDebug>
+#include <QtCore/QFile>
 #include <QtCore/QObject>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QResource>
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
@@ -32,12 +34,31 @@ extern "C" {
 }
 #endif
 
-inline constexpr const char QHTML_VERSION[] = "v7.3.8";
+inline constexpr const char QHTML_VERSION_RESOURCE_PATH[] = ":/resources/qhtml7/version.txt";
+inline constexpr const char QHTML_VERSION_FALLBACK[] = "4.3.7";
 inline constexpr int QHTML_QUICKJS_SIZE_BUDGET_BYTES = 614400;
+
+inline QString qhtmlVersionString()
+{
+    const QString path = QString::fromLatin1(QHTML_VERSION_RESOURCE_PATH);
+    const QResource resource(path);
+    if (!resource.isValid()) {
+        return QString::fromLatin1(QHTML_VERSION_FALLBACK);
+    }
+
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QString value = QString::fromUtf8(file.readAll()).trimmed();
+        if (!value.isEmpty()) {
+            return value;
+        }
+    }
+    return QString::fromLatin1(QHTML_VERSION_FALLBACK);
+}
 
 inline std::string qhtmlVersionJs()
 {
-    return std::string(QHTML_VERSION);
+    return qhtmlVersionString().toStdString();
 }
 
 inline QString qhtmlCssShortcutPropertyName(const QString &name)

@@ -8,8 +8,27 @@
   }
 
   const base = new URL(".", currentScript.src).href;
-  const qhtml6Url = new URL("qhtml6/qhtml.js", base).href;
-  const qhtml7Url = new URL("qhtml-wasm.js", base).href;
+  const QHTML_VERSION = String(globalScope.QHTML_VERSION || "4.3.7");
+
+  function qhtmlVersionQuery() {
+    const value = String(QHTML_VERSION || "").trim();
+    return value ? "v" + value.replace(/^v/i, "") : "";
+  }
+
+  function versionedUrl(src) {
+    const text = String(src || "");
+    const version = qhtmlVersionQuery();
+    if (!version || text.includes("?" + version) || text.includes("&" + version)) {
+      return text;
+    }
+    const hashIndex = text.indexOf("#");
+    const beforeHash = hashIndex >= 0 ? text.slice(0, hashIndex) : text;
+    const hash = hashIndex >= 0 ? text.slice(hashIndex) : "";
+    return beforeHash + (beforeHash.includes("?") ? "&" : "?") + version + hash;
+  }
+
+  const qhtml6Url = versionedUrl(new URL("qhtml6/qhtml.js", base).href);
+  const qhtml7Url = versionedUrl(new URL("qhtml-wasm.js", base).href);
   let qhtml6Promise = null;
   let qhtml7Promise = null;
 
@@ -67,7 +86,7 @@
 
   function loadQHTML6() {
     if (!qhtml6Promise) {
-      qhtml6Promise = loadScript(globalScope.QHTML6_SCRIPT_URL || qhtml6Url);
+      qhtml6Promise = loadScript(versionedUrl(globalScope.QHTML6_SCRIPT_URL || qhtml6Url));
     }
     return qhtml6Promise;
   }

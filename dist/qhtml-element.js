@@ -1,3 +1,8 @@
+(function (globalScope) {
+  const QHTML_VERSION = "4.3.12";
+  globalScope.QHTML_VERSION = QHTML_VERSION;
+})(typeof globalThis !== "undefined" ? globalThis : window);
+
 (function () {
   "use strict";
 
@@ -6,7 +11,7 @@
   const ELEMENT_NAME_7 = "q-html7";
   const ELEMENT_NAME_6 = "q-html6";
   const ELEMENT_NAME_ERROR = "q-html-error";
-  const QHTML_VERSION = "v7.3.8";
+  const QHTML_VERSION = String(globalScope.QHTML_VERSION || "4.3.7");
   const currentScript = document.currentScript;
   const QHTML7_RUNTIME_BASE = globalScope.QHTML7_SCRIPT_BASE ||
     globalScope.QHTML_SCRIPT_BASE ||
@@ -65,6 +70,26 @@
 
   function importCacheVersion() {
     return String(globalScope.QHTML7.importVersion || globalScope.QHTML7.version || "1");
+  }
+
+  function qhtmlVersionQuery() {
+    const value = String(globalScope.QHTML_VERSION || QHTML_VERSION || "").trim();
+    return value ? "v" + value.replace(/^v/i, "") : "";
+  }
+
+  function versionedFetchUrl(src) {
+    const text = String(src || "");
+    if (!text || text.startsWith(":/")) {
+      return text;
+    }
+    const version = qhtmlVersionQuery();
+    if (!version || text.includes("?" + version) || text.includes("&" + version)) {
+      return text;
+    }
+    const hashIndex = text.indexOf("#");
+    const beforeHash = hashIndex >= 0 ? text.slice(0, hashIndex) : text;
+    const hash = hashIndex >= 0 ? text.slice(hashIndex) : "";
+    return beforeHash + (beforeHash.includes("?") ? "&" : "?") + version + hash;
   }
 
   function importLimitPerResource() {
@@ -237,7 +262,7 @@
       let fetchError = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          response = await fetch(path, { cache: cacheMode === "nocache" ? "no-store" : "default" });
+          response = await fetch(versionedFetchUrl(path), { cache: cacheMode === "nocache" ? "no-store" : "default" });
           fetchError = null;
           break;
         } catch (error) {
