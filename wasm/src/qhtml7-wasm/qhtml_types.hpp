@@ -568,9 +568,19 @@ public:
         return nullptr;
     }
 
+    QHTMLNode *findDescendantByUUIDJs(const std::string &uuid) const
+    {
+        return findDescendantByUUID(QString::fromStdString(uuid));
+    }
+
     bool containsDescendantUUID(const QString &uuid) const
     {
         return findDescendantByUUID(uuid) != nullptr;
+    }
+
+    bool containsDescendantUUIDJs(const std::string &uuid) const
+    {
+        return containsDescendantUUID(QString::fromStdString(uuid));
     }
 
     void appendChild(QHTMLNode *child)

@@ -446,6 +446,8 @@
   let dropTargetId = "";
   let menuFrozen = false;
   let outlineCollapsed = false;
+  let layoutQueryHost = null;
+  let previewRenderToken = 0;
   const scopedImports = [];
   const scopedImportSources = Object.create(null);
   const collapsedOutlineIds = new Set();
@@ -527,6 +529,7 @@
   });
   const RESIZE_MINIMUM_PIXELS = 24;
   const RESIZE_EPSILON = 0.5;
+  let fittingLayoutBounds = false;
 
   function nextId() {
     nodeCounter += 1;
@@ -1312,28 +1315,101 @@
     }
   }
 
-  function renderPreview() {
+  function renderPreview(scheduleFit) {
     if (!previewHost) {
       return;
     }
-    const source = renderedPreviewSource();
-    previewHost.qhtmlSource = source;
-    if (typeof previewHost.fromQHTML === "function") {
-      previewHost.fromQHTML(source);
-    } else if (window.QHTML7 && window.QHTML7.runtime && typeof window.QHTML7.runtime.mountElement === "function") {
-      previewHost.textContent = source;
-      window.QHTML7.runtime.mountElement(previewHost);
-    } else {
-      previewHost.textContent = source;
+    const mount = document.getElementById("layoutPreviewMount");
+    if (!mount) {
+      return;
     }
-    window.setTimeout(() => {
-      enforceRenderedFill(root, null);
-      refreshOutlines();
-    }, 0);
+    const token = ++previewRenderToken;
+    const source = renderedPreviewSource();
+    const nextHost = createPreviewBufferHost();
+    mount.appendChild(nextHost);
+    mountSourceIntoPreviewHost(nextHost, source);
+    waitForPreviewHostReady(nextHost, token, () => finalizePreviewBuffer(nextHost, token, scheduleFit, 0));
+  }
+
+  function createPreviewBufferHost() {
+    const host = document.createElement("q-html7");
+    host.className = "lb-preview-host lb-preview-buffer";
+    host.setAttribute("aria-hidden", "true");
+    host.style.position = "absolute";
+    host.style.visibility = "hidden";
+    host.style.pointerEvents = "none";
+    host.style.inset = "0 auto auto 0";
+    host.style.zIndex = "-1";
+    return host;
+  }
+
+  function mountSourceIntoPreviewHost(host, source) {
+    host.removeAttribute("ready");
+    host.qhtmlSource = source;
+    if (typeof host.fromQHTML === "function") {
+      host.fromQHTML(source);
+    } else if (window.QHTML7 && window.QHTML7.runtime && typeof window.QHTML7.runtime.mountElement === "function") {
+      host.textContent = source;
+      window.QHTML7.runtime.mountElement(host);
+    } else {
+      host.textContent = source;
+    }
+  }
+
+  function waitForPreviewHostReady(host, token, callback, attempts) {
+    const count = Number(attempts) || 0;
+    if (token !== previewRenderToken) {
+      host.remove();
+      return;
+    }
+    if (host.getAttribute("ready") === "1" || count >= 20) {
+      callback();
+      return;
+    }
+    window.setTimeout(() => waitForPreviewHostReady(host, token, callback, count + 1), 16);
+  }
+
+  function finalizePreviewBuffer(host, token, scheduleFit, pass) {
+    if (token !== previewRenderToken) {
+      host.remove();
+      return;
+    }
+    layoutQueryHost = host;
+    enforceRenderedFill(root, null);
+    const changed = scheduleFit !== false && fitAllLayoutBounds(pass, host, false);
+    layoutQueryHost = null;
+    if (changed && pass < 3) {
+      mountSourceIntoPreviewHost(host, renderedPreviewSource());
+      waitForPreviewHostReady(host, token, () => finalizePreviewBuffer(host, token, scheduleFit, pass + 1));
+      return;
+    }
+    swapPreviewBuffer(host, token);
+  }
+
+  function swapPreviewBuffer(host, token) {
+    if (token !== previewRenderToken) {
+      host.remove();
+      return;
+    }
+    const oldHost = previewHost;
+    host.id = "layoutPreview";
+    host.className = "lb-preview-host";
+    host.removeAttribute("aria-hidden");
+    host.style.position = "";
+    host.style.visibility = "";
+    host.style.pointerEvents = "";
+    host.style.inset = "";
+    host.style.zIndex = "";
+    previewHost = host;
+    if (oldHost && oldHost !== host) {
+      oldHost.remove();
+    }
+    enforceRenderedFill(root, null);
+    refreshOutlines();
   }
 
   function refreshOutlines() {
-    const mount = document.getElementById("layoutPreviewMount");
+    const mount = layoutQueryHost || previewHost || document.getElementById("layoutPreviewMount");
     if (!mount) {
       return;
     }
@@ -1547,7 +1623,7 @@
   }
 
   function nearestLayoutElement(element, excludeId) {
-    const mount = document.getElementById("layoutPreviewMount");
+    const mount = layoutQueryHost || previewHost || document.getElementById("layoutPreviewMount");
     const excluded = excludeId ? findNodeById(excludeId) : null;
     let current = element;
     while (current && mount && mount.contains(current)) {
@@ -1573,7 +1649,7 @@
   }
 
   function layoutElementForResizeEvent(event) {
-    const mount = document.getElementById("layoutPreviewMount");
+    const mount = previewHost || document.getElementById("layoutPreviewMount");
     let current = document.elementFromPoint(event.clientX, event.clientY) || event.target;
     while (current && mount && mount.contains(current)) {
       if (current.hasAttribute && current.hasAttribute("data-layout-id")) {
@@ -1728,7 +1804,7 @@
   }
 
   function clearDropHighlight() {
-    const mount = document.getElementById("layoutPreviewMount");
+    const mount = previewHost || document.getElementById("layoutPreviewMount");
     if (!mount) {
       return;
     }
@@ -1806,6 +1882,174 @@
     return node;
   }
 
+  function hasDirectLayoutChild(node, type) {
+    return Boolean(node && Array.isArray(node.children) && node.children.some((child) => child && child.type === type));
+  }
+
+  function paletteDropWrapperType(target) {
+    if (target && target.type === "q-row" && hasDirectLayoutChild(target, "q-col")) {
+      return "q-col";
+    }
+    if (target && target.type === "q-col" && hasDirectLayoutChild(target, "q-row")) {
+      return "q-row";
+    }
+    return "";
+  }
+
+  function applyAutoFitAxis(node, parent, axis, requiredPixels) {
+    const element = layoutElementById(node.id);
+    if (!element || !Number.isFinite(requiredPixels) || requiredPixels <= RESIZE_MINIMUM_PIXELS) {
+      return false;
+    }
+    const rect = element.getBoundingClientRect();
+    if (requiredPixels <= rect[axis.size] + RESIZE_EPSILON) {
+      return false;
+    }
+    const item = captureConstraintItem(node, parent, element.parentElement, axis);
+    if (!item) {
+      return false;
+    }
+    applyConstraintItemSize(item, axis, requiredPixels);
+    return true;
+  }
+
+  function layoutEntriesBottomUp(node, parent, out) {
+    const entries = out || [];
+    if (!node) {
+      return entries;
+    }
+    (node.children || []).forEach((child) => layoutEntriesBottomUp(child, node, entries));
+    if (isLayoutType(node.type)) {
+      entries.push({
+        node: node,
+        parent: parent || null
+      });
+    }
+    return entries;
+  }
+
+  function layoutContainmentSize(element) {
+    if (!element) {
+      return null;
+    }
+    const own = element.getBoundingClientRect();
+    let requiredRight = own.right;
+    let requiredBottom = own.bottom;
+    Array.from(element.querySelectorAll("*")).forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) {
+        return;
+      }
+      requiredRight = Math.max(requiredRight, rect.right);
+      requiredBottom = Math.max(requiredBottom, rect.bottom);
+    });
+    return {
+      width: Math.max(
+        RESIZE_MINIMUM_PIXELS,
+        Math.ceil(requiredRight - own.left),
+        Math.ceil(element.scrollWidth || 0)
+      ),
+      height: Math.max(
+        RESIZE_MINIMUM_PIXELS,
+        Math.ceil(requiredBottom - own.top),
+        Math.ceil(element.scrollHeight || 0)
+      )
+    };
+  }
+
+  function renderedContentHeight(element) {
+    if (!element) {
+      return RESIZE_MINIMUM_PIXELS;
+    }
+    const own = element.getBoundingClientRect();
+    let requiredBottom = own.top;
+    Array.from(element.children || []).forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) {
+        return;
+      }
+      requiredBottom = Math.max(requiredBottom, rect.bottom);
+    });
+    const descendantsHeight = Math.max(0, Math.ceil(requiredBottom - own.top));
+    return Math.max(
+      RESIZE_MINIMUM_PIXELS,
+      descendantsHeight,
+      intrinsicContentHeight(element)
+    );
+  }
+
+  function minHeightUnitInfo(node, element, renderedPixels) {
+    const parsed = parseLengthValue(node && node.props ? node.props.minHeight : "");
+    if (parsed) {
+      return resizeUnitInfo(node, "minHeight", element, renderedPixels);
+    }
+    return { unit: "px", basePixels: 1 };
+  }
+
+  function syncNodeMinHeightToContent(node, element) {
+    if (!node || !isLayoutType(node.type) || !element) {
+      return false;
+    }
+    node.props = normalizedPropsFor(node.type, node.props);
+    const contentHeight = renderedContentHeight(element);
+    const baseline = isBuilderRoot(node)
+      ? Math.max(RESIZE_MINIMUM_PIXELS, window.innerHeight * 0.75)
+      : 0;
+    const requiredHeight = Math.max(
+      RESIZE_MINIMUM_PIXELS,
+      contentHeight,
+      Number.isFinite(baseline) ? baseline : 0
+    );
+    const currentHeight = lengthValueToPixels(node, "minHeight", element, "height");
+    if (Number.isFinite(currentHeight) && Math.abs(currentHeight - requiredHeight) <= RESIZE_EPSILON) {
+      return false;
+    }
+    const value = formatLengthValue(requiredHeight, minHeightUnitInfo(node, element, requiredHeight));
+    setNodeProp(node, "minHeight", value);
+    return true;
+  }
+
+  function fitAllLayoutBounds(pass, queryHost, renderOnChange) {
+    if (fittingLayoutBounds && !pass) {
+      return false;
+    }
+    const previousQueryHost = layoutQueryHost;
+    if (queryHost) {
+      layoutQueryHost = queryHost;
+    }
+    fittingLayoutBounds = true;
+    const currentPass = Number(pass) || 0;
+    const entries = layoutEntriesBottomUp(root, null, []);
+    let changed = false;
+    try {
+      entries.forEach((entry) => {
+        const element = layoutElementById(entry.node.id);
+        const bounds = layoutContainmentSize(element);
+        if (!element || !bounds) {
+          return;
+        }
+        changed = syncNodeMinHeightToContent(entry.node, element) || changed;
+        const rect = element.getBoundingClientRect();
+        const viewportWidth = Math.max(RESIZE_MINIMUM_PIXELS, window.innerWidth - Math.max(0, rect.left) - 16);
+        const requiredWidth = Math.min(Math.max(bounds.width, rect.width), viewportWidth);
+        changed = applyAutoFitAxis(entry.node, entry.parent, RESIZE_AXIS.horizontal, requiredWidth) || changed;
+      });
+      if (changed) {
+        normalizeLayoutFillTree(root, null);
+        if (renderOnChange !== false) {
+          renderPreview(false);
+        }
+        if (renderOnChange !== false && currentPass < 2) {
+          window.setTimeout(() => fitAllLayoutBounds(currentPass + 1, queryHost, renderOnChange), 80);
+        }
+      }
+      return changed;
+    } finally {
+      fittingLayoutBounds = false;
+      layoutQueryHost = previousQueryHost;
+    }
+  }
+
   function dropQHTMLAtPoint(source, x, y, meta) {
     const qhtmlSource = String(source || "").trim();
     if (!qhtmlSource) {
@@ -1829,10 +2073,11 @@
       meta.scopeImports.forEach(addScopedImport);
     }
 
-    if (target.type === "q-row") {
-      const col = createNode("q-col", [qhtmlNode], { label: false });
-      target.children.push(col);
-      activeId = col.id;
+    const wrapperType = paletteDropWrapperType(target);
+    if (wrapperType) {
+      const wrapper = createNode(wrapperType, [qhtmlNode], { label: false });
+      target.children.push(wrapper);
+      activeId = wrapper.id;
       inserted = true;
     } else {
       target.children.push(qhtmlNode);
@@ -1842,6 +2087,7 @@
 
     if (inserted) {
       renderPreview();
+      window.setTimeout(() => fitAllLayoutBounds(0), 80);
       setStatus("Dropped " + (meta && meta.displayName ? meta.displayName : "palette item"));
     }
     return inserted;
@@ -1997,7 +2243,7 @@
       return false;
     }
 
-    const element = document.querySelector('[data-layout-id="' + CSS.escape(targetId) + '"]');
+    const element = layoutElementById(targetId);
     if (!element) {
       return false;
     }
@@ -2139,62 +2385,18 @@
         return scoped;
       }
     }
-    return document.querySelector(selector);
-  }
-
-  function layoutDescendantBounds(element) {
-    if (!element) {
-      return null;
-    }
-    const own = element.getBoundingClientRect();
-    const descendants = Array.from(element.querySelectorAll("*")).filter((child) => {
-      const rect = child.getBoundingClientRect();
-      return rect.width > 0 || rect.height > 0;
-    });
-    if (!descendants.length) {
-      return {
-        width: Math.max(RESIZE_MINIMUM_PIXELS, own.width),
-        height: Math.max(RESIZE_MINIMUM_PIXELS, own.height)
-      };
-    }
-
-    let left = own.left;
-    let top = own.top;
-    let right = own.left;
-    let bottom = own.top;
-    descendants.forEach((child) => {
-      const rect = child.getBoundingClientRect();
-      left = Math.min(left, rect.left);
-      top = Math.min(top, rect.top);
-      right = Math.max(right, rect.right);
-      bottom = Math.max(bottom, rect.bottom);
-    });
-    return {
-      width: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(right - own.left)),
-      height: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(bottom - own.top))
-    };
-  }
-
-  function renderedMinimumSize(node) {
-    const element = selectedElementForNode(node);
-    const bounds = layoutDescendantBounds(element);
-    if (!bounds) {
-      return {
-        width: RESIZE_MINIMUM_PIXELS,
-        height: RESIZE_MINIMUM_PIXELS
-      };
-    }
-    return bounds;
+    const queryRoot = layoutQueryHost || previewHost || document;
+    return queryRoot.querySelector ? queryRoot.querySelector(selector) : null;
   }
 
   function applyRenderedMinimums(node) {
     if (!node || !isLayoutType(node.type)) {
       return;
     }
-    node.props = normalizedPropsFor(node.type, node.props);
-    const minimum = renderedMinimumSize(node);
-    setNodeProp(node, "minWidth", Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(minimum.width)) + "px");
-    setNodeProp(node, "minHeight", Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(minimum.height)) + "px");
+    const element = selectedElementForNode(node);
+    if (element) {
+      syncNodeMinHeightToContent(node, element);
+    }
   }
 
   function normalizeHexColor(value) {
@@ -3176,7 +3378,7 @@
     if (interaction || menuFrozen) {
       return;
     }
-    const mount = document.getElementById("layoutPreviewMount");
+    const mount = previewHost || document.getElementById("layoutPreviewMount");
     if (!mount) {
       return;
     }
