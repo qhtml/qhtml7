@@ -447,6 +447,7 @@
   let menuFrozen = false;
   let outlineCollapsed = false;
   const scopedImports = [];
+  const scopedImportSources = Object.create(null);
   const collapsedOutlineIds = new Set();
 
   const DEFAULT_QHTML = 'div { padding: "18px"; text { Edit this QHTML content. } }';
@@ -869,6 +870,7 @@
     const value = String(path || "").trim();
     if (value && !scopedImports.includes(value)) {
       scopedImports.push(value);
+      fetchScopedImportSource(value);
     }
   }
 
@@ -882,6 +884,112 @@
       return body;
     }
     return scopedImports.map((path) => "q-import { " + path + " }").join("\n") + "\n\n" + body;
+  }
+
+  function importUrl(path) {
+    return new URL(String(path || ""), document.baseURI).href;
+  }
+
+  function fetchScopedImportSource(path) {
+    const key = String(path || "").trim();
+    if (!key) {
+      return Promise.resolve("");
+    }
+    const cached = scopedImportSources[key];
+    if (cached && Object.prototype.hasOwnProperty.call(cached, "source")) {
+      return Promise.resolve(cached.source);
+    }
+    if (cached && cached.promise) {
+      return cached.promise;
+    }
+    const promise = fetch(importUrl(key))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to inline q-import " + key + ": " + response.status);
+        }
+        return response.text();
+      })
+      .then((text) => {
+        scopedImportSources[key] = { source: text };
+        return text;
+      });
+    scopedImportSources[key] = { promise: promise };
+    return promise;
+  }
+
+  function topLevelComponentBlocks(source) {
+    const text = String(source || "");
+    const blocks = [];
+    const componentRe = /\bq-component\s+([A-Za-z_][\w-]*)\b[^{]*\{/y;
+    let quote = "";
+    let escape = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const ch = text[index];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      componentRe.lastIndex = index;
+      const match = componentRe.exec(text);
+      if (!match) {
+        continue;
+      }
+      const open = componentRe.lastIndex - 1;
+      const close = findMatchingBrace(text, open);
+      if (close < 0) {
+        continue;
+      }
+      blocks.push({
+        name: match[1],
+        source: text.slice(index, close + 1).trim()
+      });
+      index = close;
+    }
+    return blocks;
+  }
+
+  function inlineImportSource(path, source) {
+    const normalizedPath = String(path || "").replace(/\\/g, "/");
+    if (normalizedPath.endsWith("page-builder/palette.qhtml")) {
+      return topLevelComponentBlocks(source)
+        .filter((block) => block.name !== "pageBuilderPalette" && block.name !== "page-builder-palette")
+        .map((block) => block.source)
+        .join("\n\n");
+    }
+    return String(source || "").trim();
+  }
+
+  async function sourceWithInlinedImports(source) {
+    const body = String(source || "").trim();
+    if (!scopedImports.length) {
+      return body;
+    }
+    const inlined = [];
+    for (const path of scopedImports) {
+      const importSource = await fetchScopedImportSource(path);
+      const portableSource = inlineImportSource(path, importSource);
+      if (portableSource.trim()) {
+        inlined.push(portableSource.trim());
+      }
+    }
+    return inlined.concat(body ? [body] : []).join("\n\n");
+  }
+
+  function normalizeEditorQHTMLSource(source) {
+    const normalized = normalizeQHTMLThroughDomTree(source);
+    const split = splitTopLevelImports(normalized);
+    split.imports.forEach(addScopedImport);
+    return split.source || "";
   }
 
   function qhtmlModule() {
@@ -2847,7 +2955,7 @@
   }
 
   function saveEditor() {
-    const value = normalizeQHTMLThroughDomTree(editorValue());
+    const value = normalizeEditorQHTMLSource(editorValue());
     if (editorMode === "add-qhtml") {
       const target = currentTarget().node || root;
       const next = createNode("qhtml", []);
@@ -2858,7 +2966,10 @@
       const found = findNodeById(editorTargetId);
       if (found && found.node) {
         const parsed = sourceHasSingleLayoutRoot(value) ? parseLayoutSource(value) : null;
-        if (parsed && parsed.type !== "qhtml") {
+        if (isBuilderRoot(found.node)) {
+          root = forceBuilderRoot(parsed && parsed.type !== "qhtml" ? parsed : parseLayoutSource(value));
+          activeId = root.id;
+        } else if (parsed && parsed.type !== "qhtml") {
           replaceNode(found.node, parsed);
           activeId = parsed.id;
         } else {
@@ -2928,6 +3039,15 @@
     }
     const index = found.parent.children.indexOf(oldNode);
     found.parent.children.splice(index, 1, newNode);
+  }
+
+  function forceBuilderRoot(node) {
+    const next = node && node.type === "q-layout" ? node : createBuilderRoot(node ? [node] : []);
+    next.builderRoot = true;
+    next.name = "";
+    next.props = normalizedPropsFor("q-layout", next.props);
+    setNodeProp(next, "data-lb-builder-root", "1");
+    return next;
   }
 
   function closeEditor(force) {
@@ -3007,17 +3127,27 @@
     setStatus("Properties updated");
   }
 
-  function exportFile() {
-    const blob = new Blob([currentSource() + "\n"], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "layout.qhtml";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setStatus("Exported layout.qhtml");
+  async function exportFile() {
+    try {
+      const roots = userRootNodes();
+      const source = roots.length
+        ? roots.map((node) => modelToQHTML(node, 0)).join("\n\n")
+        : "";
+      const portableSource = await sourceWithInlinedImports(source);
+      const blob = new Blob([portableSource + "\n"], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "layout.qhtml";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatus("Exported layout.qhtml");
+    } catch (error) {
+      setStatus(error && error.message ? error.message : "Export failed");
+      throw error;
+    }
   }
 
   function openFile(file) {
@@ -3037,9 +3167,9 @@
   function getActiveSource() {
     const found = currentTarget();
     if (isBuilderRoot(found.node)) {
-      return currentSource();
+      return modelToQHTML(root, 0);
     }
-    return sourceWithScopedImports(modelToQHTML(found.node || firstUserRoot() || root, 0));
+    return modelToQHTML(found.node || firstUserRoot() || root, 0);
   }
 
   function handleCanvasPointer(event) {
@@ -3216,7 +3346,7 @@
     const deleteButton = document.querySelector("#lbMenu [data-action='delete']");
     const cssButton = document.querySelector("#lbMenu [data-menu-open='css']");
     if (editButton) {
-      editButton.disabled = rootTarget;
+      editButton.disabled = false;
     }
     if (propertiesButton) {
       propertiesButton.disabled = false;
@@ -3275,9 +3405,6 @@
         showSubmenu(cssMenu, button);
       } else if (action === "edit") {
         const target = currentTarget().node || root;
-        if (isBuilderRoot(target)) {
-          return;
-        }
         openEditor("edit", target.id, getActiveSource());
       } else if (action === "properties") {
         openProperties();

@@ -3,3 +3,5 @@ wasm/src/qhtml7-wasm/.qtcreator/*
 .*
 js/*.zip
 tmp/*
+QUICK-START.md
+INSTALL.md

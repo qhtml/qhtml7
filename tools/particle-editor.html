@@ -83,7 +83,95 @@
       resize: vertical;
       grid-column: 1 / -1;
     }
+
+
+    .path-editor-button {
+      grid-column: 1 / -1;
+    }
+
+    .path-field-note {
+      grid-column: 1 / -1;
+      margin: -2px 0 2px 0;
+      color: #94a3b8;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .path-editor-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 2000;
+      display: none;
+      overflow: hidden;
+      cursor: crosshair;
+      background: rgba(2, 6, 23, 0.08);
+      touch-action: none;
+      user-select: none;
+    }
+
+    .path-editor-overlay svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .path-editor-instructions {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      max-width: calc(100% - 28px);
+      box-sizing: border-box;
+      border: 1px solid rgba(148, 163, 184, 0.34);
+      border-radius: 999px;
+      background: rgba(2, 6, 23, 0.86);
+      color: #e5e7eb;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .path-editor-actions {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) minmax(90px, 1fr);
+      gap: 10px;
+      padding: 14px;
+      box-sizing: border-box;
+      background: linear-gradient(180deg, transparent, rgba(2, 6, 23, 0.94) 32%);
+      cursor: default;
+    }
+
+    .path-editor-actions button {
+      min-height: 42px;
+      border: 1px solid rgba(148, 163, 184, 0.34);
+      border-radius: 10px;
+      background: #1f2937;
+      color: #e5e7eb;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .path-editor-actions button:last-child {
+      background: #22c55e;
+      color: #04130a;
+    }
+
+    .path-editor-actions button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
   </style>
+  <script src="../../dist/particle-emitter.js"></script>
   <script src="../../dist/qhtml-wasm.js"></script>
 </head>
 <body>
@@ -417,6 +505,8 @@ q-component particleEditorApp {
   q-property emitters: q-script { return []; }
   q-property selectedIndex: -1
   q-property counter: 0
+  q-property pathDraft: q-script { return []; }
+  q-property pathEditingIndex: -1
 
   function defaultEmitter() {
     this.counter = this.counter + 1;
@@ -437,6 +527,10 @@ q-component particleEditorApp {
       lifetimevariation: "90",
       x: "110",
       y: "114",
+      path: "",
+      duration: "3000",
+      delay: "0",
+      sleep: "0",
       width: "0",
       height: "0",
       xvariation: "845",
@@ -479,7 +573,7 @@ q-component particleEditorApp {
   }
 
   function setValue(id, value) {
-    this.input(id).value = String(value);
+    this.input(id).value = value == null ? "" : String(value);
   }
 
   function setChecked(id, value) {
@@ -557,6 +651,269 @@ q-component particleEditorApp {
     ];
   }
 
+  function buildPathFields(grid) {
+    var editor = this;
+    var fieldset = document.createElement("fieldset");
+    var legend = document.createElement("legend");
+    var pathButton = document.createElement("button");
+    var status = document.createElement("div");
+    var pathInput = document.createElement("input");
+
+    fieldset.className = "field-group";
+    legend.className = "group-title";
+    legend.textContent = "Emitter Path";
+    pathButton.type = "button";
+    pathButton.id = "editEmitterPathButton";
+    pathButton.className = "tool primary path-editor-button";
+    pathButton.textContent = "Emitter Path";
+    status.id = "pathPointStatus";
+    status.className = "path-field-note";
+    pathInput.type = "hidden";
+    pathInput.id = "pe-path";
+
+    fieldset.appendChild(legend);
+    fieldset.appendChild(pathButton);
+    fieldset.appendChild(status);
+    fieldset.appendChild(pathInput);
+    this.appendPathNumberField(fieldset, "Duration (ms)", "pe-duration", "1", "1");
+    this.appendPathNumberField(fieldset, "Delay (ms)", "pe-delay", "1", "0");
+    this.appendPathNumberField(fieldset, "Sleep (ms)", "pe-sleep", "1", "0");
+    grid.appendChild(fieldset);
+
+    pathButton.addEventListener("click", function() { editor.beginPathEditor(); });
+    this.createPathOverlay();
+  }
+
+  function appendPathNumberField(fieldset, captionText, id, step, min) {
+    var label = document.createElement("label");
+    var caption = document.createElement("span");
+    var input = document.createElement("input");
+    label.className = "field";
+    caption.className = "field-label";
+    caption.textContent = captionText;
+    input.className = "editor-input";
+    input.id = id;
+    input.type = "number";
+    input.step = step;
+    input.min = min;
+    label.appendChild(caption);
+    label.appendChild(input);
+    fieldset.appendChild(label);
+  }
+
+  function createPathOverlay() {
+    var editor = this;
+    var stage = this.stage();
+    var existing = this.querySelector("#pathEditorOverlay");
+    if (existing) {
+      return existing;
+    }
+
+    var overlay = document.createElement("div");
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    var instructions = document.createElement("div");
+    var actions = document.createElement("div");
+    var undoButton = document.createElement("button");
+    var cancelButton = document.createElement("button");
+    var saveButton = document.createElement("button");
+
+    overlay.id = "pathEditorOverlay";
+    overlay.className = "path-editor-overlay";
+    svg.id = "pathEditorSvg";
+    instructions.id = "pathEditorInstructions";
+    instructions.className = "path-editor-instructions";
+    actions.className = "path-editor-actions";
+    undoButton.type = "button";
+    undoButton.id = "undoPathButton";
+    undoButton.textContent = "Undo";
+    cancelButton.type = "button";
+    cancelButton.id = "cancelPathButton";
+    cancelButton.textContent = "Cancel";
+    saveButton.type = "button";
+    saveButton.id = "savePathButton";
+    saveButton.textContent = "Save";
+
+    actions.appendChild(undoButton);
+    actions.appendChild(cancelButton);
+    actions.appendChild(saveButton);
+    overlay.appendChild(svg);
+    overlay.appendChild(instructions);
+    overlay.appendChild(actions);
+    stage.appendChild(overlay);
+
+    overlay.addEventListener("click", function(event) {
+      var target = event.target;
+      if (target.closest) {
+        if (target.closest(".path-editor-actions")) {
+          return;
+        }
+      }
+      editor.addPathPoint(event);
+    });
+    undoButton.addEventListener("click", function(event) {
+      event.stopPropagation();
+      editor.undoPathPoint();
+    });
+    cancelButton.addEventListener("click", function(event) {
+      event.stopPropagation();
+      editor.finishPathEditor(false);
+    });
+    saveButton.addEventListener("click", function(event) {
+      event.stopPropagation();
+      editor.finishPathEditor(true);
+    });
+    window.addEventListener("resize", function() {
+      if (overlay.style.display != "none") {
+        editor.renderPathOverlay();
+      }
+    });
+
+    return overlay;
+  }
+
+  function parsePath(value) {
+    var text = value == null ? "" : String(value);
+    var values = text.trim() == "" ? [] : text.trim().split(/[\s,]+/);
+    var points = [];
+    var index = 0;
+    while (index + 1 < values.length) {
+      var x = Number(values[index]);
+      var y = Number(values[index + 1]);
+      if (Number.isFinite(x)) {
+        if (Number.isFinite(y)) {
+          points.push({
+            x: Math.max(0, Math.min(1, x)),
+            y: Math.max(0, Math.min(1, y))
+          });
+        }
+      }
+      index = index + 2;
+    }
+    return points;
+  }
+
+  function formatPathCoordinate(value) {
+    var text = Number(value).toFixed(4);
+    text = text.replace(/0+$/, "");
+    text = text.replace(/\.$/, "");
+    return text == "" ? "0" : text;
+  }
+
+  function serializePath(points) {
+    var editor = this;
+    var values = [];
+    points.forEach(function(point) {
+      values.push(editor.formatPathCoordinate(point.x));
+      values.push(editor.formatPathCoordinate(point.y));
+    });
+    return values.join(" ");
+  }
+
+  function beginPathEditor() {
+    if (this.selectedIndex < 0) {
+      return;
+    }
+    this.updateSelected();
+    this.pathEditingIndex = this.selectedIndex;
+    this.pathDraft = this.parsePath(this.emitters[this.selectedIndex].path);
+    this.closeEditorDialog();
+    this.querySelector("#pathEditorOverlay").style.display = "block";
+    this.renderPathOverlay();
+  }
+
+  function addPathPoint(event) {
+    var overlay = this.querySelector("#pathEditorOverlay");
+    var rect = overlay.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return;
+    }
+    if (rect.height <= 0) {
+      return;
+    }
+    this.pathDraft.push({
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+    });
+    this.renderPathOverlay();
+  }
+
+  function undoPathPoint() {
+    if (this.pathDraft.length > 0) {
+      this.pathDraft.pop();
+      this.renderPathOverlay();
+    }
+  }
+
+  function finishPathEditor(save) {
+    var overlay = this.querySelector("#pathEditorOverlay");
+    overlay.style.display = "none";
+    if (save == true) {
+      this.selectedIndex = this.pathEditingIndex;
+      this.setValue("pe-path", this.serializePath(this.pathDraft));
+      this.updateSelected();
+    }
+    this.pathEditingIndex = -1;
+    this.pathDraft = [];
+    this.openEditorDialog();
+  }
+
+  function renderPathOverlay() {
+    var overlay = this.querySelector("#pathEditorOverlay");
+    var svg = this.querySelector("#pathEditorSvg");
+    var status = this.querySelector("#pathEditorInstructions");
+    var undoButton = this.querySelector("#undoPathButton");
+    var width = Math.max(1, overlay.clientWidth);
+    var height = Math.max(1, overlay.clientHeight);
+    var svgNamespace = "http://www.w3.org/2000/svg";
+    var pointsText = [];
+    var index = 0;
+
+    svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+    svg.innerHTML = "";
+
+    this.pathDraft.forEach(function(point) {
+      pointsText.push((point.x * width) + "," + (point.y * height));
+    });
+
+    if (pointsText.length > 1) {
+      var line = document.createElementNS(svgNamespace, "polyline");
+      line.setAttribute("points", pointsText.join(" "));
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke", "#22c55e");
+      line.setAttribute("stroke-width", "3");
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(line);
+    }
+
+    while (index < this.pathDraft.length) {
+      var point = this.pathDraft[index];
+      var circle = document.createElementNS(svgNamespace, "circle");
+      circle.setAttribute("cx", String(point.x * width));
+      circle.setAttribute("cy", String(point.y * height));
+      circle.setAttribute("r", index == 0 ? "7" : "5");
+      circle.setAttribute("fill", index == 0 ? "#f8fafc" : "#22c55e");
+      circle.setAttribute("stroke", "#020617");
+      circle.setAttribute("stroke-width", "2");
+      svg.appendChild(circle);
+      index = index + 1;
+    }
+
+    status.textContent = "Click the stage to add path points — " + this.pathDraft.length + " point(s)";
+    undoButton.disabled = this.pathDraft.length == 0;
+  }
+
+  function updatePathStatus() {
+    var status = this.querySelector("#pathPointStatus");
+    if (!status) {
+      return;
+    }
+    var count = this.parsePath(this.fieldValue("pe-path")).length;
+    status.textContent = count == 0
+      ? "No path is defined. Fixed X/Y coordinates remain active."
+      : count + " path point(s) defined as normalized canvas coordinates.";
+  }
+
   function buildForm() {
     var editor = this;
     var grid = this.querySelector("#particle-form-grid");
@@ -590,6 +947,9 @@ q-component particleEditorApp {
       fieldset.appendChild(label);
       });
       grid.appendChild(fieldset);
+      if (group.title == "Position") {
+        editor.buildPathFields(grid);
+      }
     });
   }
 
@@ -654,6 +1014,10 @@ q-component particleEditorApp {
     data.element.setAttribute("lifetimevariation", data.lifetimevariation);
     data.element.setAttribute("x", data.x);
     data.element.setAttribute("y", data.y);
+    data.element.setAttribute("path", data.path);
+    data.element.setAttribute("duration", data.duration);
+    data.element.setAttribute("delay", data.delay);
+    data.element.setAttribute("sleep", data.sleep);
     data.element.setAttribute("width", data.width);
     data.element.setAttribute("height", data.height);
     data.element.setAttribute("xvariation", data.xvariation);
@@ -697,6 +1061,10 @@ q-component particleEditorApp {
       lifetimevariation: this.fieldValue("pe-lifetimevariation"),
       x: this.fieldValue("pe-x"),
       y: this.fieldValue("pe-y"),
+      path: this.fieldValue("pe-path"),
+      duration: this.fieldValue("pe-duration"),
+      delay: this.fieldValue("pe-delay"),
+      sleep: this.fieldValue("pe-sleep"),
       width: this.fieldValue("pe-width"),
       height: this.fieldValue("pe-height"),
       xvariation: this.fieldValue("pe-xvariation"),
@@ -740,6 +1108,10 @@ q-component particleEditorApp {
     this.setValue("pe-lifetimevariation", data.lifetimevariation);
     this.setValue("pe-x", data.x);
     this.setValue("pe-y", data.y);
+    this.setValue("pe-path", data.path);
+    this.setValue("pe-duration", data.duration);
+    this.setValue("pe-delay", data.delay);
+    this.setValue("pe-sleep", data.sleep);
     this.setValue("pe-width", data.width);
     this.setValue("pe-height", data.height);
     this.setValue("pe-xvariation", data.xvariation);
@@ -762,6 +1134,7 @@ q-component particleEditorApp {
     this.setValue("pe-endopacityvariation", data.endopacityvariation);
     this.setValue("pe-zindex", data.zindex);
     this.setValue("pe-style", data.style);
+    this.updatePathStatus();
   }
 
   function addEmitter(openEditor) {
@@ -787,6 +1160,7 @@ q-component particleEditorApp {
     this.applyEmitterAttributes(data);
     this.renderEmitterList();
     this.refreshExport();
+    this.updatePathStatus();
   }
 
   function deleteSelected() {
@@ -856,6 +1230,10 @@ q-component particleEditorApp {
     this.appendLine(lines, "  ", "lifetimeVariation", data.lifetimevariation);
     this.appendLine(lines, "  ", "x", data.x);
     this.appendLine(lines, "  ", "y", data.y);
+    this.appendLine(lines, "  ", "path", data.path);
+    this.appendLine(lines, "  ", "duration", data.duration);
+    this.appendLine(lines, "  ", "delay", data.delay);
+    this.appendLine(lines, "  ", "sleep", data.sleep);
     this.appendLine(lines, "  ", "width", data.width);
     this.appendLine(lines, "  ", "height", data.height);
     this.appendLine(lines, "  ", "xVariation", data.xvariation);

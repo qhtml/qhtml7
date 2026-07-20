@@ -22,6 +22,10 @@
     "lifetimevariation",
     "x",
     "y",
+    "path",
+    "duration",
+    "delay",
+    "sleep",
     "width",
     "height",
     "xvariation",
@@ -83,6 +87,8 @@
       this._drawPhase = 0;
       this._paintPollCountdown = 1;
       this._lastPaintDuration = 0;
+      this._viewportWidth = 1;
+      this._viewportHeight = 1;
       this._resizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => this._resize())
         : null;
@@ -259,6 +265,10 @@
       const cssHeight = Math.max(1, rect.height);
       const pixelWidth = Math.floor(cssWidth * dpr);
       const pixelHeight = Math.floor(cssHeight * dpr);
+      const viewportChanged = this._viewportWidth !== cssWidth || this._viewportHeight !== cssHeight;
+
+      this._viewportWidth = cssWidth;
+      this._viewportHeight = cssHeight;
 
       if (this._canvas.width !== pixelWidth || this._canvas.height !== pixelHeight) {
         this._canvas.width = pixelWidth;
@@ -266,6 +276,10 @@
         this._canvas.style.width = `${cssWidth}px`;
         this._canvas.style.height = `${cssHeight}px`;
         this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      if (viewportChanged && this._workerReady) {
+        this._postWorkerConfig();
       }
     }
 
@@ -317,7 +331,10 @@
         return;
       }
 
-      this._postWorker({ type: "config", config: serializeParticleConfig(this._config) });
+      this._postWorker({
+        type: "config",
+        config: serializeParticleConfig(this._config, this._viewportWidth, this._viewportHeight),
+      });
     }
 
     _onWorkerMessage(event) {
@@ -450,6 +467,10 @@
         lifetimeVariation: Math.max(0, number("lifetimeVariation", 0)),
         x: number("x", 0),
         y: number("y", 0),
+        path: parsePathPoints(text("path", "")),
+        pathDuration: Math.max(1, number("duration", 1000)),
+        pathDelay: Math.max(0, number("delay", 0)),
+        pathSleep: Math.max(0, number("sleep", 0)),
         width: Math.max(0, number("width", 0)),
         height: Math.max(0, number("height", 0)),
         xVariation: number("xVariation", 0),
@@ -851,6 +872,27 @@
     return !["false", "0", "no", "off"].includes(raw.trim().toLowerCase());
   }
 
+  function parsePathPoints(value) {
+    const tokens = String(value || "").trim().split(/[\s,]+/).filter(Boolean);
+    const points = [];
+
+    for (let index = 0; index + 1 < tokens.length; index += 2) {
+      const x = Number(tokens[index]);
+      const y = Number(tokens[index + 1]);
+
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        continue;
+      }
+
+      points.push({
+        x: clamp(x, 0, 1),
+        y: clamp(y, 0, 1),
+      });
+    }
+
+    return points;
+  }
+
   function vary(value, variation, rng) {
     if (!variation) {
       return value;
@@ -869,13 +911,19 @@
     };
   }
 
-  function serializeParticleConfig(cfg) {
+  function serializeParticleConfig(cfg, viewportWidth, viewportHeight) {
     return {
       emitRate: cfg.emitRate,
       lifetime: cfg.lifetime,
       lifetimeVariation: cfg.lifetimeVariation,
       x: cfg.x,
       y: cfg.y,
+      path: cfg.path.map((point) => ({ x: point.x, y: point.y })),
+      pathDuration: cfg.pathDuration,
+      pathDelay: cfg.pathDelay,
+      pathSleep: cfg.pathSleep,
+      viewportWidth: Math.max(1, Number(viewportWidth) || 1),
+      viewportHeight: Math.max(1, Number(viewportHeight) || 1),
       width: cfg.width,
       height: cfg.height,
       xVariation: cfg.xVariation,
@@ -930,15 +978,21 @@
       var emitCarry = 0;
       var timer = 0;
       var lastTime = 0;
+      var pathElapsedMs = 0;
 
       self.onmessage = function(event) {
         var data = event && event.data ? event.data : {};
 
         if (data.type === "config") {
           var oldSeed = cfg.seed;
+          var oldPathKey = pathConfigKey(cfg);
+          var oldRunning = cfg.running;
           cfg = normalizeConfig(data.config || cfg);
           if (oldSeed !== cfg.seed) {
             rng = new SeededRandom(cfg.seed);
+          }
+          if (oldPathKey !== pathConfigKey(cfg) || (!oldRunning && cfg.running)) {
+            resetPathTimeline();
           }
           activeLimit = rollActiveLimit();
           if (cfg.running) {
@@ -948,6 +1002,9 @@
         }
 
         if (data.type === "start") {
+          if (!cfg.running) {
+            resetPathTimeline();
+          }
           cfg.running = true;
           startTimer();
           return;
@@ -986,6 +1043,12 @@
           lifetimeVariation: 0,
           x: 0,
           y: 0,
+          path: [],
+          pathDuration: 1000,
+          pathDelay: 0,
+          pathSleep: 0,
+          viewportWidth: 1,
+          viewportHeight: 1,
           width: 0,
           height: 0,
           xVariation: 0,
@@ -1030,6 +1093,12 @@
         next.lifetimeVariation = Math.max(0, finite(next.lifetimeVariation, 0));
         next.x = finite(next.x, 0);
         next.y = finite(next.y, 0);
+        next.path = normalizePath(next.path);
+        next.pathDuration = Math.max(1, finite(next.pathDuration, 1000));
+        next.pathDelay = Math.max(0, finite(next.pathDelay, 0));
+        next.pathSleep = Math.max(0, finite(next.pathSleep, 0));
+        next.viewportWidth = Math.max(1, finite(next.viewportWidth, 1));
+        next.viewportHeight = Math.max(1, finite(next.viewportHeight, 1));
         next.width = Math.max(0, finite(next.width, 0));
         next.height = Math.max(0, finite(next.height, 0));
         next.xVariation = finite(next.xVariation, 0);
@@ -1088,6 +1157,7 @@
         lastTime = current;
 
         if (cfg.running) {
+          advancePath(elapsedMs);
           emit(elapsedMs);
         }
 
@@ -1156,8 +1226,9 @@
 
       function makeParticle(origin) {
         var hasOrigin = origin && typeof origin === "object";
-        var originX = hasOrigin && Number.isFinite(Number(origin.x)) ? Number(origin.x) : cfg.x;
-        var originY = hasOrigin && Number.isFinite(Number(origin.y)) ? Number(origin.y) : cfg.y;
+        var pathOrigin = hasOrigin ? null : resolvePathOrigin();
+        var originX = hasOrigin && Number.isFinite(Number(origin.x)) ? Number(origin.x) : pathOrigin.x;
+        var originY = hasOrigin && Number.isFinite(Number(origin.y)) ? Number(origin.y) : pathOrigin.y;
         var emitterOrigin = sampleEmitterOrigin(originX, originY);
 
         return {
@@ -1173,6 +1244,103 @@
           endOpacity: clamp(vary(cfg.endOpacity, cfg.endOpacityVariation), 0, 1),
           lifetime: vary(cfg.lifetime, cfg.lifetimeVariation),
           age: 0
+        };
+      }
+
+      function pathConfigKey(config) {
+        var values = [config.pathDuration, config.pathDelay, config.pathSleep];
+        var points = Array.isArray(config.path) ? config.path : [];
+        var i;
+
+        for (i = 0; i < points.length; i += 1) {
+          values.push(points[i].x, points[i].y);
+        }
+
+        return values.join("|");
+      }
+
+      function normalizePath(input) {
+        var points = Array.isArray(input) ? input : [];
+        var normalized = [];
+        var i;
+        var point;
+        var x;
+        var y;
+
+        for (i = 0; i < points.length; i += 1) {
+          point = points[i] || {};
+          x = Number(point.x);
+          y = Number(point.y);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            continue;
+          }
+          normalized.push({
+            x: clamp(x, 0, 1),
+            y: clamp(y, 0, 1)
+          });
+        }
+
+        return normalized;
+      }
+
+      function resetPathTimeline() {
+        pathElapsedMs = 0;
+      }
+
+      function advancePath(elapsedMs) {
+        if (cfg.path.length > 0) {
+          pathElapsedMs += Math.max(0, finite(elapsedMs, 0));
+        }
+      }
+
+      function resolvePathOrigin() {
+        var points = cfg.path;
+        var first;
+        var last;
+        var activeElapsed;
+        var cycleDuration;
+        var cycleElapsed;
+        var normalizedProgress;
+        var segmentPosition;
+        var segmentIndex;
+        var segmentProgress;
+        var fromPoint;
+        var toPoint;
+
+        if (!points || points.length === 0) {
+          return { x: cfg.x, y: cfg.y };
+        }
+
+        first = points[0];
+        if (points.length === 1 || pathElapsedMs < cfg.pathDelay) {
+          return {
+            x: first.x * cfg.viewportWidth,
+            y: first.y * cfg.viewportHeight
+          };
+        }
+
+        last = points[points.length - 1];
+        activeElapsed = pathElapsedMs - cfg.pathDelay;
+        cycleDuration = cfg.pathDuration + cfg.pathSleep;
+        cycleElapsed = cycleDuration > 0 ? activeElapsed % cycleDuration : 0;
+
+        if (cycleElapsed >= cfg.pathDuration) {
+          return {
+            x: last.x * cfg.viewportWidth,
+            y: last.y * cfg.viewportHeight
+          };
+        }
+
+        normalizedProgress = clamp(cycleElapsed / cfg.pathDuration, 0, 1);
+        segmentPosition = normalizedProgress * (points.length - 1);
+        segmentIndex = Math.min(points.length - 2, Math.floor(segmentPosition));
+        segmentProgress = segmentPosition - segmentIndex;
+        fromPoint = points[segmentIndex];
+        toPoint = points[segmentIndex + 1];
+
+        return {
+          x: lerp(fromPoint.x, toPoint.x, segmentProgress) * cfg.viewportWidth,
+          y: lerp(fromPoint.y, toPoint.y, segmentProgress) * cfg.viewportHeight
         };
       }
 

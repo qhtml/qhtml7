@@ -2640,6 +2640,7 @@
 
   function dispatchPropertyChange(domElement, propertyNode, propertyName, nextValue, transactionId) {
     withPropertyTransaction(transactionId, () => {
+      syncLivePropertyToQHTMLNode(domElement, propertyName, nextValue);
       logQHTMLRuntime(
         domElement.__qhtmlRegistry,
         "QHTMLProperty",
@@ -2663,6 +2664,35 @@
         }));
       }
     });
+  }
+
+  function syncLivePropertyToQHTMLNode(domElement, propertyName, value) {
+    const qhtmlNode = domElement && domElement.qhtmlNode;
+    if (!qhtmlNode || !propertyName || typeof qhtmlNode.setProperty !== "function") {
+      return false;
+    }
+    return qhtmlNode.setProperty(String(propertyName), value) !== false;
+  }
+
+  function syncLivePropertiesToQHTMLNode(domElement) {
+    const properties = domElement && domElement.__qhtmlProperties;
+    if (!properties) {
+      return;
+    }
+    Object.keys(properties).forEach((propertyName) => {
+      const entry = properties[propertyName];
+      syncLivePropertyToQHTMLNode(domElement, propertyName, entry ? entry.value : undefined);
+    });
+  }
+
+  function syncLivePropertiesInSubtree(rootElement) {
+    if (!rootElement) {
+      return;
+    }
+    syncLivePropertiesToQHTMLNode(rootElement);
+    if (rootElement.querySelectorAll) {
+      rootElement.querySelectorAll("[qhtml-node]").forEach(syncLivePropertiesToQHTMLNode);
+    }
   }
 
   function behaviorNodeForProperty(domElement, propertyName) {
@@ -7253,7 +7283,26 @@
     };
     bindComponentContextForwarders(domElement, componentElement);
     domElement.toJSON = function componentToJSON() {
+      syncLivePropertiesInSubtree(domElement);
       return domElement.qhtmlNode.toJSON();
+    };
+    domElement.toJSONText = function componentToJSONText() {
+      syncLivePropertiesInSubtree(domElement);
+      return typeof domElement.qhtmlNode.toJSONText === "function"
+        ? domElement.qhtmlNode.toJSONText()
+        : JSON.stringify(domElement.qhtmlNode.toJSON());
+    };
+    domElement.toQHTML = function componentToQHTML() {
+      syncLivePropertiesInSubtree(domElement);
+      return typeof domElement.qhtmlNode.toQHTML === "function"
+        ? domElement.qhtmlNode.toQHTML()
+        : (typeof domElement.qhtmlNode.sourceQHTML === "function" ? domElement.qhtmlNode.sourceQHTML() : "");
+    };
+    domElement.toHTML = function componentToHTML() {
+      syncLivePropertiesInSubtree(domElement);
+      return typeof domElement.qhtmlNode.toHTML === "function"
+        ? domElement.qhtmlNode.toHTML()
+        : (typeof domElement.qhtmlNode.renderHtml === "function" ? domElement.qhtmlNode.renderHtml() : "");
     };
     domElement.fromJSON = function componentFromJSON(value) {
       const changed = domElement.qhtmlNode.fromJSON(value);
@@ -8208,6 +8257,7 @@
       if (!tree) {
         return [];
       }
+      syncLivePropertiesInSubtree(this);
       if (typeof tree.toJSON === "function") {
         return tree.toJSON();
       }
@@ -8222,6 +8272,7 @@
       if (!tree) {
         return "[]";
       }
+      syncLivePropertiesInSubtree(this);
       if (typeof tree.toJSONText === "function") {
         return tree.toJSONText();
       }
@@ -8253,6 +8304,7 @@
       if (!tree) {
         return this.qhtmlSource || "";
       }
+      syncLivePropertiesInSubtree(this);
       return typeof tree.toQHTML === "function"
         ? tree.toQHTML()
         : (typeof tree.sourceQHTML === "function" ? tree.sourceQHTML() : "");
@@ -8267,6 +8319,7 @@
       if (!tree) {
         return "";
       }
+      syncLivePropertiesInSubtree(this);
       return typeof tree.toHTML === "function"
         ? tree.toHTML()
         : (typeof tree.renderHtml === "function" ? tree.renderHtml() : "");
