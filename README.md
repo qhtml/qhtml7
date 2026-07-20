@@ -1,30 +1,24 @@
 # QHTML7 - v7.3.8
 
-QHTML7 is a compact language and WebAssembly runtime for building web UIs with readable block syntax, hard-coded QHTML runtime nodes, signals, themes, layouts, data helpers, and live QHTMLDomTree editing.
+QHTML7 is a the answer that everybody has been waiting for in the Web Development world. Finally, a single language that unifies HTML, javascript, and CSS together into a simple declarative language you can just write directly into the HTML files without the need to rollup, or preprocess anything. 
 
-It is designed around a simple idea: describe the interface as a tree of objects, let the WebAssembly runtime keep the source-of-truth tree, and keep the source readable enough that the code still feels like the UI.
+It is designed around a simple idea: maximum simplicity, maximum flexibility, and maximum readability. 
 
 Language design, specifications, and tests created by humans; implementation by ChatGPT 5.6 Codex.
 
 - Dev testbed: `test/demo.html`
-- Layout builder: `tools/layout-builder.html`
+- Particle Editor: `tools/particle-editor.html`
 - Page builder: `tools/page-builder.html`
+- QHTML IDE: `tools/editor.html`
 - Language notes: `language/qhtml7.txt`
-
-## Whats New in QHTML7
-
-- QHTML7 is backed by a QtCore-only WebAssembly parser/runtime.
-- `<q-html>` is the QHTML7 host element.
-- `dist/qhtml.js` is the entry point. It loads the runtime files from `dist/` and routes QHTML7 documents through the WebAssembly-backed runtime.
-- The persistent source-of-truth object model lives in `QHTMLDomTree` and QHTML node objects exposed by the WebAssembly module.
-- `q-layout`, `q-row`, and `q-col` provide declarative layout primitives for builder tools and authored pages.
-- Hard-coded runtime syntax includes DOM element blocks, selector shorthand, attributes, text/html/style blocks, q-style, q-theme, q-default-theme, q-script, q-var, q-array, q-map, q-model, q-model-view, for loops, q-switch, q-canvas, q-timer, particle-emitter, q-painter, q-logger, q-import, and q-require.
 
 ## 1. Quick Start
 
 ### Project setup
 
-Copy the contents of `dist/` to your web server. The simplest layout is:
+Copy the contents of `dist/` to a directory that can be accessed via the web. (Web Server HTTP Root) 
+-or-
+Spin up a temporary web server in the QHTML7 repo root directory using  `python3 -m http.server` or similar.
 
 ```text
 /path/to/site/dist/qhtml.js
@@ -34,13 +28,14 @@ Copy the contents of `dist/` to your web server. The simplest layout is:
 /path/to/site/dist/qhtml7-wasm.wasm
 ```
 
-Then include the QHTML entry point from your page:
+Once the files have been copied,
+Then include the QHTML script on any web page:
 
 ```html
 <script src="/dist/qhtml.js"></script>
 ```
 
-`qhtml.js` loads the QHTML7 WebAssembly runtime and bridge files from the same `dist/` directory.
+`qhtml.js` loads the QHTML7 WebAssembly runtime and bridge files from the same directory as `qhtml.js` .
 
 ### Write QHTML in a `<q-html>` tag
 
@@ -62,13 +57,12 @@ Resulting HTML:
 
 QHTML blocks render into normal DOM elements. `text { ... }` escapes text content; `html { ... }` inserts raw HTML.
 
-Use `html { ... }` only when the content is trusted.
 
 ## 2. Core Syntax
 
 ### Elements and nesting
 
-Anonymous element blocks use the tag name followed by `{ ... }`.
+Plain HTML element blocks use the tag name followed by `{ ... }`.
 
 ```qhtml
 section {
@@ -100,22 +94,26 @@ Resulting HTML:
 <div><section><h3>Nested</h3></section></div>
 ```
 
-Chains are useful for compact structure, but deeply nested chains should be used sparingly when the structure needs to be edited visually.
+Chains are useful for compact structure.
 
 ### Class and id shorthand
 
 ```qhtml
-div#main.card.featured {
-  p { text { Card body } }
+div#main {
+ div.card {
+  p#body.large { text { Card body } }
 }
 ```
 
 Resulting HTML:
 
 ```html
-<div id="main" class="card featured">
-  <p>Card body</p>
+<div id="main">
+ <div class="card">
+  <p id="body" class="large">Card body</p>
+ </div>
 </div>
+
 ```
 
 Multiple selectors with shorthand:
