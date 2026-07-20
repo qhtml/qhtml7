@@ -1084,11 +1084,3 @@ Resulting HTML:
 
 ## Development Notes
 
-QHTML7 is a WebAssembly-first project. The JavaScript files in `js/` and generated files in `dist/` bridge browser APIs that cannot be owned by WebAssembly directly, but parsing, document state, runtime object behavior, and long-term model state should stay in the C++ WebAssembly implementation whenever practical.
-
-Do not edit generated `dist/*.js` files directly. Modify source files under `js/` or WebAssembly source, then run:
-
-```bash
-source /home/mike/build/emsdk/emsdk_env.sh
-./build-release.sh
-```
