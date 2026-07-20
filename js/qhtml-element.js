@@ -883,6 +883,18 @@
     "word-break", "z-index"
   ]);
 
+  const QHTML_CSS_LENGTH_SHORTCUT_PROPERTIES = new Set([
+    "background-position", "background-size", "border-radius", "border-width",
+    "bottom", "column-gap", "flex-basis", "font-size", "gap", "height",
+    "left", "letter-spacing", "margin", "margin-bottom", "margin-left",
+    "margin-right", "margin-top", "max-height", "max-width", "min-height",
+    "min-width", "object-position", "padding", "padding-bottom", "padding-left",
+    "padding-right", "padding-top", "right", "row-gap", "top",
+    "transform-origin", "width"
+  ]);
+
+  const QHTML_CSS_INVALID_VALUE_WARNINGS = new Set();
+
   function isCssShortcutAssignmentName(name) {
     const lowerName = String(name || "").trim().toLowerCase();
     return QHTML_CSS_SHORTCUT_NAMES.has(lowerName) || QHTML_CSS_SHORTCUT_CSS_NAMES.has(lowerName);
@@ -974,6 +986,44 @@
     return text.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).toLowerCase();
   }
 
+  function cssGeometryReferenceValue(cssName, rawValue, domElement, registry) {
+    const property = String(cssName || "").trim().toLowerCase();
+    if (property !== "left" && property !== "right" && property !== "top" && property !== "bottom") {
+      return undefined;
+    }
+    const stripped = stripMatchingQuotes(String(rawValue || "").trim());
+    if (!/^[A-Za-z_$][A-Za-z0-9_$-]*(?:\.[A-Za-z_$][A-Za-z0-9_$-]*)?$/.test(stripped)) {
+      return undefined;
+    }
+    const resolved = resolveAnchorTarget(stripped, registry);
+    const parent = domElement.parentElement || registry.rootElement;
+    const parentStyle = globalScope.getComputedStyle(parent);
+    if (parentStyle.position === "static") {
+      parent.style.position = "relative";
+    }
+    domElement.style.position = "absolute";
+
+    const parentRect = parent.getBoundingClientRect();
+    const parentBorderLeft = parent.clientLeft || 0;
+    const parentBorderTop = parent.clientTop || 0;
+    const parentBorderRight = Math.max(0, (parent.offsetWidth || 0) - (parent.clientWidth || 0) - parentBorderLeft);
+    const parentBorderBottom = Math.max(0, (parent.offsetHeight || 0) - (parent.clientHeight || 0) - parentBorderTop);
+    const targetRect = anchorTargetRect(resolved.target);
+    const axis = property === "left" || property === "right" ? "x" : "y";
+    const targetCoordinate = edgeCoordinate(targetRect, resolved.targetEdge, axis);
+    let value;
+    if (property === "left") {
+      value = targetCoordinate - parentRect.left - parentBorderLeft + parent.scrollLeft;
+    } else if (property === "right") {
+      value = parentRect.right - parentBorderRight - targetCoordinate - parent.scrollLeft;
+    } else if (property === "top") {
+      value = targetCoordinate - parentRect.top - parentBorderTop + parent.scrollTop;
+    } else {
+      value = parentRect.bottom - parentBorderBottom - targetCoordinate - parent.scrollTop;
+    }
+    return `${Math.round(value * 100) / 100}px`;
+  }
+
   function cssShortcutValue(rawValue, domElement, propertyNode, registry) {
     const stripped = stripMatchingQuotes(String(rawValue || "").trim());
     if (stripped.indexOf("$") >= 0) {
@@ -992,8 +1042,35 @@
       return;
     }
     const rawValue = typeof propertyNode.value === "function" ? propertyNode.value() : "";
-    const value = cssShortcutValue(rawValue, domElement, propertyNode, registry);
-    domElement.style.setProperty(cssShortcutPropertyName(qhtmlNodeName(propertyNode)), String(value == null ? "" : value));
+    const cssName = cssShortcutPropertyName(qhtmlNodeName(propertyNode));
+    const geometryValue = cssGeometryReferenceValue(cssName, rawValue, domElement, registry);
+    const value = typeof geometryValue !== "undefined"
+      ? geometryValue
+      : cssShortcutValue(rawValue, domElement, propertyNode, registry);
+    domElement.style.setProperty(cssName, serializeCssShortcutValue(cssName, value));
+    if (typeof geometryValue !== "undefined" && typeof globalScope.requestAnimationFrame === "function") {
+      globalScope.requestAnimationFrame(() => {
+        const nextValue = cssGeometryReferenceValue(cssName, rawValue, domElement, registry);
+        if (typeof nextValue !== "undefined") {
+          domElement.style.setProperty(cssName, nextValue);
+        }
+      });
+    }
+  }
+
+  function serializeCssShortcutValue(cssName, value) {
+    if (value == null) {
+      return "";
+    }
+    if (typeof value === "number" && Number.isFinite(value) && QHTML_CSS_LENGTH_SHORTCUT_PROPERTIES.has(cssName)) {
+      const warningKey = `${cssName}:${value}`;
+      if (!QHTML_CSS_INVALID_VALUE_WARNINGS.has(warningKey) &&
+          globalScope.console && typeof globalScope.console.warn === "function") {
+        QHTML_CSS_INVALID_VALUE_WARNINGS.add(warningKey);
+        globalScope.console.warn(`Invalid CSS ${cssName} property: ${value}`);
+      }
+    }
+    return String(value);
   }
 
   function bindCssShortcutAssignments(domElement, qhtmlNode, registry) {
@@ -2644,6 +2721,26 @@
     }
   }
 
+  function behaviorCompletionAnimation(animation, propertyName) {
+    if (!animation || !animation.qhtmlNode) {
+      return animation;
+    }
+    if (qhtmlNodeType(animation.qhtmlNode) === "QHTMLPropertyAnimation" &&
+        String(animation.property || "").toLowerCase() === String(propertyName || "").toLowerCase()) {
+      return animation;
+    }
+    if (typeof animation.children === "function") {
+      const children = animation.children();
+      for (let index = 0; index < children.length; index += 1) {
+        const completion = behaviorCompletionAnimation(children[index], propertyName);
+        if (completion) {
+          return completion;
+        }
+      }
+    }
+    return animation;
+  }
+
   function startPropertyBehavior(domElement, propertyNode, registry, propertyName, nextValue, previousValue, transactionId) {
     const behaviorNode = behaviorNodeForProperty(domElement, propertyName);
     const animationNode = behaviorAnimationNode(behaviorNode);
@@ -2662,9 +2759,10 @@
       state.animation.stop();
     }
     state.animation = animation;
+    const completionAnimation = behaviorCompletionAnimation(animation, propertyName);
     const finish = function () {
-      if (animation.finished && typeof animation.finished.disconnect === "function") {
-        animation.finished.disconnect(finish);
+      if (completionAnimation && completionAnimation.finished && typeof completionAnimation.finished.disconnect === "function") {
+        completionAnimation.finished.disconnect(finish);
       }
       if (state.token !== token) {
         return;
@@ -2676,8 +2774,8 @@
       }
       dispatchPropertyChange(domElement, propertyNode, propertyName, nextValue, transactionId);
     };
-    if (animation.finished && typeof animation.finished.connect === "function") {
-      animation.finished.connect(finish);
+    if (completionAnimation && completionAnimation.finished && typeof completionAnimation.finished.connect === "function") {
+      completionAnimation.finished.connect(finish);
     }
     animation.start();
     return true;
@@ -2728,6 +2826,62 @@
         return;
       }
       throw error;
+    }
+  }
+
+  function bindBehaviorTargetProperty(domElement, behaviorNode, registry) {
+    if (!domElement || !behaviorNode) {
+      return;
+    }
+    const propertyName = typeof behaviorNode.propertyName === "function" ? behaviorNode.propertyName() : qhtmlNodeName(behaviorNode);
+    if (!propertyName || (domElement.__qhtmlProperties && domElement.__qhtmlProperties[propertyName])) {
+      return;
+    }
+    const cssName = cssShortcutPropertyName(propertyName);
+    const isCssShortcut = isCssShortcutAssignmentName(propertyName);
+    const inlineValue = isCssShortcut && domElement.style
+      ? domElement.style.getPropertyValue(cssName)
+      : "";
+    domElement.__qhtmlProperties = Object.assign(domElement.__qhtmlProperties || {}, {
+      [propertyName]: { rawValue: inlineValue, value: inlineValue, qhtmlNode: behaviorNode }
+    });
+    Object.defineProperty(domElement, propertyName, {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return domElement.__qhtmlProperties[propertyName].value;
+      },
+      set(nextValue) {
+        const entry = domElement.__qhtmlProperties[propertyName];
+        const transactionId = currentPropertyTransactionId();
+        const behaviorState = domElement.__qhtmlBehaviorStates && domElement.__qhtmlBehaviorStates[propertyName];
+        if (behaviorState && behaviorState.suppress) {
+          entry.value = nextValue;
+          return;
+        }
+        if (entry.lastTransactionId === transactionId) {
+          return;
+        }
+        entry.lastTransactionId = transactionId;
+        if (startPropertyBehavior(domElement, behaviorNode, registry, propertyName, nextValue, entry.value, transactionId)) {
+          return;
+        }
+        entry.value = nextValue;
+        if (isCssShortcut && domElement.style) {
+          domElement.style.setProperty(cssName, serializeCssShortcutValue(cssName, nextValue));
+        }
+        dispatchPropertyChange(domElement, behaviorNode, propertyName, nextValue, transactionId);
+      }
+    });
+  }
+
+  function bindBehaviorTargetProperties(domElement, qhtmlNode, registry) {
+    const count = qhtmlNode && typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      if (qhtmlNodeType(child) === "QHTMLBehavior") {
+        bindBehaviorTargetProperty(domElement, child, registry);
+      }
     }
   }
 
@@ -5636,6 +5790,194 @@
     }
   }
 
+  function qhtmlNodeChildrenText(node, domElement, registry) {
+    let out = "";
+    const count = node && typeof node.childCount === "function" ? node.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      out += qhtmlNodeBodyText(node.childAt(index), domElement, registry);
+    }
+    return out;
+  }
+
+  function normalizeAnchorEdge(value) {
+    const edge = String(value || "").trim().toLowerCase();
+    if (edge === "horizontalcenter" || edge === "centerx") {
+      return "hcenter";
+    }
+    if (edge === "verticalcenter" || edge === "centery") {
+      return "vcenter";
+    }
+    if (edge === "centre") {
+      return "center";
+    }
+    return edge;
+  }
+
+  function anchorRuleValue(node, domElement, registry) {
+    const body = qhtmlNodeChildrenText(node, domElement, registry).trim();
+    if (body) {
+      return body.replace(/;+\s*$/g, "").trim();
+    }
+    return qhtmlNodeBodyText(node, domElement, registry).replace(/;+\s*$/g, "").trim();
+  }
+
+  function collectAnchorRules(qhtmlNode, domElement, registry) {
+    const rules = [];
+    const count = qhtmlNode && typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      const keyword = normalizeAnchorEdge(qhtmlNodeKeyword(child));
+      if (keyword === "q-anchor") {
+        const childCount = typeof child.childCount === "function" ? child.childCount() : 0;
+        for (let childIndex = 0; childIndex < childCount; childIndex += 1) {
+          const assignment = child.childAt(childIndex);
+          if (qhtmlNodeType(assignment) !== "QHTMLPropertyAssignment") {
+            continue;
+          }
+          const key = normalizeAnchorEdge(qhtmlNodeName(assignment));
+          if (!key) {
+            continue;
+          }
+          rules.push({ key, value: String(assignment.value() || "").trim() });
+        }
+        continue;
+      }
+      if (!keyword.startsWith("q-anchor-")) {
+        continue;
+      }
+      const key = normalizeAnchorEdge(keyword.slice("q-anchor-".length));
+      if (!key) {
+        continue;
+      }
+      rules.push({ key, value: anchorRuleValue(child, domElement, registry) });
+    }
+    return rules;
+  }
+
+  function resolveAnchorTarget(expression, registry) {
+    const cleaned = String(expression || "").trim().replace(/^["']|["']$/g, "");
+    const match = /^([A-Za-z_$][A-Za-z0-9_$-]*)(?:\.([A-Za-z_$][A-Za-z0-9_$-]*))?$/.exec(cleaned);
+    if (!match) {
+      throw new Error(`Invalid q-anchor expression: ${cleaned}`);
+    }
+    const targetName = match[1];
+    const targetEdge = normalizeAnchorEdge(match[2] || "left");
+    const target = registry.elementsByName.get(targetName);
+    if (!target) {
+      throw new Error(`QHTML anchor target was not found: ${targetName}`);
+    }
+    return { target, targetEdge };
+  }
+
+  function edgeCoordinate(rect, edge, axis) {
+    const normalized = normalizeAnchorEdge(edge);
+    if (axis === "x") {
+      if (normalized === "right") {
+        return rect.right;
+      }
+      if (normalized === "hcenter" || normalized === "center") {
+        return rect.left + rect.width / 2;
+      }
+      return rect.left;
+    }
+    if (normalized === "bottom") {
+      return rect.bottom;
+    }
+    if (normalized === "vcenter" || normalized === "center") {
+      return rect.top + rect.height / 2;
+    }
+    return rect.top;
+  }
+
+  function anchorTargetRect(target) {
+    if (target && target.hasAttribute("component-instance") && target.firstElementChild) {
+      return target.firstElementChild.getBoundingClientRect();
+    }
+    return target.getBoundingClientRect();
+  }
+
+  function applyAnchorRule(domElement, rule, registry, options) {
+    const key = normalizeAnchorEdge(rule && rule.key);
+    const value = String(rule && rule.value || "").trim();
+    if (!key || !value) {
+      return;
+    }
+    const parent = domElement.parentElement || registry.rootElement;
+    const parentStyle = globalScope.getComputedStyle(parent);
+    if (parentStyle.position === "static") {
+      parent.style.position = "relative";
+    }
+    domElement.style.position = "absolute";
+
+    const resolved = resolveAnchorTarget(value, registry);
+    const parentRect = parent.getBoundingClientRect();
+    const parentBorderLeft = parent.clientLeft || 0;
+    const parentBorderTop = parent.clientTop || 0;
+    const targetRect = anchorTargetRect(resolved.target);
+    const selfRect = domElement.getBoundingClientRect();
+    if (key === "left" || key === "right" || key === "hcenter" || key === "center") {
+      const targetX = edgeCoordinate(targetRect, resolved.targetEdge, "x") - parentRect.left - parentBorderLeft + parent.scrollLeft;
+      let left = targetX;
+      if (key === "right") {
+        left = targetX - selfRect.width;
+      } else if (key === "hcenter" || key === "center") {
+        left = targetX - selfRect.width / 2;
+      }
+      domElement.style.left = `${left}px`;
+    }
+    if (key === "top" || key === "bottom" || key === "vcenter" || key === "center") {
+      const targetY = edgeCoordinate(targetRect, resolved.targetEdge, "y") - parentRect.top - parentBorderTop + parent.scrollTop;
+      let top = targetY;
+      if (key === "bottom") {
+        top = targetY - selfRect.height;
+      } else if (key === "vcenter" || key === "center") {
+        top = targetY - selfRect.height / 2;
+      }
+      domElement.style.top = `${top}px`;
+    }
+    if ((!options || options.defer !== false) && typeof globalScope.requestAnimationFrame === "function") {
+      globalScope.requestAnimationFrame(() => applyAnchorRule(domElement, rule, registry, { defer: false }));
+    }
+  }
+
+  function applyAnchorPositioning(rootElement, registry) {
+    if (!rootElement || !registry || !registry.nodesByUuid) {
+      return;
+    }
+    const renderedElements = rootElement.querySelectorAll
+      ? rootElement.querySelectorAll("[qhtml-node]")
+      : [];
+    renderedElements.forEach((domElement) => {
+      const qhtmlNode = registry.nodesByUuid.get(domElement.getAttribute("qhtml-node"));
+      const rules = collectAnchorRules(qhtmlNode, domElement, registry);
+      if (!rules.length) {
+        return;
+      }
+      rules.forEach((rule) => applyAnchorRule(domElement, rule, registry));
+    });
+  }
+
+  function refreshGeometryCssBindings(rootElement, registry) {
+    if (!rootElement || !registry || !registry.nodesByUuid) {
+      return;
+    }
+    const renderedElements = rootElement.querySelectorAll
+      ? rootElement.querySelectorAll("[qhtml-node]")
+      : [];
+    renderedElements.forEach((domElement) => {
+      const qhtmlNode = registry.nodesByUuid.get(domElement.getAttribute("qhtml-node"));
+      bindCssShortcutAssignments(domElement, qhtmlNode, registry);
+    });
+    if (typeof globalScope.requestAnimationFrame === "function") {
+      globalScope.requestAnimationFrame(() => {
+        renderedElements.forEach((domElement) => {
+          const qhtmlNode = registry.nodesByUuid.get(domElement.getAttribute("qhtml-node"));
+          bindCssShortcutAssignments(domElement, qhtmlNode, registry);
+        });
+      });
+    }
+  }
+
   function matchingBraceIndex(source, openIndex) {
     let depth = 0;
     let quote = "";
@@ -6966,6 +7308,8 @@
       }
     }
 
+    bindBehaviorTargetProperties(domElement, qhtmlNode, registry);
+
     for (let index = 0; index < count; index += 1) {
       if (isQHTML7RegistryDisposed(registry)) {
         return;
@@ -7692,6 +8036,8 @@
     bindScriptNodes(registry);
 
     applyStyleAndThemeApplications(rootElement, registry);
+    applyAnchorPositioning(rootElement, registry);
+    refreshGeometryCssBindings(rootElement, registry);
 
     rootElement.qhtmlComponentRegistry = registry;
     rootElement.qhtmlStyles = registry.styles;

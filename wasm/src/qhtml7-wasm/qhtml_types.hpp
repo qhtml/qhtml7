@@ -1102,7 +1102,9 @@ public:
             m_keyword == QStringLiteral("q-callback") ||
             m_keyword == QStringLiteral("q-macro") ||
             m_keyword == QStringLiteral("q-rewrite") ||
-            m_keyword == QStringLiteral("q-switch")) {
+            m_keyword == QStringLiteral("q-switch") ||
+            m_keyword == QStringLiteral("q-anchor") ||
+            m_keyword.startsWith(QStringLiteral("q-anchor-"))) {
             return QString();
         }
         return QHTMLDomNode::renderHtml();

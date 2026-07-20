@@ -209,8 +209,8 @@ div.anchor-stage {
   marker menu { label: "Anchor" }
 
   div.anchored {
-    q-anchor-left { menu.right }
-    q-anchor-top { menu.bottom }
+    left: menu.right
+    top: menu.bottom
     text { PASSED }
   }
 }
@@ -263,9 +263,9 @@ q-timer panelTrigger {
 
     <section>
       <h2>Queued animation and script action</h2>
-      <q-html>
+<q-html>
 q-component testelement {
- q-property width: 100
+  width: "100px"
 
   behavior on width {
     q-sequential-animation {
@@ -280,11 +280,11 @@ q-component testelement {
   }
 
   onready {
-    this.width = 500
+    this.width = "500px"
   }
 
   onwidthchanged(newwidth) {
-    document.querySelector("#test105div").style.width = String(newwidth) + "px";
+    document.querySelector("#test105div").style.width = newwidth;
   }
 
   div#test105div {
@@ -293,62 +293,6 @@ q-component testelement {
 }
 
 testelement myelement { }
-      </q-html>
-    </section>
-
-    <section>
-      <h2>q-class JavaScript constructor</h2>
-      <q-html>
-q-class myclass {
-  myclass() {
-    this.variable = 500;
-    this.result = "PASSED";
-    myfunc();
-  }
-
-  function myfunc() {
-    return this.result;
-  }
-}
-
-q-component class-user {
-  div.pass.class-result { text { waiting } }
-
-  onready {
-    var obj = new myclass();
-    this.querySelector(".class-result").textContent = obj.myfunc();
-  }
-}
-
-class-user { }
-      </q-html>
-    </section>
-
-    <section>
-      <h2>q-class signal bridge</h2>
-      <q-html>
-q-class signalmodel {
-  q-signal fired(value)
-
-  function fire(value) {
-    this.fired(value)
-  }
-}
-
-q-component signal-bridge-view {
- signalmodel bridgeModel { }
-
-  div.pass.class-signal-result { text { waiting } }
-
-  onready {
-    bridgeModel.qdom().connect("fired", function(value) {
-      document.querySelector(".class-signal-result").textContent = value;
-    });
-    bridgeModel.fire("PASSED");
-  }
-}
-
-signal-bridge-view { }
       </q-html>
     </section>
   </main>

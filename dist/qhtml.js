@@ -1,5 +1,5 @@
 (function (globalScope) {
-  const QHTML_VERSION = "4.3.12";
+  const QHTML_VERSION = "4.3.14";
   globalScope.QHTML_VERSION = QHTML_VERSION;
 })(typeof globalThis !== "undefined" ? globalThis : window);
 
@@ -14,6 +14,7 @@
 
   const base = new URL(".", currentScript.src).href;
   const QHTML_VERSION = String(globalScope.QHTML_VERSION || "4.3.7");
+  const QHTML_LOADING_INDICATOR_ATTRIBUTE = "data-qhtml-loading-indicator";
 
   function qhtmlVersionQuery() {
     const value = String(QHTML_VERSION || "").trim();
@@ -43,12 +44,76 @@
   globalScope.QHTML7_SCRIPT_BASE = base;
   globalScope.QHTML6_SCRIPT_URL = globalScope.QHTML6_SCRIPT_URL || qhtml6Url;
 
+  function ensureQHTMLLoadingStyle() {
+    if (document.querySelector("style[data-qhtml-loading-style]") || !document.head) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.setAttribute("data-qhtml-loading-style", "1");
+    style.textContent = [
+      "@keyframes qhtml-loading-spin{to{transform:rotate(360deg)}}",
+      "[data-qhtml-loading-indicator]{display:inline-grid;place-items:center;min-width:48px;min-height:48px;margin:8px;color:#2563eb}",
+      "[data-qhtml-loading-indicator] svg{display:block;animation:qhtml-loading-spin 840ms linear infinite;filter:drop-shadow(0 8px 18px rgba(37,99,235,0.20))}",
+      "@media (prefers-reduced-motion: reduce){[data-qhtml-loading-indicator] svg{animation:none!important}}"
+    ].join("\n");
+    document.head.appendChild(style);
+  }
+
+  function createQHTMLLoadingIndicator() {
+    const indicator = document.createElement("span");
+    indicator.setAttribute(QHTML_LOADING_INDICATOR_ATTRIBUTE, "1");
+    indicator.setAttribute("aria-live", "polite");
+    indicator.setAttribute("aria-label", "Loading QHTML");
+    indicator.innerHTML = [
+      '<svg viewBox="0 0 50 50" width="34" height="34" role="img" aria-hidden="true">',
+      '<circle cx="25" cy="25" r="20" fill="none" stroke="rgba(15, 23, 42, 0.14)" stroke-width="5"></circle>',
+      '<path d="M45 25a20 20 0 0 1-20 20" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-width="5"></path>',
+      '</svg>'
+    ].join("");
+    return indicator;
+  }
+
+  function insertQHTMLLoadingIndicators() {
+    ensureQHTMLLoadingStyle();
+    document.querySelectorAll("q-html,q-html7,q-html6").forEach((item) => {
+      const previous = item.previousElementSibling;
+      if (previous && previous.hasAttribute(QHTML_LOADING_INDICATOR_ATTRIBUTE)) {
+        return;
+      }
+      if (item.parentNode) {
+        item.parentNode.insertBefore(createQHTMLLoadingIndicator(), item);
+      }
+    });
+  }
+
+  function removeQHTMLLoadingIndicators() {
+    document.querySelectorAll(`[${QHTML_LOADING_INDICATOR_ATTRIBUTE}]`).forEach((indicator) => {
+      if (indicator.parentNode) {
+        indicator.parentNode.removeChild(indicator);
+      }
+    });
+    const style = document.querySelector("style[data-qhtml-loading-style]");
+    if (style && style.parentNode) {
+      style.parentNode.removeChild(style);
+    }
+  }
+
+  document.addEventListener("QHTMLContentLoaded", removeQHTMLLoadingIndicators);
+
   (function hideUnprocessedQHTMLHosts() {
     const hidden = new WeakSet();
-    document.querySelectorAll("q-html,q-html7,q-html6").forEach((item) => {
-      hidden.add(item);
-      item.style.display = "none";
-    });
+    const hideHosts = function () {
+      insertQHTMLLoadingIndicators();
+      document.querySelectorAll("q-html,q-html7,q-html6").forEach((item) => {
+        hidden.add(item);
+        item.style.display = "none";
+      });
+    };
+    if (document.readyState === "loading" && !document.body) {
+      document.addEventListener("DOMContentLoaded", hideHosts, { once: true });
+    } else {
+      hideHosts();
+    }
     document.addEventListener("QHTMLContentLoaded", function restoreQHTMLHosts() {
       document.querySelectorAll("q-html,q-html7,q-html6").forEach((item) => {
         if (hidden.has(item)) {
@@ -119,7 +184,12 @@
   }
 
   const start = () => {
+    const hasQHTMLHosts = document.querySelector("q-html,q-html7,q-html6") !== null;
+    insertQHTMLLoadingIndicators();
     globalScope.QHTMLReady = routeAll();
+    if (!hasQHTMLHosts && globalScope.QHTMLReady && typeof globalScope.QHTMLReady.finally === "function") {
+      globalScope.QHTMLReady.finally(removeQHTMLLoadingIndicators);
+    }
   };
 
   if (document.readyState === "loading") {

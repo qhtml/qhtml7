@@ -424,7 +424,7 @@ q-component particleEditorApp {
       name: "emitter" + this.counter,
       id: "particle-emitter-" + this.counter,
       running: "true",
-      src: "../assets/particle.png",
+      src: "assets/particle.png",
       mask: "",
       emittermask: "",
       color: "#08c473",
@@ -896,10 +896,6 @@ q-component particleEditorApp {
     output.focus();
     output.select();
     document.execCommand("copy");
-  }
-
-  onReady {
-    this.addEmitter();
   }
 
   particleEditorTheme {

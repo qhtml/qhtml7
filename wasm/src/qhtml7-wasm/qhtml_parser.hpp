@@ -286,6 +286,17 @@ public:
         if (m_tagName == QStringLiteral("html")) {
             return new QHTMLHTMLFragment(qhtmlContent.trimmed());
         }
+        if (m_tagName == QStringLiteral("q-anchor") ||
+            m_tagName.startsWith(QStringLiteral("q-anchor-"))) {
+            QHTMLTypedNode *node = new QHTMLTypedNode(m_tagName, QString(), m_attributes);
+            node->setQHTMLUUID(qhtmlUUID);
+            for (int i = 0; i < astChildren.size(); ++i) {
+                if (QHTMLAstNode *child = astChildren.value(i, nullptr)) {
+                    node->appendChild(child->toQHTMLNode());
+                }
+            }
+            return node;
+        }
 
         QHTMLDomElement *element = new QHTMLDomElement(m_tagName, m_attributes);
         element->setQHTMLUUID(qhtmlUUID);
