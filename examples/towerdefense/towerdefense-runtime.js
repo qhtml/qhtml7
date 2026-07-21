@@ -8,7 +8,7 @@
     var style = document.createElement("style");
     style.id = "td-runtime-styles";
     style.textContent = [
-      ".td-board-surface{position:relative;width:1500px;height:1000px;background:#000;display:block;}",
+      ".td-board-surface{position:absolute;inset:0;width:1500px;height:1000px;background:#000;display:block;overflow:hidden;}",
       ".td-store{position:fixed;left:14px;right:14px;bottom:14px;z-index:900;align-items:center;gap:12px;min-height:82px;box-sizing:border-box;padding:14px;border:1px solid rgba(10,236,40,.48);background:rgba(5,42,12,.94);color:#d1fae5;}",
       ".td-store-item{display:flex;flex-direction:column;gap:4px;align-items:flex-start;}",
       ".td-store-label{font-size:12px;line-height:1.3;color:#a7f3d0;}",
@@ -22,6 +22,8 @@
       ".td-tile.selected{background:#fff;}",
       ".td-tile.buildable{border-color:darkGreen;}",
       ".td-tile.blocked{border-color:darkRed;}",
+      ".td-tile-layer{position:absolute;inset:0;z-index:1;display:block;pointer-events:auto;}",
+      ".td-tile-layer canvas{display:block;width:100%;height:100%;}",
       ".td-gun{position:absolute;box-sizing:border-box;border:2px solid #f9f0f0;background:#000;z-index:120;}",
       ".td-gun.selected{outline:3px solid #fff;}",
       ".td-entity{position:absolute;box-sizing:border-box;z-index:105;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
@@ -79,6 +81,78 @@
       this.onclick = function () {
         this.__tdBoard.selectTile(tile.id);
       }.bind(this);
+    }
+  }
+
+  class TDTileLayer extends HTMLElement {
+    connectedCallback() {
+      ensureStyles();
+      this.className = "td-tile-layer";
+      if (!this.canvas) {
+        this.canvas = document.createElement("canvas");
+        this.appendChild(this.canvas);
+      }
+      this.onclick = function (event) {
+        var board = this.__tdBoard;
+        if (!board) {
+          return;
+        }
+        var rect = this.getBoundingClientRect();
+        var scaleX = Number(board.cols) * Number(board.tileWidth) / rect.width;
+        var scaleY = Number(board.rows) * Number(board.tileHeight) / rect.height;
+        var col = Math.floor((event.clientX - rect.left) * scaleX / Number(board.tileWidth));
+        var row = Math.floor((event.clientY - rect.top) * scaleY / Number(board.tileHeight));
+        var tile = board.findTile(row, col);
+        board.selectTile(tile.id);
+      }.bind(this);
+      this.render();
+    }
+
+    set board(value) {
+      this.__tdBoard = value;
+      this.render();
+    }
+
+    render() {
+      var board = this.__tdBoard;
+      if (!board || !this.canvas) {
+        return;
+      }
+      if (this.__tdRenderedRevision === board.boardRevision) {
+        return;
+      }
+      this.__tdRenderedRevision = board.boardRevision;
+      var width = Number(board.cols) * Number(board.tileWidth);
+      var height = Number(board.rows) * Number(board.tileHeight);
+      if (this.canvas.width !== width) {
+        this.canvas.width = width;
+      }
+      if (this.canvas.height !== height) {
+        this.canvas.height = height;
+      }
+      var context = this.canvas.getContext("2d");
+      context.clearRect(0, 0, width, height);
+      var tiles = board.runtimeTilesList || [];
+      for (var i = 0; i < tiles.length; i += 1) {
+        var tile = tiles[i];
+        var x = Number(tile.col) * Number(board.tileWidth);
+        var y = Number(tile.row) * Number(board.tileHeight);
+        if (tile.selected === true) {
+          context.fillStyle = "#ffffff";
+        } else if (tile.kind === "wall") {
+          context.fillStyle = "#707070";
+        } else if (tile.kind === "entrance") {
+          context.fillStyle = "#087d28";
+        } else if (tile.kind === "exit") {
+          context.fillStyle = "#b91c1c";
+        } else {
+          context.fillStyle = "#000000";
+        }
+        context.fillRect(x, y, Number(board.tileWidth), Number(board.tileHeight));
+        context.strokeStyle = tile.buildable === true ? "darkGreen" : (tile.kind === "square" ? "darkRed" : "#f9f0f0");
+        context.lineWidth = 1;
+        context.strokeRect(x + 0.5, y + 0.5, Number(board.tileWidth) - 1, Number(board.tileHeight) - 1);
+      }
     }
   }
 
@@ -258,32 +332,57 @@
     connectedCallback() {
       ensureStyles();
       this.classList.add("td-board-surface");
-      this.renderedTiles = {};
       this.renderedGuns = {};
       this.renderedEnemies = {};
       this.renderedProjectiles = {};
+      if (!this.tileLayer) {
+        this.tileLayer = document.createElement("td-tile-layer");
+        this.insertBefore(this.tileLayer, this.firstChild);
+      }
       var board = this.closest("td-board");
       if (board) {
         board.boardRenderer = this;
-        this.sync(board);
+        runtime.attachBoard(board, this);
+      }
+    }
+    disconnectedCallback() {
+      if (this.__tdLoopTimer) {
+        clearInterval(this.__tdLoopTimer);
+        this.__tdLoopTimer = 0;
       }
     }
     sync(board) {
       this.board = board;
       if (this.__tdBoardRevision !== board.boardRevision) {
-        syncCollection(this, board, board.tilesList, this.renderedTiles, "td-tile-view");
+        this.tileLayer.board = board;
         this.__tdBoardRevision = board.boardRevision;
       }
-      syncCollection(this, board, board.gunsList, this.renderedGuns, "td-gun-view");
-      syncCollection(this, board, board.enemiesList, this.renderedEnemies, "td-enemy-view");
-      syncProjectileCollection(this, board, board.projectilesList, this.renderedProjectiles);
-      board.renderedTiles = this.renderedTiles;
-      board.renderedGuns = this.renderedGuns;
-      board.renderedEnemies = this.renderedEnemies;
-      board.renderedProjectiles = this.renderedProjectiles;
+      syncCollection(this, board, board.runtimeGunsList, this.renderedGuns, "td-gun-view");
+      syncCollection(this, board, board.runtimeEnemiesList, this.renderedEnemies, "td-enemy-view");
+      syncProjectileCollection(this, board, board.runtimeProjectilesList, this.renderedProjectiles);
       runtime.syncStores(board);
     }
   }
+
+  runtime.attachBoard = function (board, renderer) {
+    if (board.__tdRuntimeAttached === true) {
+      renderer.sync(board);
+      return;
+    }
+    board.__tdRuntimeAttached = true;
+    var start = function () {
+      if (typeof board.initBoard !== "function" || typeof board.gameTick !== "function") {
+        setTimeout(start, 40);
+        return;
+      }
+      board.initBoard();
+      renderer.sync(board);
+      renderer.__tdLoopTimer = setInterval(function () {
+        board.gameTick();
+      }, 140);
+    };
+    setTimeout(start, 40);
+  };
 
   function button(text, clickHandler) {
     var item = document.createElement("button");
@@ -390,6 +489,7 @@
   };
 
   if (!customElements.get("td-board-renderer")) customElements.define("td-board-renderer", TDBoardRenderer);
+  if (!customElements.get("td-tile-layer")) customElements.define("td-tile-layer", TDTileLayer);
   if (!customElements.get("td-tile-view")) customElements.define("td-tile-view", TDTileView);
   if (!customElements.get("td-gun-view")) customElements.define("td-gun-view", TDGunView);
   if (!customElements.get("td-enemy-view")) customElements.define("td-enemy-view", TDEnemyView);

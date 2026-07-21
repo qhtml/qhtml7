@@ -5,25 +5,19 @@ q-component td-board {
   q-property tileWidth: 50
   q-property tileHeight: 50
   q-property tiles: {}
-  q-property tilesList: []
   q-property entrances: []
   q-property exits: []
   q-property paths: {}
+  q-property sharedPathNodes: []
+  q-property sharedPathIndex: {}
   q-property guns: {}
-  q-property gunsList: []
   q-property enemies: {}
-  q-property enemiesList: []
   q-property projectiles: {}
-  q-property projectilesList: []
   q-property selectedTileId: ""
   q-property selectedGunId: ""
   q-property gunStoreVisible: false
   q-property upgradeStoreVisible: false
   q-property boardRenderer: null
-  q-property renderedTiles: {}
-  q-property renderedGuns: {}
-  q-property renderedEnemies: {}
-  q-property renderedProjectiles: {}
   q-property nextEnemyId: 1
   q-property nextProjectileId: 1
   q-property numEnemies: 0
@@ -43,14 +37,14 @@ q-component td-board {
 
   q-timer initTimer {
     interval: 100
-    running: true
+    running: false
     repeat: false
     ontimeout() { this.initBoard(); }
   }
 
   q-timer loopTimer {
     interval: 100
-    running: true
+    running: false
     repeat: true
     ontimeout() { this.gameTick(); }
   }
@@ -77,17 +71,18 @@ q-component td-board {
   }
 
   function refreshView() {
-    this.game.update();
     this.boardRenderer.sync(this);
   }
 
   function createBlankMap() {
     this.bulkUpdating = true;
     this.tiles = {};
-    this.tilesList = [];
+    this.runtimeTilesList = [];
     this.entrances = [];
     this.exits = [];
     this.paths = {};
+    this.sharedPathNodes = [];
+    this.sharedPathIndex = {};
     var exitCol = Math.round(Number(this.rows) * 0.5);
     for (var row = 0; row < Number(this.rows); row += 1) {
       for (var col = 0; col < Number(this.cols); col += 1) {
@@ -137,37 +132,49 @@ q-component td-board {
   function placeWall(row, col) {
     this.eraseTile(row, col);
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "wall", false, false);
-    this.boardRevision += 1;
-    if (this.bulkUpdating === false) { this.rebuildLists(); }
+    if (this.bulkUpdating === false) {
+      this.boardRevision += 1;
+      this.rebuildLists();
+    }
   }
 
   function placeSquare(row, col) {
     this.eraseTile(row, col);
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "square", false, true);
-    this.boardRevision += 1;
-    if (this.bulkUpdating === false) { this.rebuildLists(); }
+    if (this.bulkUpdating === false) {
+      this.boardRevision += 1;
+      this.rebuildLists();
+    }
   }
 
   function placeEntrance(row, col) {
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "entrance", false, true);
     this.entrances.push(this.tiles[this.index(row, col)]);
     this.paths[this.index(row, col)] = [];
-    this.boardRevision += 1;
-    if (this.bulkUpdating === false) { this.rebuildLists(); }
+    if (this.bulkUpdating === false) {
+      this.boardRevision += 1;
+      this.rebuildLists();
+    }
   }
 
   function placeExit(row, col) {
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "exit", false, true);
     this.exits.push(this.tiles[this.index(row, col)]);
-    this.boardRevision += 1;
-    if (this.bulkUpdating === false) { this.rebuildLists(); }
+    if (this.bulkUpdating === false) {
+      this.boardRevision += 1;
+      this.rebuildLists();
+    }
   }
 
   function rebuildLists() {
-    this.tilesList = Object.keys(this.tiles).map(function(key) { return this.tiles[key]; }, this);
-    this.gunsList = Object.keys(this.guns).map(function(key) { return this.guns[key]; }, this);
-    this.enemiesList = Object.keys(this.enemies).map(function(key) { return this.enemies[key]; }, this);
-    this.projectilesList = Object.keys(this.projectiles).map(function(key) { return this.projectiles[key]; }, this);
+    this.runtimeTilesList = Object.keys(this.tiles).map(function(key) { return this.tiles[key]; }, this);
+    this.rebuildDynamicLists();
+  }
+
+  function rebuildDynamicLists() {
+    this.runtimeGunsList = Object.keys(this.guns).map(function(key) { return this.guns[key]; }, this);
+    this.runtimeEnemiesList = Object.keys(this.enemies).map(function(key) { return this.enemies[key]; }, this);
+    this.runtimeProjectilesList = Object.keys(this.projectiles).map(function(key) { return this.projectiles[key]; }, this);
   }
 
   function findTile(row, col) {
@@ -201,9 +208,79 @@ q-component td-board {
   }
 
   function populateEntryPaths() {
+    this.paths = {};
+    this.sharedPathNodes = [];
+    this.sharedPathIndex = {};
     for (var i = 0; i < this.entrances.length; i += 1) {
-      this.paths[this.index(this.entrances[i].row, this.entrances[i].col)] = this.pathfinder.findPath(this, this.entrances[i], this.exits[0]);
+      var path = this.pathfinder.findPath(this, this.entrances[i], this.exits[0]);
+      this.paths[this.index(this.entrances[i].row, this.entrances[i].col)] = path;
+      this.registerSharedPath(path);
     }
+    this.rebuildSharedPathNodes();
+  }
+
+  function registerSharedPath(path) {
+    for (var i = 0; i < path.length; i += 1) {
+      var tile = path[i];
+      var key = this.index(tile.row, tile.col);
+      var entry = {
+        tile: tile,
+        path: path,
+        offset: i,
+        remaining: path.length - i
+      };
+      if (this.sharedPathIndex[key] === undefined || Number(entry.remaining) < Number(this.sharedPathIndex[key].remaining)) {
+        this.sharedPathIndex[key] = entry;
+      }
+    }
+  }
+
+  function rebuildSharedPathNodes() {
+    this.sharedPathNodes = Object.keys(this.sharedPathIndex).map(function(key) { return this.sharedPathIndex[key]; }, this);
+  }
+
+  function pathFromNearestSharedPath(start) {
+    var startKey = this.index(start.row, start.col);
+    var directEntry = this.sharedPathIndex[startKey];
+    if (directEntry !== undefined) {
+      return directEntry.path.slice(directEntry.offset);
+    }
+
+    var candidates = [];
+    for (var i = 0; i < this.sharedPathNodes.length; i += 1) {
+      var entry = this.sharedPathNodes[i];
+      candidates.push({
+        entry: entry,
+        distance: Math.abs(Number(start.row) - Number(entry.tile.row)) + Math.abs(Number(start.col) - Number(entry.tile.col))
+      });
+    }
+    candidates.sort(function(a, b) { return Number(a.distance) - Number(b.distance); });
+
+    var bestPath = [];
+    var bestScore = 99999999;
+    var maxChecks = Math.min(8, candidates.length);
+    for (var c = 0; c < maxChecks; c += 1) {
+      if (Number(candidates[c].distance) >= bestScore) {
+        break;
+      }
+      var entry = candidates[c].entry;
+      if (Number(candidates[c].distance) + Number(entry.remaining) >= bestScore) {
+        continue;
+      }
+      var connector = this.pathfinder.findPath(this, start, entry.tile);
+      if (connector.length < 2) {
+        continue;
+      }
+      var score = connector.length + Number(entry.remaining);
+      if (score < bestScore) {
+        bestScore = score;
+        bestPath = connector.concat(entry.path.slice(Number(entry.offset) + 1));
+      }
+    }
+    if (bestPath.length > 0) {
+      return bestPath;
+    }
+    return this.pathfinder.findPath(this, start, this.exits[0]);
   }
 
   function selectTile(tileId) {
@@ -340,7 +417,7 @@ q-component td-board {
     for (var i = 0; i < keys.length; i += 1) {
       var enemy = this.enemies[keys[i]];
       var start = this.findTile(enemy.row, enemy.col);
-      enemy.path = this.pathfinder.findPath(this, start, this.exits[0]);
+      enemy.path = this.pathFromNearestSharedPath(start);
       enemy.pathIndex = 0;
     }
   }
@@ -395,7 +472,7 @@ q-component td-board {
       nextMoveAt: Date.now() + props.speed
     };
     var delay = this.recordSpawnedEnemy();
-    this.rebuildLists();
+    this.rebuildDynamicLists();
     this.refreshView();
     return delay;
   }
@@ -411,7 +488,7 @@ q-component td-board {
     this.moveEnemies(now);
     this.fireAll(now);
     this.updateProjectiles(now);
-    this.rebuildLists();
+    this.rebuildDynamicLists();
     this.refreshView();
   }
 

@@ -25,19 +25,21 @@ q-component td-game {
     this.money = Number(this.money) + Number(amount);
     this.defender.money = this.money;
     this.moneyChanged(this.money);
+    this.querySelector("[data-hud='money']").textContent = "Money: $" + this.money;
   }
 
   function nextLevel() {
     this.level = Number(this.level) + 1;
     this.levelChanged(this.level);
+    this.querySelector("[data-hud='level']").textContent = "Level: " + this.level;
   }
 
   tdTheme {
     section.td-root {
       div.td-hud {
-        span { text { Money: $${this.money} } }
-        span { text { Level: ${this.level} } }
-        span { text { Health: ${this.health} } }
+        span { data-hud: "money"; text { Money: $${this.money} } }
+        span { data-hud: "level"; text { Level: ${this.level} } }
+        span { data-hud: "health"; text { Health: ${this.health} } }
         span { text { TowerDefenseVS QHTML7 Port } }
       }
 

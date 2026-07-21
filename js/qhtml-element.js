@@ -1088,15 +1088,70 @@
       return registry.tree || null;
     }
     const uuid = qhtmlDomUuid(domElement);
-    return qhtmlNodeByUuid(registry.tree, uuid);
+    return registry.nodesByUuid && typeof registry.nodesByUuid.get === "function"
+      ? registry.nodesByUuid.get(uuid)
+      : qhtmlNodeByUuid(registry.tree, uuid);
+  }
+
+  function qhtmlNodeContainsNode(ownerNode, candidateNode) {
+    if (!ownerNode || !candidateNode) {
+      return false;
+    }
+    const ownerUuid = qhtmlNodeUuid(ownerNode);
+    let cursor = candidateNode;
+    while (cursor) {
+      if (qhtmlNodeUuid(cursor) === ownerUuid) {
+        return true;
+      }
+      cursor = qhtmlParentNode(cursor);
+    }
+    return false;
   }
 
   function createLiveQHTMLNodeLookup(tree) {
+    const cache = new Map();
+    const cacheNode = (node) => {
+      const uuid = qhtmlNodeUuid(node);
+      if (uuid) {
+        cache.set(uuid, node);
+      }
+      return node;
+    };
+    const cachedNode = (uuid) => {
+      const wanted = String(uuid || "").trim();
+      if (!wanted) {
+        return null;
+      }
+      const node = cache.get(wanted);
+      if (node && qhtmlNodeUuid(node) === wanted) {
+        return node;
+      }
+      cache.delete(wanted);
+      return null;
+    };
     return {
-      get(uuid) {
-        return qhtmlNodeByUuid(tree, uuid);
+      get(uuid, scopeNode) {
+        const wanted = String(uuid || "").trim();
+        if (!wanted) {
+          return null;
+        }
+        const cached = cachedNode(uuid);
+        if (cached && (!scopeNode || qhtmlNodeContainsNode(scopeNode, cached))) {
+          return cached;
+        }
+        if (scopeNode) {
+          const scoped = typeof scopeNode.findByUUID === "function" ? scopeNode.findByUUID(wanted) : null;
+          return scoped ? cacheNode(scoped) : null;
+        }
+        return cacheNode(qhtmlNodeByUuid(tree, uuid));
       },
-      set() {
+      set(uuid, node) {
+        const wanted = String(uuid || "").trim();
+        if (wanted && node) {
+          cache.set(wanted, node);
+        } else {
+          cacheNode(node);
+        }
         return this;
       },
       forEach(callback, thisArg) {
@@ -1106,20 +1161,25 @@
         qhtmlNodeList(tree).forEach((node) => {
           const uuid = qhtmlNodeUuid(node);
           if (uuid) {
+            cache.set(uuid, node);
             callback.call(thisArg, node, uuid, this);
           }
         });
       },
       values() {
-        return qhtmlNodeList(tree)[Symbol.iterator]();
+        const values = qhtmlNodeList(tree);
+        values.forEach(cacheNode);
+        return values[Symbol.iterator]();
       },
       has(uuid) {
-        return !!qhtmlNodeByUuid(tree, uuid);
+        return !!this.get(uuid);
       },
-      delete() {
-        return false;
+      delete(uuid) {
+        return cache.delete(String(uuid || "").trim());
       },
-      clear() {}
+      clear() {
+        cache.clear();
+      }
     };
   }
 
@@ -7297,8 +7357,15 @@
   }
 
   function registerGeneratedQHTMLTree(tree, registry) {
-    void tree;
-    void registry;
+    if (!tree || !registry || !registry.nodesByUuid || typeof registry.nodesByUuid.set !== "function") {
+      return;
+    }
+    qhtmlNodeList(tree).forEach((node) => {
+      const uuid = qhtmlNodeUuid(node);
+      if (uuid) {
+        registry.nodesByUuid.set(uuid, node);
+      }
+    });
   }
 
   function renderQHTMLSourceForLoop(source, variableName, variableValue, domElement, registry, contextNode) {
@@ -7807,8 +7874,23 @@
         : (typeof qhtmlNode.renderHtml === "function" ? qhtmlNode.renderHtml() : "");
     };
     domElement.findByUUID = function componentFindByUUID(uuid) {
-      const qhtmlNode = qhtmlNodeForDomElement(domElement, registry || domElement.__qhtmlRegistry);
-      return qhtmlNode.findByUUID(String(uuid || ""));
+      const sourceRegistry = registry || domElement.__qhtmlRegistry;
+      const qhtmlNode = qhtmlNodeForDomElement(domElement, sourceRegistry);
+      const wanted = String(uuid || "").trim();
+      if (!wanted || !qhtmlNode) {
+        return null;
+      }
+      const cached = sourceRegistry && sourceRegistry.nodesByUuid && typeof sourceRegistry.nodesByUuid.get === "function"
+        ? sourceRegistry.nodesByUuid.get(wanted, qhtmlNode)
+        : null;
+      if (cached) {
+        return cached;
+      }
+      const found = qhtmlNode.findByUUID(wanted);
+      if (found && sourceRegistry && sourceRegistry.nodesByUuid && typeof sourceRegistry.nodesByUuid.set === "function") {
+        sourceRegistry.nodesByUuid.set(wanted, found);
+      }
+      return found;
     };
     domElement.fromJSON = function componentFromJSON(value) {
       const sourceRegistry = registry || domElement.__qhtmlRegistry;
