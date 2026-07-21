@@ -108,6 +108,12 @@ struct ThemeRecord
     QVector<ThemeRule> rules;
 };
 
+struct ThemeApplicationRecord
+{
+    QString themeName;
+    QStringList scopeIds;
+};
+
 struct ThemeBlock
 {
     QString selector;
@@ -128,6 +134,7 @@ struct CompileState
     QVector<BindingRecord> bindings;
     QMap<QString, StyleRecord> styles;
     QMap<QString, ThemeRecord> themes;
+    QVector<ThemeApplicationRecord> themeApplications;
     QVector<QHTMLWebExportDiagnostic> diagnostics;
     QSet<QString> diagnosedNodes;
 };
@@ -375,6 +382,24 @@ bool isRenderableChildType(const QString &type)
            type == QStringLiteral("QHTMLComponentInstanceSlot");
 }
 
+void collectRenderedScopeIds(const QHTMLNode *node, QStringList &scopeIds)
+{
+    if (!node) {
+        return;
+    }
+    const QString type = node->qhtmlType();
+    if (isRuntimeOwnerType(type) && type != QStringLiteral("QHTMLDomTree")) {
+        const QString uuid = node->qhtmlUUID().trimmed();
+        if (!uuid.isEmpty() && !scopeIds.contains(uuid)) {
+            scopeIds.append(uuid);
+        }
+        return;
+    }
+    for (QHTMLNode *child : node->children()) {
+        collectRenderedScopeIds(child, scopeIds);
+    }
+}
+
 QString selectorForNode(const QHTMLNode *node, const QString &rootId, const QHTMLWebExportOptions &options)
 {
     if (!node || node->qhtmlType() == QStringLiteral("QHTMLDomTree")) {
@@ -546,6 +571,16 @@ void collectNode(const QHTMLNode *node,
     }
 
     if (!insideDefinition) {
+        if (type == QStringLiteral("QHTMLThemeApplication")) {
+            QStringList scopeIds;
+            for (QHTMLNode *child : node->children()) {
+                collectRenderedScopeIds(child, scopeIds);
+            }
+            if (!node->qhtmlName().trimmed().isEmpty() && !scopeIds.isEmpty()) {
+                state.themeApplications.append({node->qhtmlName().trimmed(), scopeIds});
+            }
+        }
+
         if (const auto *property = dynamic_cast<const QHTMLProperty *>(node)) {
             if (OwnerRecord *owner = ownerById(state, currentOwnerId)) {
                 owner->properties.append({property->qhtmlName().trimmed(), property->value()});
@@ -813,34 +848,70 @@ QJsonObject manifestForState(const CompileState &state)
         themes.insert(it.key(), object);
     }
     manifest.insert(QStringLiteral("themes"), themes);
+
+    QJsonArray themeApplications;
+    for (const ThemeApplicationRecord &application : state.themeApplications) {
+        QJsonObject object;
+        object.insert(QStringLiteral("themeName"), application.themeName);
+        object.insert(QStringLiteral("scopeIds"), stringArray(application.scopeIds));
+        themeApplications.append(object);
+    }
+    manifest.insert(QStringLiteral("themeApplications"), themeApplications);
     return manifest;
 }
 
-QString themeCssForScope(const QString &scopeThemeName,
+QStringList cssScopeSelectorsForUuid(const QString &uuid)
+{
+    const QString escaped = cssAttributeString(uuid);
+    return {
+        QStringLiteral("[qhtml-node=\"") + escaped + QStringLiteral("\"]"),
+        QStringLiteral("[component-instance=\"") + escaped + QStringLiteral("\"]"),
+        QStringLiteral("[domuuid=\"") + escaped + QStringLiteral("\"]")
+    };
+}
+
+QStringList cssThemeSelectorsForRule(const QStringList &scopeSelectors,
+                                     const QString &ruleSelector,
+                                     bool defaultTheme)
+{
+    QStringList selectors;
+    for (const QString &scope : scopeSelectors) {
+        selectors.append(QStringLiteral(":where(") + ruleSelector + QStringLiteral(")") + scope);
+        selectors.append(scope + QLatin1Char(' ') + ruleSelector);
+    }
+    if (!defaultTheme) {
+        return selectors;
+    }
+    QStringList defaultSelectors;
+    for (const QString &selector : selectors) {
+        defaultSelectors.append(QStringLiteral(":where(") + selector + QStringLiteral(")"));
+    }
+    return defaultSelectors;
+}
+
+QString themeCssForScope(const QStringList &scopeSelectors,
                          const QString &themeName,
                          const CompileState &state,
                          QSet<QString> &seen)
 {
-    const QString seenKey = scopeThemeName + QLatin1Char('|') + themeName;
+    const QString seenKey = scopeSelectors.join(QLatin1Char(',')) + QLatin1Char('|') + themeName;
     if (seen.contains(seenKey) || !state.themes.contains(themeName)) {
         return QString();
     }
     seen.insert(seenKey);
     const ThemeRecord &theme = state.themes.value(themeName);
     QStringList rules;
-    const QString scope = QStringLiteral("q-theme-application[qhtml-theme=\"") +
-                          cssAttributeString(scopeThemeName) + QStringLiteral("\"]");
 
     for (const ThemeRule &rule : theme.rules) {
         if (rule.selector == QStringLiteral("q-child-theme")) {
             for (const QString &childThemeName : rule.styleNames) {
-                rules.append(themeCssForScope(scopeThemeName, childThemeName, state, seen));
+                rules.append(themeCssForScope(scopeSelectors, childThemeName, state, seen));
             }
             continue;
         }
 
         if (state.themes.contains(rule.selector) && rule.styleNames.isEmpty() && rule.inlineStyleBodies.isEmpty()) {
-            rules.append(themeCssForScope(scopeThemeName, rule.selector, state, seen));
+            rules.append(themeCssForScope(scopeSelectors, rule.selector, state, seen));
             continue;
         }
 
@@ -859,9 +930,7 @@ QString themeCssForScope(const QString &scopeThemeName,
         if (declarations.isEmpty()) {
             continue;
         }
-        const QString selector = theme.defaultTheme
-            ? QStringLiteral(":where(") + scope + QLatin1Char(' ') + rule.selector + QLatin1Char(')')
-            : scope + QLatin1Char(' ') + rule.selector;
+        const QString selector = cssThemeSelectorsForRule(scopeSelectors, rule.selector, theme.defaultTheme).join(QStringLiteral(", "));
         rules.append(selector + QStringLiteral(" { ") + declarations.join(QLatin1Char(' ')) + QStringLiteral(" }") );
     }
     return rules.join(QLatin1Char('\n'));
@@ -870,7 +939,7 @@ QString themeCssForScope(const QString &scopeThemeName,
 QString cssForState(const CompileState &state)
 {
     QStringList css;
-    css.append(QStringLiteral("q-style-application, q-theme-application { display: contents; }"));
+    css.append(QStringLiteral("q-style-application { display: contents; }"));
 
     for (auto it = state.styles.constBegin(); it != state.styles.constEnd(); ++it) {
         if (it->declarations.isEmpty()) {
@@ -878,7 +947,7 @@ QString cssForState(const CompileState &state)
         }
         const QString selector = QStringLiteral("q-style-application[qhtml-style=\"") +
                                  cssAttributeString(it.key()) +
-                                 QStringLiteral("\"] :not(q-style-application):not(q-theme-application)");
+                                 QStringLiteral("\"] :not(q-style-application)");
         css.append(selector + QStringLiteral(" { ") + it->declarations + QStringLiteral(" }") );
     }
 
@@ -895,9 +964,16 @@ QString cssForState(const CompileState &state)
         }
     }
 
-    for (auto it = state.themes.constBegin(); it != state.themes.constEnd(); ++it) {
+    for (const ThemeApplicationRecord &application : state.themeApplications) {
+        QStringList scopeSelectors;
+        for (const QString &scopeId : application.scopeIds) {
+            scopeSelectors.append(cssScopeSelectorsForUuid(scopeId));
+        }
+        if (scopeSelectors.isEmpty()) {
+            continue;
+        }
         QSet<QString> seen;
-        const QString generated = themeCssForScope(it.key(), it.key(), state, seen);
+        const QString generated = themeCssForScope(scopeSelectors, application.themeName, state, seen);
         if (!generated.isEmpty()) {
             css.append(generated);
         }
@@ -1269,6 +1345,75 @@ QString standaloneRuntimeSource(const QJsonObject &manifest, bool pretty)
 	      };
 	    },
 
+	    cssAttributeValue(value) {
+	      return String(value == null ? "" : value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+	    },
+
+	    scopeSelectorsForId(scopeId) {
+	      const escaped = this.cssAttributeValue(scopeId);
+	      return [
+	        `[qhtml-node="${escaped}"]`,
+	        `[component-instance="${escaped}"]`,
+	        `[domuuid="${escaped}"]`
+	      ];
+	    },
+
+	    elementsForScopeId(scopeId) {
+	      const out = [];
+	      const seen = new Set();
+	      for (const selector of this.scopeSelectorsForId(scopeId)) {
+	        for (const element of this.root.querySelectorAll(selector)) {
+	          if (!seen.has(element)) {
+	            seen.add(element);
+	            out.push(element);
+	          }
+	        }
+	      }
+	      return out;
+	    },
+
+	    themeSelectorsForRule(scopeSelectors, ruleSelector, defaultTheme) {
+	      const selectors = [];
+	      for (const scope of scopeSelectors) {
+	        selectors.push(`:where(${ruleSelector})${scope}`);
+	        selectors.push(`${scope} ${ruleSelector}`);
+	      }
+	      return defaultTheme ? selectors.map(selector => `:where(${selector})`) : selectors;
+	    },
+
+	    themeCssRulesForScope(scopeSelectors, themeName, seen = new Set()) {
+	      const key = `${scopeSelectors.join(",")}|${themeName}`;
+	      if (seen.has(key)) return [];
+	      seen.add(key);
+	      const theme = manifest.themes && manifest.themes[themeName];
+	      if (!theme) return [];
+	      const out = [];
+	      for (const rule of theme.rules || []) {
+	        if (rule.selector === "q-child-theme") {
+	          for (const childThemeName of rule.styleNames || []) {
+	            out.push(...this.themeCssRulesForScope(scopeSelectors, childThemeName, seen));
+	          }
+	          continue;
+	        }
+	        if (manifest.themes && manifest.themes[rule.selector] &&
+	            !(rule.styleNames || []).length && !(rule.inlineStyles || []).length) {
+	          out.push(...this.themeCssRulesForScope(scopeSelectors, rule.selector, seen));
+	          continue;
+	        }
+	        const declarations = [];
+	        for (const styleName of rule.styleNames || []) {
+	          const style = manifest.styles && manifest.styles[styleName];
+	          if (style && String(style.declarations || "").trim()) declarations.push(String(style.declarations || "").trim());
+	        }
+	        for (const inlineStyle of rule.inlineStyles || []) {
+	          if (String(inlineStyle || "").trim()) declarations.push(String(inlineStyle || "").trim());
+	        }
+	        if (!declarations.length) continue;
+	        out.push(`${this.themeSelectorsForRule(scopeSelectors, rule.selector, theme.defaultTheme).join(", ")} { ${declarations.join(" ")} }`);
+	      }
+	      return out;
+	    },
+
 	    refreshDynamicStyleSheet() {
 	      let styleElement = document.querySelector("style[data-qhtml-standalone-dynamic-style]");
 	      if (!styleElement) {
@@ -1280,8 +1425,15 @@ QString standaloneRuntimeSource(const QJsonObject &manifest, bool pretty)
 	      for (const [name, style] of Object.entries(manifest.styles || {})) {
 	        const cssText = String(style.declarations || "").trim();
 	        if (!cssText) continue;
-	        const escapedName = String(name).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
-	        rules.push(`q-style-application[qhtml-style="${escapedName}"] :not(q-style-application):not(q-theme-application) { ${cssText} }`);
+	        const escapedName = this.cssAttributeValue(name);
+	        rules.push(`q-style-application[qhtml-style="${escapedName}"] :not(q-style-application) { ${cssText} }`);
+	      }
+	      for (const application of manifest.themeApplications || []) {
+	        const scopeSelectors = [];
+	        for (const scopeId of application.scopeIds || []) {
+	          scopeSelectors.push(...this.scopeSelectorsForId(scopeId));
+	        }
+	        rules.push(...this.themeCssRulesForScope(scopeSelectors, application.themeName));
 	      }
 	      styleElement.textContent = rules.join("\n");
 	    },
@@ -1674,7 +1826,7 @@ QString standaloneRuntimeSource(const QJsonObject &manifest, bool pretty)
         const style = manifest.styles[styleName];
         if (!style || !Array.isArray(style.classes)) continue;
         for (const element of application.querySelectorAll(":scope *")) {
-          if (element.localName === "q-style-application" || element.localName === "q-theme-application") continue;
+          if (element.localName === "q-style-application") continue;
           element.classList.add(...style.classes);
         }
       }
@@ -1700,7 +1852,8 @@ QString standaloneRuntimeSource(const QJsonObject &manifest, bool pretty)
         }
         let matches = [];
         try {
-          matches = Array.from(scope.querySelectorAll(rule.selector));
+          if (scope.matches && scope.matches(rule.selector)) matches.push(scope);
+          matches.push(...Array.from(scope.querySelectorAll(rule.selector)));
         } catch (error) {
           console.warn(`Invalid q-theme selector ${rule.selector}`, error);
           continue;
@@ -1717,8 +1870,12 @@ QString standaloneRuntimeSource(const QJsonObject &manifest, bool pretty)
     },
 
     applyThemeClasses() {
-      for (const application of this.root.querySelectorAll("q-theme-application[qhtml-theme]")) {
-        this.applyThemeClassesToScope(application, application.getAttribute("qhtml-theme"));
+      for (const application of manifest.themeApplications || []) {
+        for (const scopeId of application.scopeIds || []) {
+          for (const scope of this.elementsForScopeId(scopeId)) {
+            this.applyThemeClassesToScope(scope, application.themeName);
+          }
+        }
       }
     },
 

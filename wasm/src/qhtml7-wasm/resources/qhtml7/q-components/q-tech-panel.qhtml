@@ -808,15 +808,6 @@ q-component q-tech-panel {
   q-property suppressUnslottedChildren: true
 
   function contentContainer() {
-    if (!this || !this.children) {
-      return this;
-    }
-    for (var i = 0; i < this.children.length; i += 1) {
-      var child = this.children[i];
-      if (String(child.tagName || "").toLowerCase() === "q-theme-application") {
-        return child;
-      }
-    }
     return this;
   }
 

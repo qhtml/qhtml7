@@ -3532,12 +3532,7 @@ private:
         }
 
         if (node->qhtmlType() == QStringLiteral("QHTMLThemeApplication")) {
-            QString out = QStringLiteral("<q-theme-application qhtml-theme=\"") + escapeAttribute(node->qhtmlName()) +
-                          QStringLiteral("\" qhtml-application=\"") + escapeAttribute(node->qhtmlUUID()) +
-                          QStringLiteral("\">");
-            out += renderChildrenWithSlots(node, context);
-            out += QStringLiteral("</q-theme-application>");
-            return out;
+            return renderChildrenWithSlots(node, context);
         }
 
         return renderChildrenWithSlots(node, context);
@@ -8376,6 +8371,15 @@ public:
         return out;
     }
 
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QStringList lines;
+        for (QHTMLNode *child : children()) {
+            lines.append(child->sourceQHTML(0));
+        }
+        return sourceBlock(qhtmlName(), lines.join(QLatin1Char('\n')), indentLevel);
+    }
+
 private:
     QHTMLStyle *m_style = nullptr;
 };
@@ -8398,13 +8402,16 @@ public:
 
     QString renderHtml() const override
     {
-        QString out = QStringLiteral("<q-theme-application qhtml-theme=\"") + escapeAttribute(qhtmlName()) +
-                      QStringLiteral("\" qhtml-theme-uuid=\"") + escapeAttribute(themeUUID()) +
-                      QStringLiteral("\" qhtml-application=\"") + escapeAttribute(qhtmlUUID()) +
-                      QStringLiteral("\">");
-        out += QHTMLTypedNode::renderHtml();
-        out += QStringLiteral("</q-theme-application>");
-        return out;
+        return QHTMLTypedNode::renderHtml();
+    }
+
+    QString sourceQHTML(int indentLevel = 0) const override
+    {
+        QStringList lines;
+        for (QHTMLNode *child : children()) {
+            lines.append(child->sourceQHTML(0));
+        }
+        return sourceBlock(qhtmlName(), lines.join(QLatin1Char('\n')), indentLevel);
     }
 
 private:
