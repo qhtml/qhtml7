@@ -4318,6 +4318,37 @@
     return insideDefinition ? [] : [registry.rootElement];
   }
 
+  function owningComponentDefinitionForQHTMLNode(node) {
+    let current = node && typeof node.parent === "function" ? node.parent() : null;
+    while (current) {
+      if (qhtmlNodeType(current) === "QHTMLComponentDefinition") {
+        return current;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return null;
+  }
+
+  function componentDefinitionInstanceElements(definitionNode, registry) {
+    const uuid = qhtmlNodeUuid(definitionNode);
+    if (!uuid || !registry || !registry.rootElement || typeof registry.rootElement.querySelectorAll !== "function") {
+      return [];
+    }
+    const escaped = qhtmlCssString(uuid);
+    return Array.from(registry.rootElement.querySelectorAll(`[component-definition="${escaped}"]`));
+  }
+
+  function themeApplicationOwnerScopes(themeApplicationNode, registry) {
+    const scopes = ownerElementsForQHTMLNode(themeApplicationNode, registry).slice();
+    const definitionNode = owningComponentDefinitionForQHTMLNode(themeApplicationNode);
+    componentDefinitionInstanceElements(definitionNode, registry).forEach((element) => {
+      if (element && scopes.indexOf(element) < 0) {
+        scopes.push(element);
+      }
+    });
+    return scopes;
+  }
+
   function ownerWorkerForQHTMLNode(node, registry) {
     let current = node && typeof node.parent === "function" ? node.parent() : null;
     while (current) {
@@ -5382,13 +5413,21 @@
         const colon = part.indexOf(":");
         if (colon > 0) {
           declarations.push({
-            name: part.slice(0, colon).trim(),
+            name: normalizeCssDeclarationName(part.slice(0, colon).trim()),
             value: part.slice(colon + 1).trim()
           });
         }
       });
     });
     return declarations.filter((decl) => decl.name && decl.value);
+  }
+
+  function normalizeCssDeclarationName(name) {
+    const text = String(name || "").trim();
+    if (!text || text.startsWith("--") || text.indexOf("-") >= 0) {
+      return text;
+    }
+    return text.replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase());
   }
 
   function normalizeTransitionTimeValue(value, fallback) {
@@ -6041,6 +6080,18 @@
       const escaped = qhtmlCssString(uuid);
       return Array.from(registry.rootElement.querySelectorAll(`[component-instance="${escaped}"]`));
     }
+    if (registry.rootElement && typeof registry.rootElement.querySelectorAll === "function") {
+      const escaped = qhtmlCssString(uuid);
+      const matches = Array.from(registry.rootElement.querySelectorAll(
+        `[${QHTML_DOM_UUID_ATTRIBUTE}="${escaped}"], [qhtml-node="${escaped}"]`
+      ));
+      if (registry.rootElement.getAttribute && qhtmlDomUuid(registry.rootElement) === uuid) {
+        matches.unshift(registry.rootElement);
+      }
+      if (matches.length > 0) {
+        return matches;
+      }
+    }
     const element = registry.elementsByUuid && typeof registry.elementsByUuid.get === "function"
       ? registry.elementsByUuid.get(uuid)
       : qhtmlDomElementByUuid(registry.rootElement, uuid);
@@ -6089,6 +6140,11 @@
       const scopes = [];
       qhtmlNodeChildren(node).forEach((child) => {
         collectThemeApplicationScopeElements(child, registry, scopes, new Set());
+      });
+      themeApplicationOwnerScopes(node, registry).forEach((scopeElement) => {
+        if (scopeElement && scopes.indexOf(scopeElement) < 0) {
+          scopes.push(scopeElement);
+        }
       });
       scopes.forEach((scopeElement) => {
         applyThemeToScope(scopeElement, themeDef, registry, new Set());
@@ -8289,6 +8345,101 @@
     return currentComponent.parentElement.closest("[component-instance]");
   }
 
+  function qhtmlComponentInstanceTypeName(node) {
+    if (!node) {
+      return "";
+    }
+    if (typeof node.keyword === "function") {
+      const keyword = String(node.keyword() || "").trim();
+      if (keyword) {
+        return keyword;
+      }
+    }
+    if (typeof node.componentDefinition === "function") {
+      const definition = node.componentDefinition();
+      const definitionName = qhtmlNodeName(definition);
+      if (definitionName) {
+        return definitionName;
+      }
+    }
+    return qhtmlNodeName(node);
+  }
+
+  function qhtmlDirectChildSlotNode(instanceNode, slotName) {
+    const wanted = String(slotName || "").trim().toLowerCase();
+    const count = instanceNode && typeof instanceNode.childCount === "function" ? instanceNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = instanceNode.childAt(index);
+      const childName = String(qhtmlNodeName(child) || qhtmlNodeKeyword(child) || "").trim().toLowerCase();
+      if (childName === wanted) {
+        return child;
+      }
+    }
+    return null;
+  }
+
+  function qhtmlSlotText(instanceNode, slotName, ownerElement, registry) {
+    const slotNode = qhtmlDirectChildSlotNode(instanceNode, slotName);
+    if (!slotNode) {
+      return "";
+    }
+    return qhtmlNodeChildrenText(slotNode, ownerElement, registry);
+  }
+
+  function qhtmlSlotHtml(instanceNode, slotName) {
+    const slotNode = qhtmlDirectChildSlotNode(instanceNode, slotName);
+    if (!slotNode) {
+      return "";
+    }
+    return qhtmlNodeChildren(slotNode).map((child) => {
+      if (child && typeof child.renderHtml === "function") {
+        return child.renderHtml();
+      }
+      return qhtmlNodeBodyText(child);
+    }).join("");
+  }
+
+  function childComponentDescriptorsByType(domElement, registry, typeName) {
+    const ownerNode = qhtmlNodeForDomElement(domElement, registry);
+    const wanted = String(typeName || "").trim();
+    const out = [];
+    const count = ownerNode && typeof ownerNode.childCount === "function" ? ownerNode.childCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const child = ownerNode.childAt(index);
+      if (qhtmlNodeType(child) !== "QHTMLComponentInstance") {
+        continue;
+      }
+      if (qhtmlComponentInstanceTypeName(child) !== wanted) {
+        continue;
+      }
+      const uuid = qhtmlNodeUuid(child);
+      const rendered = runtimeObjectForQHTMLNode(child, registry, domElement);
+      if (rendered) {
+        out.push(rendered);
+        continue;
+      }
+      const label = qhtmlSlotText(child, "name", domElement, registry) ||
+        qhtmlSlotText(child, "label", domElement, registry) ||
+        qhtmlSlotText(child, "title", domElement, registry) ||
+        qhtmlNodeName(child);
+      const body = qhtmlSlotHtml(child, "body") ||
+        qhtmlSlotHtml(child, "content") ||
+        qhtmlSlotText(child, "body", domElement, registry) ||
+        qhtmlSlotText(child, "content", domElement, registry);
+      out.push({
+        htmlNode: child,
+        qhtmlUUID: uuid,
+        type: wanted,
+        name: label,
+        label,
+        title: label,
+        body,
+        content: body
+      });
+    }
+    return out;
+  }
+
   function bindComponentFacade(domElement, registry) {
     const componentElement = currentQHTMLComponentFor(domElement, registry);
     domElement.component = componentElement;
@@ -8343,6 +8494,9 @@
         sourceRegistry.nodesByUuid.set(wanted, found);
       }
       return found;
+    };
+    domElement.findChildComponentsOfType = function componentFindChildComponentsOfType(typeName) {
+      return childComponentDescriptorsByType(domElement, registry || domElement.__qhtmlRegistry, typeName);
     };
     domElement.fromJSON = function componentFromJSON(value) {
       const sourceRegistry = registry || domElement.__qhtmlRegistry;

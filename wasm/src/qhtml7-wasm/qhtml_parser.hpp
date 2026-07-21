@@ -2998,6 +2998,8 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("slotAt", &QHTMLComponentInstance::slotAt, allow_raw_pointers())
         .function("slot", &QHTMLComponentInstance::slotJs, allow_raw_pointers())
         .function("slotNames", &QHTMLComponentInstance::slotNamesJs)
+        .function("slotHtml", &QHTMLComponentInstance::slotHtmlJs)
+        .function("slotPlainText", &QHTMLComponentInstance::slotPlainTextJs)
         .function("findChildComponentsOfType", &QHTMLComponentInstance::findChildComponentsOfTypeJs);
 
     class_<QHTMLDomTree, base<QHTMLDomNode>>("QHTMLDomTree")

@@ -325,18 +325,12 @@ q-component q-tabs {
 
     for (var index = 0; index < node.childCount(); index += 1) {
       var child = node.childAt(index);
-      var type = child.qhtmlType();
-      var isTabNode = false;
-      if (type === "QHTMLComponentInstance") {
-        isTabNode = true;
-      }
-      if (type === "QHTMLTypedNode") {
-        isTabNode = true;
-      }
-      if (isTabNode) {
-        if (child.keyword() === "q-tab") {
+      if (child.qhtmlType() === "QHTMLComponentInstance") {
+        var definition = child.componentDefinition();
+        if (definition.qhtmlName() === "q-tab") {
           fallback = index;
-          if (child.qhtmlName() === wantedName) {
+          var slotName = tabs.tabNameFrom({ name: child.slotPlainText("name", ""), label: child.slotPlainText("label", "") });
+          if (child.qhtmlName() === wantedName || slotName === wantedName) {
             return index;
           }
         }

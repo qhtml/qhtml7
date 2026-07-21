@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <string>
 
@@ -1139,6 +1140,7 @@ public:
             m_keyword == QStringLiteral("q-callback") ||
             m_keyword == QStringLiteral("q-macro") ||
             m_keyword == QStringLiteral("q-rewrite") ||
+            m_keyword == QStringLiteral("q-keyword") ||
             m_keyword == QStringLiteral("q-switch") ||
             m_keyword == QStringLiteral("q-anchor") ||
             m_keyword.startsWith(QStringLiteral("q-anchor-"))) {
@@ -2085,6 +2087,19 @@ public:
         return renderHtmlForContext(contextNode);
     }
 
+    QString renderHtmlWithChildRenderer(const QHTMLNode *contextNode,
+                                        const std::function<QString(QHTMLNode *)> &renderer) const
+    {
+        QString out = QStringLiteral("<div qhtml-layout=\"") + escapeAttribute(keyword()) +
+                      QStringLiteral("\" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) +
+                      QStringLiteral("\" class=\"") + escapeAttribute(layoutClass()) +
+                      QStringLiteral("\" style=\"") + escapeAttribute(layoutStyle()) +
+                      QStringLiteral("\"") + layoutAttributes(contextNode) + QStringLiteral(">");
+        out += renderLayoutChildren(contextNode ? contextNode : this, renderer);
+        out += QStringLiteral("</div>");
+        return out;
+    }
+
 private:
     static QHash<QString, QString> attributesFromJs(emscripten::val attributes)
     {
@@ -2112,6 +2127,19 @@ private:
         out += renderLayoutChildren(contextNode ? contextNode : this);
         out += QStringLiteral("</div>");
         return out;
+    }
+
+    static QString renderWithOptionalRenderer(QHTMLNode *node,
+                                              const QHTMLNode *contextNode,
+                                              const std::function<QString(QHTMLNode *)> &renderer)
+    {
+        if (!node) {
+            return QString();
+        }
+        if (renderer) {
+            return renderer(node);
+        }
+        return node->renderHtmlInContext(contextNode);
     }
 
 protected:
@@ -2683,13 +2711,25 @@ protected:
 
     QString renderLayoutChildren(const QHTMLNode *contextNode) const
     {
+        return renderLayoutChildren(contextNode, std::function<QString(QHTMLNode *)>());
+    }
+
+    QString renderLayoutChildren(const QHTMLNode *contextNode,
+                                 const std::function<QString(QHTMLNode *)> &renderer) const
+    {
         if (hasGeneratedGrid()) {
-            return renderGeneratedGrid(contextNode);
+            return renderGeneratedGrid(contextNode, renderer);
         }
-        return renderSequentialLayoutChildren(contextNode);
+        return renderSequentialLayoutChildren(contextNode, renderer);
     }
 
     QString renderSequentialLayoutChildren(const QHTMLNode *contextNode) const
+    {
+        return renderSequentialLayoutChildren(contextNode, std::function<QString(QHTMLNode *)>());
+    }
+
+    QString renderSequentialLayoutChildren(const QHTMLNode *contextNode,
+                                           const std::function<QString(QHTMLNode *)> &renderer) const
     {
         QString out;
         for (QHTMLNode *child : children()) {
@@ -2697,11 +2737,15 @@ protected:
                 continue;
             }
             if (isLayoutNode(child)) {
-                out += child->renderHtmlInContext(contextNode);
+                if (QHTMLLayout *layoutChild = dynamic_cast<QHTMLLayout *>(child)) {
+                    out += layoutChild->renderHtmlWithChildRenderer(contextNode, renderer);
+                } else {
+                    out += renderWithOptionalRenderer(child, contextNode, renderer);
+                }
             } else {
                 out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
                        escapeAttribute(itemStyle(child)) + QStringLiteral("\">") +
-                       child->renderHtmlInContext(contextNode) +
+                       renderWithOptionalRenderer(child, contextNode, renderer) +
                        QStringLiteral("</div>");
             }
         }
@@ -2726,6 +2770,12 @@ protected:
 
     QString renderGeneratedGrid(const QHTMLNode *contextNode) const
     {
+        return renderGeneratedGrid(contextNode, std::function<QString(QHTMLNode *)>());
+    }
+
+    QString renderGeneratedGrid(const QHTMLNode *contextNode,
+                                const std::function<QString(QHTMLNode *)> &renderer) const
+    {
         const QVector<QHTMLNode *> items = gridItems();
         int rowCount = qMax(1, rows());
         int colCount = qMax(1, cols());
@@ -2746,7 +2796,11 @@ protected:
             for (int col = 0; col < colCount; ++col) {
                 QHTMLNode *item = itemIndex < items.size() ? items.at(itemIndex++) : nullptr;
                 if (item && item->qhtmlType() == QStringLiteral("QHTMLColumnLayout")) {
-                    out += item->renderHtmlInContext(contextNode);
+                    if (QHTMLLayout *layoutItem = dynamic_cast<QHTMLLayout *>(item)) {
+                        out += layoutItem->renderHtmlWithChildRenderer(contextNode, renderer);
+                    } else {
+                        out += renderWithOptionalRenderer(item, contextNode, renderer);
+                    }
                 } else {
                     out += layoutBoxHtml(QStringLiteral("q-col"),
                                          QStringLiteral("column"),
@@ -2755,7 +2809,7 @@ protected:
                     if (item) {
                         out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
                                escapeAttribute(itemStyle(item)) + QStringLiteral("\">") +
-                               item->renderHtmlInContext(contextNode) +
+                               renderWithOptionalRenderer(item, contextNode, renderer) +
                                QStringLiteral("</div>");
                     }
                     out += QStringLiteral("</div>");
@@ -3271,6 +3325,18 @@ public:
         return componentSlotOwnerDefinitionUUID(componentSlot);
     }
 
+    std::string slotHtmlJs(const std::string &primaryName, const std::string &fallbackName = std::string()) const
+    {
+        return slotHtml(QString::fromStdString(primaryName),
+                        QString::fromStdString(fallbackName)).toStdString();
+    }
+
+    std::string slotPlainTextJs(const std::string &primaryName, const std::string &fallbackName = std::string()) const
+    {
+        return slotPlainText(QString::fromStdString(primaryName),
+                             QString::fromStdString(fallbackName)).toStdString();
+    }
+
 private:
     QString renderHtmlWithContext(const SlotRenderContext &context) const
     {
@@ -3511,6 +3577,13 @@ private:
         if (node->qhtmlType() == QStringLiteral("QHTMLLayout") ||
             node->qhtmlType() == QStringLiteral("QHTMLRowLayout") ||
             node->qhtmlType() == QStringLiteral("QHTMLColumnLayout")) {
+            if (QHTMLLayout *layout = dynamic_cast<QHTMLLayout *>(node)) {
+                return layout->renderHtmlWithChildRenderer(
+                    this,
+                    [this, &context](QHTMLNode *child) {
+                        return renderNodeWithSlots(child, context);
+                    });
+            }
             return node->renderHtmlInContext(this);
         }
 
@@ -3587,10 +3660,8 @@ private:
         if (name.isEmpty()) {
             return nullptr;
         }
-        for (QHTMLNode *child : children()) {
-            if (child && child->qhtmlName() == name) {
-                return child;
-            }
+        if (QHTMLNode *overrideNode = findSlotOverrideInChildren(name)) {
+            return overrideNode;
         }
         if (createIfMissing) {
             QHTMLNode *overrideNode = new QHTMLNode(QStringLiteral("QHTMLComponentInstanceSlotOverride"), name);
@@ -3598,6 +3669,53 @@ private:
             return overrideNode;
         }
         return nullptr;
+    }
+
+    QHTMLNode *findSlotOverrideInChildren(const QString &name) const
+    {
+        for (QHTMLNode *child : children()) {
+            if (!child) {
+                continue;
+            }
+            if (child->qhtmlName() == name) {
+                return child;
+            }
+        }
+        for (QHTMLNode *child : children()) {
+            if (QHTMLNode *found = findNestedSlotOverride(child, name)) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    static QHTMLNode *findNestedSlotOverride(QHTMLNode *node, const QString &name)
+    {
+        if (!node || name.isEmpty()) {
+            return nullptr;
+        }
+        if (isSlotOverrideSearchBoundary(node)) {
+            return nullptr;
+        }
+        if (node->qhtmlName() == name) {
+            return node;
+        }
+        for (QHTMLNode *child : node->children()) {
+            if (QHTMLNode *found = findNestedSlotOverride(child, name)) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    static bool isSlotOverrideSearchBoundary(QHTMLNode *node)
+    {
+        if (!node) {
+            return true;
+        }
+        const QString type = node->qhtmlType();
+        return type == QStringLiteral("QHTMLComponentDefinition") ||
+               type == QStringLiteral("QHTMLComponentInstance");
     }
 
     QString renderSingleSlotInstanceChildren(const QString &slotName, const SlotRenderContext &context) const
@@ -3740,6 +3858,28 @@ private:
         return child && !isRuntimeInstanceChild(child);
     }
 
+    static bool subtreeIsSlotOverrideContainer(QHTMLNode *node, const QSet<QString> &slotNames)
+    {
+        if (!node || slotNames.isEmpty() || isSlotOverrideSearchBoundary(node)) {
+            return false;
+        }
+        if (slotNames.contains(node->qhtmlName())) {
+            return true;
+        }
+        bool foundSlotOverride = false;
+        for (QHTMLNode *child : node->children()) {
+            if (!child || !isRenderableInstanceChild(child)) {
+                continue;
+            }
+            if (subtreeIsSlotOverrideContainer(child, slotNames)) {
+                foundSlotOverride = true;
+                continue;
+            }
+            return false;
+        }
+        return foundSlotOverride;
+    }
+
     QString renderUnslottedInstanceChildren(const SlotRenderContext &context) const
     {
         QString out;
@@ -3755,6 +3895,9 @@ private:
                 continue;
             }
             if (slotNames.contains(child->qhtmlName())) {
+                continue;
+            }
+            if (subtreeIsSlotOverrideContainer(child, slotNames)) {
                 continue;
             }
             if (!isRenderableInstanceChild(child)) {
