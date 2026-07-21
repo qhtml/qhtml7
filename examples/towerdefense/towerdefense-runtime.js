@@ -191,6 +191,8 @@
 
   function syncCollection(owner, board, list, map, tagName) {
     var live = {};
+    var fragment = document.createDocumentFragment();
+    var created = false;
     list = list || [];
     list.forEach(function (object) {
       live[object.uuid] = true;
@@ -199,11 +201,15 @@
         element = document.createElement(tagName);
         element.board = board;
         map[object.uuid] = element;
-        owner.appendChild(element);
+        fragment.appendChild(element);
+        created = true;
       }
       element.board = board;
       element.object = object;
     });
+    if (created === true) {
+      owner.appendChild(fragment);
+    }
     Object.keys(map).forEach(function (uuid) {
       if (!live[uuid]) {
         map[uuid].remove();
@@ -214,6 +220,8 @@
 
   function syncProjectileCollection(owner, board, list, map) {
     var live = {};
+    var fragment = document.createDocumentFragment();
+    var created = false;
     list = list || [];
     list.forEach(function (object) {
       live[object.uuid] = true;
@@ -222,7 +230,8 @@
         element = document.createElement("td-projectile-view");
         element.board = board;
         map[object.uuid] = element;
-        owner.appendChild(element);
+        fragment.appendChild(element);
+        created = true;
       }
       if (element.__tdRemoveTimer) {
         clearTimeout(element.__tdRemoveTimer);
@@ -231,6 +240,9 @@
       element.board = board;
       element.object = object;
     });
+    if (created === true) {
+      owner.appendChild(fragment);
+    }
     Object.keys(map).forEach(function (uuid) {
       if (!live[uuid] && !map[uuid].__tdRemoveTimer) {
         map[uuid].style.opacity = "0";
@@ -258,7 +270,10 @@
     }
     sync(board) {
       this.board = board;
-      syncCollection(this, board, board.tilesList, this.renderedTiles, "td-tile-view");
+      if (this.__tdBoardRevision !== board.boardRevision) {
+        syncCollection(this, board, board.tilesList, this.renderedTiles, "td-tile-view");
+        this.__tdBoardRevision = board.boardRevision;
+      }
       syncCollection(this, board, board.gunsList, this.renderedGuns, "td-gun-view");
       syncCollection(this, board, board.enemiesList, this.renderedEnemies, "td-enemy-view");
       syncProjectileCollection(this, board, board.projectilesList, this.renderedProjectiles);

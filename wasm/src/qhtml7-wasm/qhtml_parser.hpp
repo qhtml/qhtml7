@@ -1791,6 +1791,7 @@ inline void QHTMLDomTree::loadFromASTWithContext(QHTMLAstNode *astRoot, QHTMLNod
     instantiateStyleThemeApplications();
     instantiateComponents();
     bindComponentMembers();
+    rebuildNodeIndex();
 }
 
 inline int QHTMLNode::insertQHTMLSource(int index, const QString &source)
@@ -2625,6 +2626,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("childAt", &QHTMLNode::childAt, allow_raw_pointers())
         .function("childList", &QHTMLNode::childListJs)
         .function("findChildrenByType", &QHTMLNode::findChildrenByTypeJs)
+        .function("findByUUID", &QHTMLNode::findByUUIDJs, allow_raw_pointers())
         .function("findDescendantByUUID", &QHTMLNode::findDescendantByUUIDJs, allow_raw_pointers())
         .function("containsDescendantUUID", &QHTMLNode::containsDescendantUUIDJs)
         .function("appendChild", &QHTMLNode::appendChildJs, allow_raw_pointers())
@@ -3004,6 +3006,9 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("loadFromASTWithContext", &QHTMLDomTree::loadFromASTWithContextJs, allow_raw_pointers())
         .function("clear", &QHTMLDomTree::clear)
         .function("root", &QHTMLDomTree::rootJs, allow_raw_pointers())
+        .function("rebuildNodeIndex", &QHTMLDomTree::rebuildNodeIndexJs)
+        .function("nodeUUIDList", &QHTMLDomTree::nodeUUIDListJs)
+        .function("findByUUID", &QHTMLDomTree::findByUUIDJs, allow_raw_pointers())
         .function("signalBus", &QHTMLDomTree::signalBusJs, allow_raw_pointers())
         .function("quickJSAvailable", &QHTMLDomTree::quickJSAvailableJs)
         .function("compileJavaScript", &QHTMLDomTree::compileJavaScriptJs)

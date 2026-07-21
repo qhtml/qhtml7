@@ -35,6 +35,8 @@ q-component td-board {
   q-property initialized: false
   q-property boardRevision: 0
   q-property inRangeCache: {}
+  q-property bulkUpdating: false
+  q-property initializing: false
   q-signal signal_update_xy_translation(x, y)
 
   td-pathfinder pathfinder { }
@@ -62,13 +64,15 @@ q-component td-board {
   }
 
   function initBoard() {
+    this.initializing = true;
     this.createBlankMap();
-    this.populateEntryPaths();
     this.placeGun(this.exits[0].row - 4, this.exits[0].col, 1);
     this.numEnemies = 0;
     this.numWaves = 0;
     this.initialized = true;
     this.nextSpawnAt = Date.now() + 2500;
+    this.initializing = false;
+    this.rebuildLists();
     this.refreshView();
   }
 
@@ -78,6 +82,7 @@ q-component td-board {
   }
 
   function createBlankMap() {
+    this.bulkUpdating = true;
     this.tiles = {};
     this.tilesList = [];
     this.entrances = [];
@@ -99,6 +104,9 @@ q-component td-board {
         }
       }
     }
+    this.bulkUpdating = false;
+    this.boardRevision += 1;
+    this.rebuildLists();
   }
 
   function makeTile(row, col, kind, buildable, walkable) {
@@ -124,32 +132,35 @@ q-component td-board {
     var key = this.index(row, col);
     delete this.tiles[key];
     delete this.guns[key];
-    this.rebuildLists();
   }
 
   function placeWall(row, col) {
     this.eraseTile(row, col);
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "wall", false, false);
-    this.rebuildLists();
+    this.boardRevision += 1;
+    if (this.bulkUpdating === false) { this.rebuildLists(); }
   }
 
   function placeSquare(row, col) {
     this.eraseTile(row, col);
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "square", false, true);
-    this.rebuildLists();
+    this.boardRevision += 1;
+    if (this.bulkUpdating === false) { this.rebuildLists(); }
   }
 
   function placeEntrance(row, col) {
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "entrance", false, true);
     this.entrances.push(this.tiles[this.index(row, col)]);
     this.paths[this.index(row, col)] = [];
-    this.rebuildLists();
+    this.boardRevision += 1;
+    if (this.bulkUpdating === false) { this.rebuildLists(); }
   }
 
   function placeExit(row, col) {
     this.tiles[this.index(row, col)] = this.makeTile(row, col, "exit", false, true);
     this.exits.push(this.tiles[this.index(row, col)]);
-    this.rebuildLists();
+    this.boardRevision += 1;
+    if (this.bulkUpdating === false) { this.rebuildLists(); }
   }
 
   function rebuildLists() {
@@ -206,8 +217,9 @@ q-component td-board {
       this.game.gunStoreDisplay = "flex";
       this.game.upgradeStoreDisplay = "none";
     }
+    this.boardRevision += 1;
     this.rebuildLists();
-    this.refreshView();
+    if (this.initializing === false) { this.refreshView(); }
   }
 
   function selectGun(gunId) {
@@ -219,6 +231,7 @@ q-component td-board {
     this.upgradeStoreVisible = true;
     this.game.gunStoreDisplay = "none";
     this.game.upgradeStoreDisplay = "flex";
+    this.boardRevision += 1;
     this.rebuildLists();
     this.refreshView();
   }
@@ -291,10 +304,11 @@ q-component td-board {
     } else {
       this.tiles[this.index(row, col)] = oldTile;
       delete this.guns[this.index(row, col)];
+      this.boardRevision += 1;
       this.populateEntryPaths();
     }
     this.rebuildLists();
-    this.refreshView();
+    if (this.initializing === false) { this.refreshView(); }
   }
 
   function allPathsOpen() {
@@ -577,6 +591,7 @@ q-component td-board {
     this.upgradeStoreVisible = false;
     this.game.upgradeStoreDisplay = "none";
     this.game.awardDefenders(refund);
+    this.boardRevision += 1;
     this.populateEntryPaths();
     this.repathEnemies();
     this.rebuildLists();

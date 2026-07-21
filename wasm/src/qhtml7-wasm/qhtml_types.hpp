@@ -472,6 +472,12 @@ public:
     {
         return qhtmlParent ? qhtmlParent->javascriptRuntime() : nullptr;
     }
+    virtual void markNodeIndexDirty()
+    {
+        if (qhtmlParent) {
+            qhtmlParent->markNodeIndexDirty();
+        }
+    }
 
     int childCount() const { return qhtmlChildren.size(); }
 
@@ -545,6 +551,7 @@ public:
         if (child->qhtmlContext) {
             child->qhtmlContext->setParentContext(nullptr);
         }
+        markNodeIndexDirty();
         return child;
     }
 
@@ -573,6 +580,23 @@ public:
         return findDescendantByUUID(QString::fromStdString(uuid));
     }
 
+    QHTMLNode *findByUUID(const QString &uuid) const
+    {
+        const QString wantedUUID = uuid.trimmed();
+        if (wantedUUID.isEmpty()) {
+            return nullptr;
+        }
+        if (qhtmlUUID() == wantedUUID) {
+            return const_cast<QHTMLNode *>(this);
+        }
+        return findDescendantByUUID(wantedUUID);
+    }
+
+    QHTMLNode *findByUUIDJs(const std::string &uuid) const
+    {
+        return findByUUID(QString::fromStdString(uuid));
+    }
+
     bool containsDescendantUUID(const QString &uuid) const
     {
         return findDescendantByUUID(uuid) != nullptr;
@@ -597,6 +621,7 @@ public:
         if (qhtmlLogger) {
             qhtmlBindLoggerToNode(qhtmlLogger, child);
         }
+        markNodeIndexDirty();
     }
 
     void insertChild(int index, QHTMLNode *child)
@@ -621,6 +646,7 @@ public:
         if (qhtmlLogger) {
             qhtmlBindLoggerToNode(qhtmlLogger, child);
         }
+        markNodeIndexDirty();
     }
 
     void appendChildJs(QHTMLNode *child) { appendChild(child); }
@@ -638,6 +664,7 @@ public:
     {
         qDeleteAll(qhtmlChildren);
         qhtmlChildren.clear();
+        markNodeIndexDirty();
     }
 
     void clearChildrenJs() { clearChildren(); }
@@ -8845,11 +8872,18 @@ public:
 
     QHTMLSignalBus *qhtmlSignalBus = nullptr;
     QHTMLJavaScriptRuntime *qhtmlJavaScriptRuntime = nullptr;
+    QHash<QString, QHTMLNode *> qhtmlNodesByUUID;
+    QVector<QHTMLNode *> qhtmlIndexedNodes;
 
     void loadFromAST(QHTMLAstNode *astRoot);
     void loadFromASTWithContext(QHTMLAstNode *astRoot, QHTMLNode *contextNode);
     void loadFromASTWithContextJs(QHTMLAstNode *astRoot, QHTMLNode *contextNode) { loadFromASTWithContext(astRoot, contextNode); }
-    void clear() { clearChildren(); }
+    void clear()
+    {
+        clearChildren();
+        qhtmlNodesByUUID.clear();
+        qhtmlIndexedNodes.clear();
+    }
     QHTMLNode *root() { return this; }
     QHTMLNode *rootJs() { return this; }
     QHTMLSignalBus *signalBus() const { return qhtmlSignalBus; }
@@ -8865,8 +8899,70 @@ public:
     {
         return compileJavaScript(QString::fromStdString(source));
     }
+    void rebuildNodeIndex()
+    {
+        qhtmlNodesByUUID.clear();
+        qhtmlIndexedNodes.clear();
+        indexNodeByUUID(this);
+    }
+    void markNodeIndexDirty() override
+    {
+        qhtmlNodesByUUID.clear();
+        qhtmlIndexedNodes.clear();
+    }
+    void rebuildNodeIndexJs() { rebuildNodeIndex(); }
+    emscripten::val nodeUUIDListJs()
+    {
+        if (qhtmlIndexedNodes.isEmpty()) {
+            rebuildNodeIndex();
+        }
+        emscripten::val out = emscripten::val::array();
+        int outIndex = 0;
+        for (QHTMLNode *node : qhtmlIndexedNodes) {
+            if (!node) {
+                continue;
+            }
+            const QString uuid = node->qhtmlUUID().trimmed();
+            if (uuid.isEmpty()) {
+                continue;
+            }
+            out.set(outIndex, uuid.toStdString());
+            outIndex += 1;
+        }
+        return out;
+    }
+    QHTMLNode *findByUUID(const QString &uuid)
+    {
+        const QString wantedUUID = uuid.trimmed();
+        if (wantedUUID.isEmpty()) {
+            return nullptr;
+        }
+        if (qhtmlNodesByUUID.isEmpty()) {
+            rebuildNodeIndex();
+        }
+        return qhtmlNodesByUUID.value(wantedUUID, nullptr);
+    }
+    QHTMLNode *findByUUIDJs(const std::string &uuid)
+    {
+        return findByUUID(QString::fromStdString(uuid));
+    }
 
 private:
+    void indexNodeByUUID(QHTMLNode *node)
+    {
+        if (!node) {
+            return;
+        }
+        const QString uuid = node->qhtmlUUID().trimmed();
+        if (!uuid.isEmpty()) {
+            qhtmlNodesByUUID.insert(uuid, node);
+        }
+        qhtmlIndexedNodes.append(node);
+        for (QHTMLNode *child : node->children()) {
+            indexNodeByUUID(child);
+        }
+    }
+
     void indexComponentDefinitions();
     void indexComponentDefinitionsFor(QHTMLNode *scope);
     void resolveComponentExtends();

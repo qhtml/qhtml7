@@ -254,9 +254,14 @@ q-component q-tabs {
 
   function remountHost() {
     var tabs = this.tabsRoot();
-    var host = tabs.closest("q-html");
-    QHTML7.mountTree(host, host.qhtmlDomTree);
+    var host = tabs.closest("q-html,q-html7");
+    host.fromQHTML(host.qhtmlDomTree.toQHTML());
     return true;
+  }
+
+  function tabsNode() {
+    var tabs = this.tabsRoot();
+    return tabs.findByUUID(tabs.getAttribute("component-instance"));
   }
 
   function tabNameFrom(tab) {
@@ -305,7 +310,7 @@ q-component q-tabs {
 
   function tabChildIndex(tabRef) {
     var tabs = this.tabsRoot();
-    var node = tabs.qhtmlNode;
+    var node = tabs.tabsNode();
     var wantedName = "";
     var fallback = -1;
 
@@ -346,7 +351,7 @@ q-component q-tabs {
 
   function addTab(tabObject) {
     var tabs = this.tabsRoot();
-    var node = tabs.qhtmlNode;
+    var node = tabs.tabsNode();
     var tab = tabObject;
     var name = tabs.tabNameFrom(tab);
     var body = tabs.tabBodyFrom(tab);
@@ -394,7 +399,7 @@ q-component q-tabs {
 
   function removeTab(tabRef) {
     var tabs = this.tabsRoot();
-    var node = tabs.qhtmlNode;
+    var node = tabs.tabsNode();
     var panels = tabs.tabPanels();
     var buttons = tabs.tabButtons();
     var index = -1;

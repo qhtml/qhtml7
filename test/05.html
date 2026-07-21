@@ -100,11 +100,13 @@
     <q-html id="animation-root">
 q-component stress-rect {
   q-property label: "0"
-  q-property numSteps: 150
+  q-property numSteps: 15
+  q-property myWidth: 50
+  width: this.myWidth
   q-property-animation widthAnim {
     target: this
-    property: "width"
-    duration: 140
+    property: "myWidth"
+    duration: 1400
     steps: this.numSteps
     easing: "linear"
     repeat: false
@@ -113,7 +115,7 @@ q-component stress-rect {
     running: true
 
     onstepped(value, currentStep) {
-      var status = this.ownerElement.querySelector(".rect-status");
+      var status = this.querySelector(".rect-status");
       if (status) {
         status.textContent = "width " + Math.round(value) + "px / step " + currentStep;
       }
@@ -149,7 +151,7 @@ q-component stress-rect {
   onready {
     var rect = this;
     this.widthAnim.to = this.widthAnim.to + this.numSteps;
-    this.widthAnim.duration = this.widthAnim.duration + (10 * this.numSteps);
+    this.widthAnim.duration = this.widthAnim.duration + (100 * this.numSteps);
         this.widthAnim.start();
         this.opacityAnim.start();
   }

@@ -98,8 +98,8 @@ q-component behavior-loop-bar {
         steps: 80
 
         onstepped(stepNum, value) {
-          this.ownerElement.querySelector(".behavior-loop-fill").style.width = String(value) + "vh";
-          this.ownerElement.querySelector(".behavior-loop-readout").textContent = "step " + String(stepNum) + ": " + String(Math.round(value)) + "vh";
+          this.querySelector(".behavior-loop-fill").style.width = String(value) + "vh";
+          this.querySelector(".behavior-loop-readout").textContent = "step " + String(stepNum) + ": " + String(Math.round(value)) + "vh";
         }
       }
 

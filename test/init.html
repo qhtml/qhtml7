@@ -61,6 +61,21 @@ html {
 
 q-component button { }
 
+function findQHTMLNode(rootNode, typeName, nodeName) {
+  var children = rootNode.childList();
+  for (var index = 0; index < children.length; index += 1) {
+    var child = children[index];
+    if (child.qhtmlType() === typeName && child.qhtmlName() === nodeName) {
+      return child;
+    }
+    var found = findQHTMLNode(child, typeName, nodeName);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
+}
+
 q-component basiccard {
   q-property title: "Basic"
   q-property message: "Ready"
@@ -371,7 +386,8 @@ section#styles {
     text { Change style1 live }
     onclick {
       var q = document.querySelector("q-html");
-      q.qhtmlComponentRegistry.stylesByName.get("style1").setCssText("border: 3px solid #7c3aed; color: white; background: #6d28d9; padding: 10px; border-radius: 6px;");
+      findQHTMLNode(q.qhtmlDomTree, "QHTMLStyle", "style1").setCssText("border: 3px solid #7c3aed; color: white; background: #6d28d9; padding: 10px; border-radius: 6px;");
+      q.fromQHTML(q.qhtmlDomTree.toQHTML());
       alert("style1 was changed. The green style boxes should now be purple.");
     }
   }
@@ -397,9 +413,8 @@ section#themes {
     text { Change theme live }
     onclick {
       var q = document.querySelector("q-html");
-      q.qhtmlComponentRegistry.stylesByName.get("loudStyle").setCssText("border: 3px solid #0f766e; color: #134e4a; background: #ccfbf1; padding: 10px; border-radius: 6px;");
-      q.qhtmlComponentRegistry.themesByName.get("mytheme").refresh();
-      q.qhtmlComponentRegistry.themesByName.get("mytheme2").refresh();
+      findQHTMLNode(q.qhtmlDomTree, "QHTMLStyle", "loudStyle").setCssText("border: 3px solid #0f766e; color: #134e4a; background: #ccfbf1; padding: 10px; border-radius: 6px;");
+      q.fromQHTML(q.qhtmlDomTree.toQHTML());
       alert("loudStyle was changed. Theme headline/nested/p boxes should now be teal.");
     }
   }

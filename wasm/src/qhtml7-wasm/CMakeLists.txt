@@ -9,6 +9,7 @@ set(CMAKE_AUTORCC ON)
 
 qt_add_executable(qhtml7-wasm
     main.cpp
+    qhtml_dom_bridge.hpp
     qhtml_types.hpp qhtml_parser.hpp
     qhtml_web_exporter.hpp qhtml_web_exporter.cpp
     ../../../lib/quickjs/cutils.c
