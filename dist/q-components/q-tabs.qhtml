@@ -1,24 +1,23 @@
-q-component q-tab {
-  q-property label: ""
-  q-property suppressUnslottedChildren: true
-
-  slot name {
-    text { ${this.label} }
-  }
-
-  slot body {
-    slot content { text { } }
-  }
-}
+/*
+ * QHTML7 explicit tabs components.
+ *
+ * This intentionally breaks compatibility with the older q-tabs API.
+ * Tabs are now assembled explicitly from:
+ *
+ *   q-tabs
+ *     q-tab-bar
+ *       q-tab-button
+ *     q-tab-container
+ *       q-tab
+ *
+ * q-tab-bar emits showTab(tabName).
+ * q-tab-container receives that signal through q-connect and controls panels.
+ */
 
 q-component q-tabs {
-  q-property activeIndex: 0
   q-property suppressUnslottedChildren: true
-  q-property tabs: this.findChildComponentsOfType("q-tab")
 
-  q-signal changed(index, name)
-
-  q-style tabsContainerStyle {
+  q-style tabsRootStyle {
     display: block;
     box-sizing: border-box;
     width: 100%;
@@ -31,457 +30,178 @@ q-component q-tabs {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
-  q-style tabsBarStyle {
+  q-default-theme qTabsTheme {
+    .q-tabs-root { tabsRootStyle }
+  }
+
+  qTabsTheme {
+    div.q-tabs-root {
+      slot content { }
+    }
+  }
+}
+
+q-component q-tab-bar {
+  q-property suppressUnslottedChildren: true
+  q-signal showTab(tabName)
+
+  div.q-tab-bar {
+    role: "tablist";
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
     box-sizing: border-box;
     padding: 4px 4px 0 4px;
-    border-bottom: 1px solid #c7d8ef;
     background: #e2e8f0;
-  }
+    border-bottom: 1px solid #c7d8ef;
 
-  q-style tabButtonStyle {
+    slot content { }
+  }
+}
+
+q-component q-tab-button {
+  q-property suppressUnslottedChildren: true
+
+  button.q-tab-button {
+    type: "button";
+    role: "tab";
     appearance: none;
+    box-sizing: border-box;
     padding: 8px 14px;
     background: #e2e8f0;
-    color: #0f172a;
-    border: 1px solid #c7d8ef;
+    color: #334155;
+    border: 1px solid #cbd5e1;
     border-bottom-color: transparent;
     border-radius: 6px 6px 0 0;
     font-size: 14px;
     line-height: 1.1;
     cursor: pointer;
+
+    slot content { }
+  }
+}
+
+q-component q-tab-container {
+  q-property suppressUnslottedChildren: true
+
+  function panelRoot() {
+    return this.querySelector(".q-tab-container");
   }
 
-  q-style tabsBodyStyle {
+  function showTab(tabName) {
+    var root = this.panelRoot();
+    if (root === null) {
+      return null;
+    }
+
+    var wanted = String(tabName);
+    var children = root.children;
+    var selected = null;
+
+    for (var index = 0; index < children.length; index++) {
+      var tab = children[index];
+      if (String(tab.localName).toLowerCase() !== "q-tab") {
+        continue;
+      }
+
+      var active = tab.getAttribute("name") === wanted;
+      tab.style.display = active ? "block" : "none";
+      tab.setAttribute("aria-hidden", active ? "false" : "true");
+
+      if (active) {
+        selected = tab;
+      }
+    }
+
+    return selected;
+  }
+
+  function showFirstTab() {
+    var root = this.panelRoot();
+    if (root === null) {
+      return null;
+    }
+
+    var children = root.children;
+    for (var index = 0; index < children.length; index++) {
+      var tab = children[index];
+      if (String(tab.localName).toLowerCase() !== "q-tab") {
+        continue;
+      }
+
+      var tabName = tab.getAttribute("name");
+      if (tabName === null) {
+        continue;
+      }
+
+      return this.showTab(tabName);
+    }
+
+    return null;
+  }
+
+  div.q-tab-container {
     box-sizing: border-box;
     min-height: 5rem;
     padding: 14px;
     background: rgba(255, 255, 255, 0.64);
-  }
 
-  q-style tabPanelStyle {
-    display: none;
-    box-sizing: border-box;
-    min-height: 4rem;
-  }
-
-  q-default-theme tabDefaultTheme {
-    .q-tabs-container { tabsContainerStyle }
-    .q-tabs-bar { tabsBarStyle }
-    .q-tab-button { tabButtonStyle }
-    .q-tabs-body { tabsBodyStyle }
-    .q-tab-panel { tabPanelStyle }
-  }
-
-  function tabsRoot() {
-    var root = this;
-    if (root.matches("q-tabs")) {
-      return root;
-    }
-    return root.closest("q-tabs");
-  }
-
-  function ownedElements(selector) {
-    var tabs = this.tabsRoot();
-    var out = new Array();
-    var nodes = tabs.querySelectorAll(selector);
-    for (var index = 0; index < nodes.length; index += 1) {
-      var element = nodes[index];
-      if (element.closest("q-tabs") === tabs) {
-        out.push(element);
-      }
-    }
-    return out;
-  }
-
-  function tabButtons() {
-    var tabs = this.tabsRoot();
-    return tabs.ownedElements(".q-tab-button");
-  }
-
-  function tabPanels() {
-    var tabs = this.tabsRoot();
-    return tabs.ownedElements(".q-tab-panel");
-  }
-
-  function numericTabIndex(value, count) {
-    var numeric = Number(value);
-    if (isNaN(numeric)) {
-      return -1;
-    }
-    numeric = Math.floor(numeric);
-    if (numeric < 0) {
-      return -1;
-    }
-    if (numeric >= count) {
-      return -1;
-    }
-    return numeric;
-  }
-
-  function selectedIndexFor(requested, panels) {
-    var tabs = this.tabsRoot();
-    var items = panels;
-    var count = items.length;
-    if (count <= 0) {
-      return -1;
-    }
-
-    if (typeof requested === "number") {
-      var requestedNumber = tabs.numericTabIndex(requested, count);
-      if (requestedNumber >= 0) {
-        return requestedNumber;
-      }
-      return 0;
-    }
-
-    var requestedText = String(requested).trim();
-    if (requestedText === "") {
-      var currentIndex = tabs.numericTabIndex(tabs.activeIndex, count);
-      if (currentIndex >= 0) {
-        return currentIndex;
-      }
-      return 0;
-    }
-
-    for (var byName = 0; byName < count; byName += 1) {
-      var panel = items[byName];
-      if (panel.getAttribute("tabName") === requestedText) {
-        return byName;
-      }
-      if (panel.getAttribute("name") === requestedText) {
-        return byName;
-      }
-      if (panel.id === requestedText) {
-        return byName;
-      }
-    }
-
-    var byIndex = tabs.numericTabIndex(requestedText, count);
-    if (byIndex >= 0) {
-      return byIndex;
-    }
-    return 0;
-  }
-
-  function applyActiveButtonState(button, selected) {
-    button.classList.toggle("active", selected);
-    if (selected) {
-      button.setAttribute("aria-selected", "true");
-      button.setAttribute("tabindex", "0");
-      button.style.background = "#ffffff";
-      button.style.color = "#0f172a";
-      button.style.borderColor = "#c7d8ef";
-    } else {
-      button.setAttribute("aria-selected", "false");
-      button.setAttribute("tabindex", "-1");
-      button.style.background = "#e2e8f0";
-      button.style.color = "#334155";
-      button.style.borderColor = "#cbd5e1";
-    }
-  }
-
-  function applyActivePanelState(panel, selected) {
-    if (selected) {
-      panel.hidden = false;
-      panel.style.display = "block";
-      panel.setAttribute("aria-hidden", "false");
-    } else {
-      panel.hidden = true;
-      panel.style.display = "none";
-      panel.setAttribute("aria-hidden", "true");
-    }
-  }
-
-  function emitChanged(activeIndex, activeName, activePanel) {
-    var tabs = this.tabsRoot();
-    tabs.changed(activeIndex, activeName);
-
-    var detail = new Object();
-    detail.activeIndex = activeIndex;
-    detail.name = activeName;
-    detail.panel = activePanel;
-
-    var options = new Object();
-    options.detail = detail;
-    options.bubbles = true;
-    tabs.dispatchEvent(new CustomEvent("q-tabs:changed", options));
-  }
-
-  function showTab(requested) {
-    var tabs = this.tabsRoot();
-    var panels = tabs.tabPanels();
-    var buttons = tabs.tabButtons();
-    var activeIndex = tabs.selectedIndexFor(requested, panels);
-    var activePanel = null;
-    var activeName = "";
-
-    if (activeIndex >= 0) {
-      activePanel = panels[activeIndex];
-      activeName = activePanel.getAttribute("tabName");
-    }
-
-    for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
-      tabs.applyActivePanelState(panels[panelIndex], panelIndex === activeIndex);
-    }
-
-    for (var buttonIndex = 0; buttonIndex < buttons.length; buttonIndex += 1) {
-      tabs.applyActiveButtonState(buttons[buttonIndex], buttonIndex === activeIndex);
-    }
-
-    if (activeIndex >= 0) {
-      tabs.activeIndex = activeIndex;
-      tabs.setAttribute("q-tabs-active-index", String(activeIndex));
-      tabs.setAttribute("q-tabs-active-name", activeName);
-    }
-
-    tabs.emitChanged(activeIndex, activeName, activePanel);
-    return activePanel;
-  }
-
-  function refreshTabs() {
-    var tabs = this.tabsRoot();
-    var panels = tabs.tabPanels();
-    var index = tabs.numericTabIndex(tabs.activeIndex, panels.length);
-    if (index < 0) {
-      index = 0;
-    }
-    tabs.showTab(index);
-    return panels;
-  }
-
-  function remountHost() {
-    var tabs = this.tabsRoot();
-    var host = tabs.closest("q-html,q-html7");
-    host.fromQHTML(host.qhtmlDomTree.toQHTML());
-    return true;
-  }
-
-  function tabsNode() {
-    var tabs = this.tabsRoot();
-    return tabs.findByUUID(tabs.getAttribute("component-instance"));
-  }
-
-  function tabNameFrom(tab) {
-    var name = tab.name;
-    if (typeof name === "undefined") {
-      name = tab.label;
-    }
-    if (typeof name === "undefined") {
-      name = tab.title;
-    }
-    if (typeof name === "undefined") {
-      name = "Tab";
-    }
-    return String(name);
-  }
-
-  function tabBodyFrom(tab) {
-    var body = tab.body;
-    if (typeof body === "undefined") {
-      body = tab.content;
-    }
-    if (typeof body === "undefined") {
-      body = tab.text;
-    }
-    if (typeof body === "undefined") {
-      body = "";
-    }
-    return String(body);
-  }
-
-  function tabSource(tabObject) {
-    var tab = tabObject;
-    var name = this.tabNameFrom(tab);
-    var body = this.tabBodyFrom(tab);
-    if (tab.source) {
-      return String(tab.source);
-    }
-    if (tab.qhtmlSource) {
-      return String(tab.qhtmlSource);
-    }
-    return "q-tab { " +
-      "name { text { " + name + " } } " +
-      "body { div { text { " + body + " } } } " +
-      "}";
-  }
-
-  function tabChildIndex(tabRef) {
-    var tabs = this.tabsRoot();
-    var node = tabs.tabsNode();
-    var wantedName = "";
-    var fallback = -1;
-
-    if (typeof tabRef === "number") {
-      return Math.floor(tabRef);
-    }
-    if (typeof tabRef !== "undefined") {
-      if (tabRef !== null) {
-        wantedName = String(tabRef);
-      }
-    }
-
-    for (var index = 0; index < node.childCount(); index += 1) {
-      var child = node.childAt(index);
-      if (child.qhtmlType() === "QHTMLComponentInstance") {
-        var definition = child.componentDefinition();
-        if (definition.qhtmlName() === "q-tab") {
-          fallback = index;
-          var slotName = tabs.tabNameFrom({ name: child.slotPlainText("name", ""), label: child.slotPlainText("label", "") });
-          if (child.qhtmlName() === wantedName || slotName === wantedName) {
-            return index;
-          }
-        }
-      }
-    }
-
-    if (wantedName === "") {
-      return fallback;
-    }
-    return -1;
-  }
-
-  function addTab(tabObject) {
-    var tabs = this.tabsRoot();
-    var node = tabs.tabsNode();
-    var tab = tabObject;
-    var name = tabs.tabNameFrom(tab);
-    var body = tabs.tabBodyFrom(tab);
-    var buttons = tabs.tabButtons();
-    var bar = tabs.querySelector(".q-tabs-bar");
-    var bodyRoot = tabs.querySelector(".q-tabs-body");
-
-    node.appendQHTMLSource(tabs.tabSource(tab));
-
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "q-tab-button tab-button";
-    button.setAttribute("role", "tab");
-    button.setAttribute("tabName", name);
-    button.setAttribute("aria-selected", "false");
-    button.setAttribute("tabindex", "-1");
-    button.textContent = name;
-    button.addEventListener("click", function() {
-      tabs.showTab(name);
-    });
-
-    var panel = document.createElement("div");
-    panel.className = "q-tab-panel tab";
-    panel.setAttribute("role", "tabpanel");
-    panel.setAttribute("tabName", name);
-    panel.setAttribute("aria-hidden", "true");
-    panel.hidden = true;
-    panel.style.display = "none";
-
-    if (tab.html) {
-      panel.innerHTML = String(tab.html);
-    } else {
-      if (tab.bodyHtml) {
-        panel.innerHTML = String(tab.bodyHtml);
-      } else {
-        panel.textContent = body;
-      }
-    }
-
-    bar.appendChild(button);
-    bodyRoot.appendChild(panel);
-    tabs.showTab(buttons.length);
-    return true;
-  }
-
-  function removeTab(tabRef) {
-    var tabs = this.tabsRoot();
-    var node = tabs.tabsNode();
-    var panels = tabs.tabPanels();
-    var buttons = tabs.tabButtons();
-    var index = -1;
-
-    if (typeof tabRef === "number") {
-      index = tabs.numericTabIndex(tabRef, panels.length);
-    } else {
-      if (typeof tabRef === "undefined") {
-        index = panels.length - 1;
-      } else {
-        if (tabRef === null) {
-          index = panels.length - 1;
-        } else {
-          if (tabRef === "") {
-            index = panels.length - 1;
-          } else {
-            var wanted = String(tabRef);
-            for (var panelIndex = 0; panelIndex < panels.length; panelIndex += 1) {
-              if (panels[panelIndex].getAttribute("tabName") === wanted) {
-                index = panelIndex;
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (index < 0) {
-      return false;
-    }
-    if (index >= panels.length) {
-      return false;
-    }
-
-    buttons[index].remove();
-    panels[index].remove();
-
-    var nodeIndex = tabs.tabChildIndex(tabRef);
-    if (nodeIndex >= 0) {
-      if (nodeIndex < node.childCount()) {
-        node.removeChildAt(nodeIndex);
-      }
-    }
-
-    tabs.showTab(Math.min(index, panels.length - 2));
-    return true;
+    slot content { }
   }
 
   onready {
-    this.refreshTabs();
-  }
-
-  onactiveindexchanged {
-    this.refreshTabs();
-  }
-
-  tabDefaultTheme {
-    div.q-tabs-container.container {
-      div.q-tabs-bar.tabbar {
-        role: "tablist"
-        for (tab in this.tabs) {
-          button.q-tab-button.tab-button {
-            type: "button"
-            role: "tab"
-            tabName: "${tab.name}"
-            aria-selected: "false"
-            tabindex: "-1"
-            text { ${tab.name} }
-            onclick {
-              var tabs = this.closest("q-tabs");
-              tabs.showTab(this.getAttribute("tabName"));
-            }
-          }
-        }
-      }
-
-      div.q-tabs-body.body {
-        for (tab in this.tabs) {
-          div.q-tab-panel.tab {
-            role: "tabpanel"
-            tabName: "${tab.name}"
-            aria-hidden: "true"
-            hidden: "true"
-            html { ${tab.body} }
-          }
-        }
-      }
-    }
+    this.showFirstTab();
   }
 }
+
+q-component q-tab {
+  q-property suppressUnslottedChildren: true
+
+  div.q-tab-panel {
+    role: "tabpanel";
+    box-sizing: border-box;
+    min-height: 4rem;
+
+    slot content { }
+  }
+}
+
+/*
+ * Public syntax example:
+ *
+ * q-tabs tabWidget {
+ *   q-tab-bar buttonBar {
+ *     q-tab-button button1 {
+ *       onclick { this.parent().showTab("tab1"); }
+ *       text { Tab 1 }
+ *     }
+ *
+ *     q-tab-button button2 {
+ *       onclick { this.parent().showTab("tab2"); }
+ *       text { Tab 2 }
+ *     }
+ *   }
+ *
+ *   q-tab-container myContainer {
+ *     q-connect {
+ *       buttonBar.showTab this.showTab
+ *     }
+ *
+ *     q-tab {
+ *       name: "tab1";
+ *       div,span { text { hello world } }
+ *     }
+ *
+ *     q-tab {
+ *       name: "tab2";
+ *       div,span { text { second tab } }
+ *     }
+ *   }
+ * }
+ *
+ * Notes:
+ * - Use this.parent(), not this.qhtmlParent(), in q-tab-button handlers.
+ *   parent() resolves the live parent component DOM object containing showTab().
+ * - q-connect currently uses whitespace-delimited source/target pairs.
+ *   Do not put a comma between buttonBar.showTab and this.showTab.
+ */

@@ -351,16 +351,21 @@
         this.__tdLoopTimer = 0;
       }
     }
-    sync(board) {
-      this.board = board;
-      if (this.__tdBoardRevision !== board.boardRevision) {
-        this.tileLayer.board = board;
-        this.__tdBoardRevision = board.boardRevision;
+    sync(_board) {
+      if (!_board) {
+        return false;
       }
-      syncCollection(this, board, board.runtimeGunsList, this.renderedGuns, "td-gun-view");
-      syncCollection(this, board, board.runtimeEnemiesList, this.renderedEnemies, "td-enemy-view");
-      syncProjectileCollection(this, board, board.runtimeProjectilesList, this.renderedProjectiles);
-      runtime.syncStores(board);
+      this.board = _board;
+      _board.boardRenderer = this;
+      if (this.__tdBoardRevision !== _board.boardRevision) {
+        this.tileLayer.board = _board;
+        this.__tdBoardRevision = _board.boardRevision;
+      }
+      syncCollection(this, _board, _board.runtimeGunsList, this.renderedGuns, "td-gun-view");
+      syncCollection(this, _board, _board.runtimeEnemiesList, this.renderedEnemies, "td-enemy-view");
+      syncProjectileCollection(this, _board, _board.runtimeProjectilesList, this.renderedProjectiles);
+      runtime.syncStores(_board);
+      return true;
     }
   }
 
@@ -371,11 +376,12 @@
     }
     board.__tdRuntimeAttached = true;
     var start = function () {
+      board.boardRenderer = renderer;
       if (typeof board.initBoard !== "function" || typeof board.gameTick !== "function") {
         setTimeout(start, 40);
         return;
       }
-      board.initBoard();
+//      board.initBoard();
       renderer.sync(board);
       renderer.__tdLoopTimer = setInterval(function () {
         board.gameTick();

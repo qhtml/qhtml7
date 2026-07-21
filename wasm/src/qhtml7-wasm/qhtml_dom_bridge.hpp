@@ -33,15 +33,54 @@ struct DomMutationCommand {
     std::string value;
 };
 
+struct QHTMLTreeMutationCommand {
+    std::string operation;
+    std::string treeUUID;
+    std::string parentUUID;
+    std::string targetUUID;
+    std::string beforeUUID;
+    std::string componentUUID;
+    std::string slotName;
+    std::string qhtmlType;
+    std::string qhtmlName;
+    std::string qhtmlSource;
+    std::string htmlSource;
+    std::string jsonSource;
+    std::string attributeName;
+    std::string attributeValue;
+    int index = -1;
+    int count = 0;
+};
+
 class DomBridge final {
 public:
     [[nodiscard]]
     static emscripten::val bridge()
     {
-        thread_local emscripten::val instance =
-            emscripten::val::global("QHTMLBrowserBridge");
+        // Resolve the browser bridge for every operation. The bridge may be
+        // installed or replaced after WASM initialization, so caching the JS
+        // object would reproduce the stale-reference problem this layer is
+        // intended to avoid.
+        return emscripten::val::global("QHTMLBrowserBridge");
+    }
 
-        return instance;
+    [[nodiscard]]
+    static bool isAvailable()
+    {
+        const emscripten::val instance = bridge();
+        return !instance.isUndefined() && !instance.isNull();
+    }
+
+    [[nodiscard]]
+    static bool hasFunction(const char *name)
+    {
+        if (!isAvailable() || !name) {
+            return false;
+        }
+        const emscripten::val member = bridge()[std::string(name)];
+        return !member.isUndefined() &&
+               !member.isNull() &&
+               member.typeOf().as<std::string>() == std::string("function");
     }
 
     [[nodiscard]]
@@ -92,6 +131,55 @@ public:
         if (handle != 0) {
             bridge().call<bool>("release", handle);
         }
+    }
+
+    static emscripten::val mutationValue(const QHTMLTreeMutationCommand &command)
+    {
+        emscripten::val item = emscripten::val::object();
+        item.set("operation", command.operation);
+        item.set("treeUUID", command.treeUUID);
+        item.set("parentUUID", command.parentUUID);
+        item.set("targetUUID", command.targetUUID);
+        item.set("beforeUUID", command.beforeUUID);
+        item.set("componentUUID", command.componentUUID);
+        item.set("slotName", command.slotName);
+        item.set("qhtmlType", command.qhtmlType);
+        item.set("qhtmlName", command.qhtmlName);
+        item.set("qhtml", command.qhtmlSource);
+        item.set("html", command.htmlSource);
+        item.set("json", command.jsonSource);
+        item.set("attributeName", command.attributeName);
+        item.set("attributeValue", command.attributeValue);
+        item.set("index", command.index);
+        item.set("count", command.count);
+        return item;
+    }
+
+    static bool notifyQHTMLMutation(const QHTMLTreeMutationCommand &command)
+    {
+        if (!hasFunction("applyQHTMLMutation")) {
+            return false;
+        }
+        return bridge().call<bool>("applyQHTMLMutation", mutationValue(command));
+    }
+
+    static bool notifyQHTMLMutations(const std::vector<QHTMLTreeMutationCommand> &commands)
+    {
+        if (commands.empty()) {
+            return true;
+        }
+        if (hasFunction("applyQHTMLMutationBatch")) {
+            emscripten::val out = emscripten::val::array();
+            for (std::size_t i = 0; i < commands.size(); ++i) {
+                out.set(i, mutationValue(commands.at(i)));
+            }
+            return bridge().call<bool>("applyQHTMLMutationBatch", out);
+        }
+        bool applied = false;
+        for (const QHTMLTreeMutationCommand &command : commands) {
+            applied = notifyQHTMLMutation(command) || applied;
+        }
+        return applied;
     }
 
     static bool applyMutationBatch(const emscripten::val &commands)

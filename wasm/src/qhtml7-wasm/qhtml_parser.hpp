@@ -1794,26 +1794,289 @@ inline void QHTMLDomTree::loadFromASTWithContext(QHTMLAstNode *astRoot, QHTMLNod
     rebuildNodeIndex();
 }
 
-inline int QHTMLNode::insertQHTMLSource(int index, const QString &source)
+inline QVector<QHTMLNode *> QHTMLDomTree::insertDynamicQHTML(QHTMLNode *parent,
+                                                            int index,
+                                                            const QString &source)
 {
-    QHTMLParser parser;
-    QHTMLDomTree parsedTree;
-    parsedTree.loadFromAST(parser.parse(source));
+    QVector<QHTMLNode *> created;
+    if (!parent || source.trimmed().isEmpty()) {
+        return created;
+    }
 
-    int inserted = 0;
-    const int boundedIndex = qBound(0, index, childCount());
-    while (parsedTree.childCount() > 0) {
-        if (QHTMLNode *child = parsedTree.takeChildAt(0)) {
-            insertChild(boundedIndex + inserted, child);
-            ++inserted;
+    QHTMLParser parser;
+    QHTMLAstNode *astRoot = parser.parse(source);
+    if (!astRoot) {
+        return created;
+    }
+    astRoot->enumerateKeywords();
+
+    QVector<QHTMLNode *> parsedNodes;
+    parsedNodes.reserve(astRoot->astChildren.size());
+    for (int i = 0; i < astRoot->astChildren.size(); ++i) {
+        if (QHTMLAstNode *astChild = astRoot->astChildren.value(i, nullptr)) {
+            if (QHTMLNode *node = astChild->toQHTMLNode()) {
+                parsedNodes.append(node);
+            }
         }
     }
-    return inserted;
+    if (parsedNodes.isEmpty()) {
+        return created;
+    }
+
+    const int firstIndex = qBound(0, index, parent->childCount());
+    for (int i = 0; i < parsedNodes.size(); ++i) {
+        parent->insertChild(firstIndex + i, parsedNodes.at(i));
+    }
+
+    // New definitions must be indexed before new component instances are
+    // materialized, including definitions and instances inserted together.
+    bool insertedComponentDefinition = false;
+    QVector<QHTMLNode *> definitionScan = parsedNodes;
+    for (int scanIndex = 0; scanIndex < definitionScan.size(); ++scanIndex) {
+        QHTMLNode *scanNode = definitionScan.at(scanIndex);
+        if (!scanNode) {
+            continue;
+        }
+        if (dynamic_cast<QHTMLComponentDefinition *>(scanNode)) {
+            insertedComponentDefinition = true;
+        }
+        for (QHTMLNode *scanChild : scanNode->children()) {
+            definitionScan.append(scanChild);
+        }
+    }
+    indexComponentDefinitions();
+    if (insertedComponentDefinition) {
+        resolveComponentExtends();
+    }
+
+    QStringList createdUUIDs;
+    createdUUIDs.reserve(parsedNodes.size());
+    for (int offset = 0; offset < parsedNodes.size(); ++offset) {
+        const int childIndex = firstIndex + offset;
+        QHTMLNode *child = parent->childAt(childIndex);
+        if (!child) {
+            continue;
+        }
+
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(child)) {
+            if (QHTMLStyle *style = resolveStyle(element, element->tagName())) {
+                QHTMLNode *application = styleApplicationFrom(element, style);
+                parent->qhtmlChildren.insert(childIndex, application);
+                delete element;
+                child = application;
+            } else if (QHTMLTransition *transition = resolveTransition(element, element->tagName())) {
+                QHTMLNode *application = transitionApplicationFrom(element, transition);
+                parent->qhtmlChildren.insert(childIndex, application);
+                delete element;
+                child = application;
+            } else if (QHTMLTheme *theme = resolveTheme(element, element->tagName())) {
+                QHTMLNode *application = themeApplicationFrom(element, theme);
+                parent->qhtmlChildren.insert(childIndex, application);
+                delete element;
+                child = application;
+            }
+        } else if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(child)) {
+            if (QHTMLTransition *transition = resolveTransition(typed, typed->keyword())) {
+                QHTMLNode *application = transitionApplicationFrom(typed, transition);
+                parent->qhtmlChildren.insert(childIndex, application);
+                delete typed;
+                child = application;
+            }
+        }
+
+        if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(child)) {
+            const bool fromCommaChain = element->attributes().contains(QStringLiteral("__qhtml-anonymous-chain"));
+            if (!fromCommaChain) {
+                if (QHTMLComponentDefinition *definition = resolveComponentDefinition(element, element->tagName())) {
+                    QHTMLNode *instance = anonymousComponentInstanceFrom(element, definition);
+                    parent->qhtmlChildren.insert(childIndex, instance);
+                    delete element;
+                    child = instance;
+                }
+            }
+        }
+
+        if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(child)) {
+            const bool alreadyConcreteComponent =
+                dynamic_cast<QHTMLComponentDefinition *>(typed) ||
+                dynamic_cast<QHTMLComponentInstance *>(typed) ||
+                dynamic_cast<QHTMLWorker *>(typed) ||
+                dynamic_cast<QHTMLComponentSlot *>(typed) ||
+                dynamic_cast<QHTMLSlotDefault *>(typed) ||
+                dynamic_cast<QHTMLPropertyAssignment *>(typed) ||
+                dynamic_cast<QHTMLConnect *>(typed) ||
+                dynamic_cast<QHTMLTimer *>(typed) ||
+                dynamic_cast<QHTMLPropertyAnimation *>(typed) ||
+                dynamic_cast<QHTMLAnimationGroup *>(typed) ||
+                dynamic_cast<QHTMLScriptAction *>(typed) ||
+                dynamic_cast<QHTMLBehavior *>(typed) ||
+                dynamic_cast<QHTMLForNode *>(typed) ||
+                dynamic_cast<QHTMLImportNode *>(typed) ||
+                dynamic_cast<QHTMLStyle *>(typed) ||
+                dynamic_cast<QHTMLTransition *>(typed) ||
+                dynamic_cast<QHTMLTheme *>(typed) ||
+                dynamic_cast<QHTMLClass *>(typed) ||
+                dynamic_cast<QHTMLScript *>(typed) ||
+                dynamic_cast<QHTMLStyleApplication *>(typed) ||
+                dynamic_cast<QHTMLTransitionApplication *>(typed) ||
+                dynamic_cast<QHTMLThemeApplication *>(typed);
+            if (!alreadyConcreteComponent) {
+                if (QHTMLComponentDefinition *definition = resolveComponentDefinition(typed, typed->keyword())) {
+                    QHTMLNode *instance = componentInstanceFrom(typed, definition);
+                    parent->qhtmlChildren.insert(childIndex, instance);
+                    delete typed;
+                    child = instance;
+                }
+            }
+        }
+
+        instantiateStyleThemeApplicationsFor(child);
+        instantiateComponentsFor(child);
+        bindComponentMembersFor(child);
+        createdUUIDs.append(child->qhtmlUUID());
+    }
+
+    bindLocalReferences(parent);
+    qhtmlResolveComponentInstanceDefinitions(parent, this);
+    rebuildNodeIndex();
+
+    for (const QString &uuid : createdUUIDs) {
+        if (QHTMLNode *node = findByUUID(uuid)) {
+            created.append(node);
+        }
+    }
+    return created;
+}
+
+inline emscripten::val QHTMLDomTree::insertDynamicQHTMLJs(QHTMLNode *parent,
+                                                         int index,
+                                                         const std::string &source)
+{
+    emscripten::val out = emscripten::val::array();
+    const QVector<QHTMLNode *> created = insertDynamicQHTML(parent,
+                                                           index,
+                                                           QString::fromStdString(source));
+    for (int i = 0; i < created.size(); ++i) {
+        out.set(i, created.at(i));
+    }
+    return out;
+}
+
+inline QVector<QHTMLNode *> QHTMLNode::createQHTMLObjects(const QString &source,
+                                                          int index,
+                                                          bool notifyBrowser)
+{
+    const int insertionIndex = index < 0 ? childCount() : qBound(0, index, childCount());
+    QVector<QHTMLNode *> created;
+
+    if (QHTMLDomTree *tree = domTree()) {
+        created = tree->insertDynamicQHTML(this, insertionIndex, source);
+    } else {
+        QHTMLParser parser;
+        QHTMLDomTree parsedTree;
+        parsedTree.loadFromASTWithContext(parser.parse(source), this);
+        int offset = 0;
+        while (parsedTree.childCount() > 0) {
+            if (QHTMLNode *child = parsedTree.takeChildAt(0)) {
+                insertChild(insertionIndex + offset, child);
+                created.append(child);
+                ++offset;
+            }
+        }
+    }
+
+    if (!created.isEmpty() && notifyBrowser) {
+        qhtml::QHTMLTreeMutationCommand command;
+        command.operation = "children-inserted";
+        command.treeUUID = treeUUID().toStdString();
+        command.parentUUID = qhtmlUUID().toStdString();
+        command.targetUUID = created.first()->qhtmlUUID().toStdString();
+        command.qhtmlType = created.first()->qhtmlType().toStdString();
+        command.qhtmlName = created.first()->qhtmlName().toStdString();
+        command.index = insertionIndex;
+        command.count = created.size();
+        for (int siblingIndex = insertionIndex + created.size();
+             siblingIndex < childCount();
+             ++siblingIndex) {
+            QHTMLNode *sibling = childAt(siblingIndex);
+            if (!sibling) {
+                continue;
+            }
+            if (!sibling->renderHtmlInContext(this).isEmpty()) {
+                command.beforeUUID = sibling->qhtmlUUID().toStdString();
+                break;
+            }
+        }
+
+        QStringList qhtmlSources;
+        QString htmlSource;
+        QJsonArray jsonArray;
+        for (QHTMLNode *node : created) {
+            if (!node) {
+                continue;
+            }
+            qhtmlSources.append(node->toQHTML());
+            htmlSource += node->renderHtmlInContext(this);
+            jsonArray.append(node->toJsonObject());
+        }
+        command.qhtmlSource = qhtmlSources.join(QLatin1Char('\n')).toStdString();
+        command.htmlSource = htmlSource.toStdString();
+        command.jsonSource = QString::fromUtf8(QJsonDocument(jsonArray).toJson(QJsonDocument::Compact)).toStdString();
+
+        qhtmlPopulateMutationScope(this, command);
+        if (QHTMLComponentInstance *componentParent = dynamic_cast<QHTMLComponentInstance *>(this)) {
+            const QString suppress = componentParent->property(QStringLiteral("suppressUnslottedChildren")).trimmed().toLower();
+            if (suppress == QStringLiteral("true") || suppress == QStringLiteral("1")) {
+                command.operation = "tree-only-inserted";
+                command.htmlSource.clear();
+            }
+        }
+        if (qhtmlType() == QStringLiteral("QHTMLComponentInstanceSlotOverride")) {
+            if (QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(qhtmlParent())) {
+                command.operation = "component-content-replaced";
+                command.targetUUID = component->qhtmlUUID().toStdString();
+                command.qhtmlType = component->qhtmlType().toStdString();
+                command.qhtmlName = component->qhtmlName().toStdString();
+                command.qhtmlSource = component->toQHTML().toStdString();
+                command.htmlSource = component->renderContentHtml().toStdString();
+                command.jsonSource = component->toJSONText().toStdString();
+            }
+        }
+        qhtml::DomBridge::notifyQHTMLMutation(command);
+    }
+    return created;
+}
+
+inline QHTMLNode *QHTMLNode::createQHTMLObject(const QString &source)
+{
+    const QVector<QHTMLNode *> created = createQHTMLObjects(source, childCount());
+    return created.isEmpty() ? nullptr : created.first();
+}
+
+inline QHTMLNode *QHTMLNode::createQHTMLObjectAt(int index, const QString &source)
+{
+    const QVector<QHTMLNode *> created = createQHTMLObjects(source, index);
+    return created.isEmpty() ? nullptr : created.first();
+}
+
+inline emscripten::val QHTMLNode::createQHTMLObjectsJs(const std::string &source)
+{
+    emscripten::val out = emscripten::val::array();
+    const QVector<QHTMLNode *> created = createQHTMLObjects(QString::fromStdString(source), childCount());
+    for (int i = 0; i < created.size(); ++i) {
+        out.set(i, created.at(i));
+    }
+    return out;
+}
+
+inline int QHTMLNode::insertQHTMLSource(int index, const QString &source)
+{
+    return createQHTMLObjects(source, index).size();
 }
 
 inline int QHTMLNode::appendQHTMLSource(const QString &source)
 {
-    return insertQHTMLSource(childCount(), source);
+    return createQHTMLObjects(source, childCount()).size();
 }
 
 inline int QHTMLNode::replaceChildWithQHTMLSource(int index, const QString &source)
@@ -1821,8 +2084,38 @@ inline int QHTMLNode::replaceChildWithQHTMLSource(int index, const QString &sour
     if (index < 0 || index >= childCount()) {
         return 0;
     }
-    removeChildAt(index);
-    return insertQHTMLSource(index, source);
+
+    QHTMLNode *existing = childAt(index);
+    const QString replacedUUID = existing ? existing->qhtmlUUID() : QString();
+    delete takeChildAt(index);
+
+    const QVector<QHTMLNode *> created = createQHTMLObjects(source, index, false);
+    qhtml::QHTMLTreeMutationCommand command;
+    command.operation = "node-replaced";
+    command.treeUUID = treeUUID().toStdString();
+    command.parentUUID = qhtmlUUID().toStdString();
+    command.targetUUID = replacedUUID.toStdString();
+    command.index = index;
+    command.count = created.size();
+
+    QString htmlSource;
+    QStringList qhtmlSources;
+    QJsonArray jsonArray;
+    for (QHTMLNode *node : created) {
+        if (!node) {
+            continue;
+        }
+        htmlSource += node->renderHtmlInContext(this);
+        qhtmlSources.append(node->toQHTML());
+        jsonArray.append(node->toJsonObject());
+    }
+    command.htmlSource = htmlSource.toStdString();
+    command.qhtmlSource = qhtmlSources.join(QLatin1Char('\n')).toStdString();
+    command.jsonSource = QString::fromUtf8(
+        QJsonDocument(jsonArray).toJson(QJsonDocument::Compact)).toStdString();
+    qhtmlPopulateMutationScope(this, command);
+    qhtml::DomBridge::notifyQHTMLMutation(command);
+    return created.size();
 }
 
 inline void QHTMLDomTree::indexComponentDefinitions()
@@ -1965,7 +2258,7 @@ inline void appendOrReplaceComponentMember(QVector<QHTMLNode *> &members,
     const int existingIndex = findComponentMemberIndex(members, key);
     if (existingIndex >= 0) {
         QHTMLNode *oldMember = members.at(existingIndex);
-        if (oldMember && !oldMember->parent()) {
+        if (oldMember && !oldMember->qhtmlParent()) {
             delete oldMember;
         }
         members[existingIndex] = member;
@@ -2491,7 +2784,7 @@ inline QHTMLNode *QHTMLDomTree::resolveDotPath(QHTMLNode *scope, const QString &
     for (int i = 1; i < parts.size(); ++i) {
         const QString part = parts.at(i);
         if (part == QStringLiteral("qhtmlParent")) {
-            currentNode = currentNode ? currentNode->parent() : nullptr;
+            currentNode = currentNode ? currentNode->qhtmlParent() : nullptr;
             current = currentNode;
             continue;
         }
@@ -2510,7 +2803,7 @@ inline QHTMLNode *QHTMLDomTree::componentInstanceFrom(QHTMLTypedNode *node, QHTM
 {
     QHTMLComponentInstance *instance = new QHTMLComponentInstance(node->qhtmlName(), node->attributes(), definition);
     instance->setQHTMLUUID(node->qhtmlUUID());
-    instance->qhtmlParent = node->qhtmlParent;
+    instance->qhtmlParentObj = node->qhtmlParentObj;
     if (instance->qhtmlContext && node->qhtmlContext) {
         instance->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
     }
@@ -2524,7 +2817,7 @@ inline QHTMLNode *QHTMLDomTree::anonymousComponentInstanceFrom(QHTMLDomElement *
     attributes.remove(QStringLiteral("__qhtml-anonymous-chain"));
     QHTMLComponentInstance *instance = new QHTMLComponentInstance(QString(), attributes, definition);
     instance->setQHTMLUUID(node->qhtmlUUID());
-    instance->qhtmlParent = node->qhtmlParent;
+    instance->qhtmlParentObj = node->qhtmlParentObj;
     if (instance->qhtmlContext && node->qhtmlContext) {
         instance->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
     }
@@ -2536,7 +2829,7 @@ inline QHTMLNode *QHTMLDomTree::styleApplicationFrom(QHTMLDomElement *node, QHTM
 {
     QHTMLStyleApplication *application = new QHTMLStyleApplication(style);
     application->setQHTMLUUID(node->qhtmlUUID());
-    application->qhtmlParent = node->qhtmlParent;
+    application->qhtmlParentObj = node->qhtmlParentObj;
     if (application->qhtmlContext && node->qhtmlContext) {
         application->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
     }
@@ -2548,7 +2841,7 @@ inline QHTMLNode *QHTMLDomTree::transitionApplicationFrom(QHTMLNode *node, QHTML
 {
     QHTMLTransitionApplication *application = new QHTMLTransitionApplication(transition);
     application->setQHTMLUUID(node->qhtmlUUID());
-    application->qhtmlParent = node->qhtmlParent;
+    application->qhtmlParentObj = node->qhtmlParentObj;
     if (application->qhtmlContext && node->qhtmlContext) {
         application->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
     }
@@ -2560,7 +2853,7 @@ inline QHTMLNode *QHTMLDomTree::themeApplicationFrom(QHTMLDomElement *node, QHTM
 {
     QHTMLThemeApplication *application = new QHTMLThemeApplication(theme);
     application->setQHTMLUUID(node->qhtmlUUID());
-    application->qhtmlParent = node->qhtmlParent;
+    application->qhtmlParentObj = node->qhtmlParentObj;
     if (application->qhtmlContext && node->qhtmlContext) {
         application->qhtmlContext->setParentContext(node->qhtmlContext->parentContext());
     }
@@ -2621,10 +2914,19 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("setQHTMLName", &QHTMLReference::setQHTMLNameJs);
 
     class_<QHTMLNode, base<QHTMLReference>>("QHTMLNode")
+        .function("qhtmlParent", &QHTMLNode::parentJs, allow_raw_pointers())
+        .function("parentNode", &QHTMLNode::parentJs, allow_raw_pointers())
         .function("parent", &QHTMLNode::parentJs, allow_raw_pointers())
         .function("childCount", &QHTMLNode::childCount)
         .function("childAt", &QHTMLNode::childAt, allow_raw_pointers())
         .function("childList", &QHTMLNode::childListJs)
+        .function("domTree", &QHTMLNode::domTreeJs, allow_raw_pointers())
+        .function("treeUUID", &QHTMLNode::treeUUIDJs)
+        .function("indexInParent", &QHTMLNode::indexInParent)
+        .function("componentName", &QHTMLNode::componentNameJs)
+        .function("matchesType", &QHTMLNode::matchesTypeJs)
+        .function("findChildByType", &QHTMLNode::findChildByTypeJs, allow_raw_pointers())
+        .function("directChildrenByType", &QHTMLNode::directChildrenByTypeJs)
         .function("findChildrenByType", &QHTMLNode::findChildrenByTypeJs)
         .function("findByUUID", &QHTMLNode::findByUUIDJs, allow_raw_pointers())
         .function("findDescendantByUUID", &QHTMLNode::findDescendantByUUIDJs, allow_raw_pointers())
@@ -2633,12 +2935,22 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("insertChild", &QHTMLNode::insertChildJs, allow_raw_pointers())
         .function("removeChildAt", &QHTMLNode::removeChildAtJs)
         .function("clearChildren", &QHTMLNode::clearChildrenJs)
+        .function("clear", &QHTMLNode::clearQHTMLObjectsJs)
+        .function("remove", &QHTMLNode::removeFromParentJs)
+        .function("createQHTMLObject", &QHTMLNode::createQHTMLObjectJs, allow_raw_pointers())
+        .function("createQHTMLObjectAt", &QHTMLNode::createQHTMLObjectAtJs, allow_raw_pointers())
+        .function("createQHTMLObjects", &QHTMLNode::createQHTMLObjectsJs)
         .function("appendQHTMLSource", &QHTMLNode::appendQHTMLSourceJs)
         .function("insertQHTMLSource", &QHTMLNode::insertQHTMLSourceJs)
         .function("replaceChildWithQHTMLSource", &QHTMLNode::replaceChildWithQHTMLSourceJs)
         .function("setProperty", &QHTMLNode::setPropertyJs)
         .function("setPropertyText", &QHTMLNode::setPropertyTextJs)
         .function("property", &QHTMLNode::propertyJs)
+        .function("setAttribute", &QHTMLNode::setAttributeValueJs)
+        .function("attribute", &QHTMLNode::attributeValueJs)
+        .function("removeAttribute", &QHTMLNode::removeAttributeValueJs)
+        .function("setClass", &QHTMLNode::setClassEnabledJs)
+        .function("hasClass", &QHTMLNode::hasClassJs)
         .function("updateKeywordReference", &QHTMLNode::updateKeywordReferenceJs)
         .function("updateNamedReference", &QHTMLNode::updateNamedReferenceJs)
         .function("resolve", &QHTMLNode::resolveJs, allow_raw_pointers())
@@ -2647,6 +2959,10 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("evaluateExpression", &QHTMLNode::evaluateExpressionJs)
         .function("runtime", &QHTMLNode::runtime)
         .function("renderHtml", &QHTMLNode::renderHtmlJs)
+        .function("childrenQHTML", &QHTMLNode::childrenQHTMLJs)
+        .function("childrenHTML", &QHTMLNode::childrenHTMLJs)
+        .function("childrenJSON", &QHTMLNode::childrenJSONJs)
+        .function("childrenJSONText", &QHTMLNode::childrenJSONTextJs)
         .function("toHTML", &QHTMLNode::toHTMLJs)
         .function("sourceQHTML", &QHTMLNode::sourceQHTMLJs)
         .function("toQHTML", &QHTMLNode::toQHTMLJs)
@@ -2986,17 +3302,33 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("definitionSlot", &QHTMLComponentInstanceSlot::definitionSlotJs, allow_raw_pointers())
         .function("append", &QHTMLComponentInstanceSlot::appendJs, allow_raw_pointers())
         .function("remove", &QHTMLComponentInstanceSlot::removeJs, allow_raw_pointers())
-        .function("children", &QHTMLComponentInstanceSlot::childrenJs);
+        .function("children", &QHTMLComponentInstanceSlot::childrenJs)
+        .function("childList", &QHTMLComponentInstanceSlot::childListJs)
+        .function("createQHTMLObject", &QHTMLComponentInstanceSlot::createQHTMLObjectJs, allow_raw_pointers())
+        .function("createQHTMLObjects", &QHTMLComponentInstanceSlot::createQHTMLObjectsJs)
+        .function("fromQHTML", &QHTMLComponentInstanceSlot::fromQHTMLJs)
+        .function("clear", &QHTMLComponentInstanceSlot::clear)
+        .function("toQHTML", &QHTMLComponentInstanceSlot::toQHTMLContentsJs)
+        .function("toQHTMLContents", &QHTMLComponentInstanceSlot::toQHTMLContentsJs)
+        .function("toHTML", &QHTMLComponentInstanceSlot::toHTMLContentsJs)
+        .function("toHTMLContents", &QHTMLComponentInstanceSlot::toHTMLContentsJs)
+        .function("toJSON", &QHTMLComponentInstanceSlot::toJSONJs)
+        .function("toJSONText", &QHTMLComponentInstanceSlot::toJSONTextJs)
+        .function("plainText", &QHTMLComponentInstanceSlot::plainTextJs)
+        .function("findByUUID", &QHTMLComponentInstanceSlot::findByUUIDJs, allow_raw_pointers());
     class_<QHTMLComponentInstance, base<QHTMLTypedNode>>("QHTMLComponentInstance")
         .constructor<>()
         .constructor<std::string, std::string>()
         .function("component", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
         .function("componentDefinition", &QHTMLComponentInstance::definitionJs, allow_raw_pointers())
         .function("componentDefinitionUUID", &QHTMLComponentInstance::componentDefinitionUUIDJs)
+        .function("renderContentHtml", &QHTMLComponentInstance::renderContentHtmlJs)
         .function("slots", &QHTMLComponentInstance::slotsJs)
         .function("slotCount", &QHTMLComponentInstance::slotCount)
-        .function("slotAt", &QHTMLComponentInstance::slotAt, allow_raw_pointers())
-        .function("slot", &QHTMLComponentInstance::slotJs, allow_raw_pointers())
+        .function("slotAt", &QHTMLComponentInstance::slotViewAt, allow_raw_pointers())
+        .function("slotDefinitionAt", &QHTMLComponentInstance::slotDefinitionAt, allow_raw_pointers())
+        .function("slot", &QHTMLComponentInstance::slotViewJs, allow_raw_pointers())
+        .function("slotDefinition", &QHTMLComponentInstance::slotDefinitionJs, allow_raw_pointers())
         .function("slotNames", &QHTMLComponentInstance::slotNamesJs)
         .function("slotHtml", &QHTMLComponentInstance::slotHtmlJs)
         .function("slotPlainText", &QHTMLComponentInstance::slotPlainTextJs)
@@ -3011,6 +3343,7 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("rebuildNodeIndex", &QHTMLDomTree::rebuildNodeIndexJs)
         .function("nodeUUIDList", &QHTMLDomTree::nodeUUIDListJs)
         .function("findByUUID", &QHTMLDomTree::findByUUIDJs, allow_raw_pointers())
+        .function("insertDynamicQHTML", &QHTMLDomTree::insertDynamicQHTMLJs, allow_raw_pointers())
         .function("signalBus", &QHTMLDomTree::signalBusJs, allow_raw_pointers())
         .function("quickJSAvailable", &QHTMLDomTree::quickJSAvailableJs)
         .function("compileJavaScript", &QHTMLDomTree::compileJavaScriptJs)

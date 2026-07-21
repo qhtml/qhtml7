@@ -71,7 +71,17 @@ q-component td-board {
   }
 
   function refreshView() {
+    if (this.boardRenderer === null) {
+      return false;
+    }
+    if (typeof this.boardRenderer === "undefined") {
+      return false;
+    }
+    if (typeof this.boardRenderer.sync !== "function") {
+      return false;
+    }
     this.boardRenderer.sync(this);
+    return true;
   }
 
   function createBlankMap() {

@@ -137,6 +137,7 @@ struct CompileState
     QVector<ThemeApplicationRecord> themeApplications;
     QVector<QHTMLWebExportDiagnostic> diagnostics;
     QSet<QString> diagnosedNodes;
+    bool requiresDynamicQHTMLObjectApi = false;
 };
 
 QString htmlEscape(QString value)
@@ -513,6 +514,31 @@ void collectSafeInterpolation(const QHTMLNode *node, CompileState &state, const 
     state.bindings.append({ownerId, htmlMode ? QStringLiteral("html") : QStringLiteral("text"), source});
 }
 
+bool usesDynamicQHTMLObjectApi(const QString &source)
+{
+    static const QRegularExpression apiPattern(
+        QStringLiteral("(?:^|[^A-Za-z0-9_$])(?:createQHTMLObject|createQHTMLObjects|childList|slot)\\s*\\("));
+    return apiPattern.match(source).hasMatch();
+}
+
+void noteDynamicQHTMLObjectApi(const QString &source,
+                               const QHTMLNode *node,
+                               CompileState &state)
+{
+    if (!usesDynamicQHTMLObjectApi(source)) {
+        return;
+    }
+    state.requiresDynamicQHTMLObjectApi = true;
+    if (!state.options->warnOnWasmOnlyDynamicObjectApi) {
+        return;
+    }
+    addDiagnostic(state,
+                  QHTMLWebExportDiagnostic::Severity::Warning,
+                  QStringLiteral("wasm-dynamic-object-api"),
+                  QStringLiteral("This script uses the live QHTML object API. The standalone web exporter preserves the script, but createQHTMLObject(), slot(), and childList() require the QHTML7 WASM runtime or a compatible standalone object adapter."),
+                  node);
+}
+
 void collectNode(const QHTMLNode *node,
                  CompileState &state,
                  const QString &currentOwnerId,
@@ -588,6 +614,7 @@ void collectNode(const QHTMLNode *node,
             return;
         }
         if (const auto *function = dynamic_cast<const QHTMLFunction *>(node)) {
+            noteDynamicQHTMLObjectApi(function->body(), node, state);
             if (OwnerRecord *owner = ownerById(state, currentOwnerId)) {
                 owner->functions.append({function->qhtmlName().trimmed(), function->parameters(), function->body()});
             }
@@ -600,6 +627,7 @@ void collectNode(const QHTMLNode *node,
             return;
         }
         if (const auto *handler = dynamic_cast<const QHTMLEventHandler *>(node)) {
+            noteDynamicQHTMLObjectApi(handler->body(), node, state);
             if (OwnerRecord *owner = ownerById(state, currentOwnerId)) {
                 owner->events.append({handler->eventName(), handler->parameters(), handler->body(), handler->propagate()});
             }
@@ -620,12 +648,14 @@ void collectNode(const QHTMLNode *node,
             return;
         }
         if (const auto *script = dynamic_cast<const QHTMLScript *>(node)) {
+            noteDynamicQHTMLObjectApi(script->body(), node, state);
             if (OwnerRecord *owner = ownerById(state, currentOwnerId)) {
                 owner->scripts.append(script->body());
             }
             return;
         }
         if (const auto *scriptBlock = dynamic_cast<const QHTMLJavaScriptBlock *>(node)) {
+            noteDynamicQHTMLObjectApi(scriptBlock->body(), node, state);
             if (OwnerRecord *owner = ownerById(state, currentOwnerId)) {
                 owner->scripts.append(scriptBlock->body());
             }
@@ -724,6 +754,9 @@ QJsonObject manifestForState(const CompileState &state)
     manifest.insert(QStringLiteral("version"), qhtmlVersionString());
     manifest.insert(QStringLiteral("rootId"), state.rootId);
     manifest.insert(QStringLiteral("rootAttribute"), state.options->rootAttribute);
+    QJsonObject features;
+    features.insert(QStringLiteral("dynamicQHTMLObjectApi"), state.requiresDynamicQHTMLObjectApi);
+    manifest.insert(QStringLiteral("features"), features);
 
     QJsonArray owners;
     for (const OwnerRecord &owner : state.owners) {
