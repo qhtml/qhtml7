@@ -254,14 +254,9 @@ q-component q-tabs {
 
   function remountHost() {
     var tabs = this.tabsRoot();
-    var host = tabs.closest("q-html,q-html7");
-    host.fromQHTML(host.qhtmlDomTree.toQHTML());
+    var host = tabs.closest("q-html");
+    QHTML7.mountTree(host, host.qhtmlDomTree);
     return true;
-  }
-
-  function tabsNode() {
-    var tabs = this.tabsRoot();
-    return tabs.findByUUID(tabs.getAttribute("component-instance"));
   }
 
   function tabNameFrom(tab) {
@@ -310,7 +305,7 @@ q-component q-tabs {
 
   function tabChildIndex(tabRef) {
     var tabs = this.tabsRoot();
-    var node = tabs.tabsNode();
+    var node = tabs.qhtmlNode;
     var wantedName = "";
     var fallback = -1;
 
@@ -325,12 +320,18 @@ q-component q-tabs {
 
     for (var index = 0; index < node.childCount(); index += 1) {
       var child = node.childAt(index);
-      if (child.qhtmlType() === "QHTMLComponentInstance") {
-        var definition = child.componentDefinition();
-        if (definition.qhtmlName() === "q-tab") {
+      var type = child.qhtmlType();
+      var isTabNode = false;
+      if (type === "QHTMLComponentInstance") {
+        isTabNode = true;
+      }
+      if (type === "QHTMLTypedNode") {
+        isTabNode = true;
+      }
+      if (isTabNode) {
+        if (child.keyword() === "q-tab") {
           fallback = index;
-          var slotName = tabs.tabNameFrom({ name: child.slotPlainText("name", ""), label: child.slotPlainText("label", "") });
-          if (child.qhtmlName() === wantedName || slotName === wantedName) {
+          if (child.qhtmlName() === wantedName) {
             return index;
           }
         }
@@ -345,7 +346,7 @@ q-component q-tabs {
 
   function addTab(tabObject) {
     var tabs = this.tabsRoot();
-    var node = tabs.tabsNode();
+    var node = tabs.qhtmlNode;
     var tab = tabObject;
     var name = tabs.tabNameFrom(tab);
     var body = tabs.tabBodyFrom(tab);
@@ -393,7 +394,7 @@ q-component q-tabs {
 
   function removeTab(tabRef) {
     var tabs = this.tabsRoot();
-    var node = tabs.tabsNode();
+    var node = tabs.qhtmlNode;
     var panels = tabs.tabPanels();
     var buttons = tabs.tabButtons();
     var index = -1;

@@ -981,12 +981,11 @@
         if (data.type === "config") {
           var oldSeed = cfg.seed;
           var oldPathKey = pathConfigKey(cfg);
-          var oldRunning = cfg.running;
           cfg = normalizeConfig(data.config || cfg);
           if (oldSeed !== cfg.seed) {
             rng = new SeededRandom(cfg.seed);
           }
-          if (oldPathKey !== pathConfigKey(cfg) || (!oldRunning && cfg.running)) {
+          if (oldPathKey !== pathConfigKey(cfg)) {
             resetPathTimeline();
           }
           activeLimit = rollActiveLimit();
@@ -997,10 +996,8 @@
         }
 
         if (data.type === "start") {
-          if (!cfg.running) {
-            resetPathTimeline();
-          }
           cfg.running = true;
+          resetPathTimeline();
           startTimer();
           return;
         }
@@ -1152,7 +1149,7 @@
         lastTime = current;
 
         if (cfg.running) {
-          advancePath(elapsedMs);
+          advancePathTimeline(elapsedMs);
           emit(elapsedMs);
         }
 
@@ -1221,7 +1218,7 @@
 
       function makeParticle(origin) {
         var hasOrigin = origin && typeof origin === "object";
-        var pathOrigin = hasOrigin ? null : resolvePathOrigin();
+        var pathOrigin = currentPathOrigin();
         var originX = hasOrigin && Number.isFinite(Number(origin.x)) ? Number(origin.x) : pathOrigin.x;
         var originY = hasOrigin && Number.isFinite(Number(origin.y)) ? Number(origin.y) : pathOrigin.y;
         var emitterOrigin = sampleEmitterOrigin(originX, originY);
@@ -1242,100 +1239,109 @@
         };
       }
 
-      function pathConfigKey(config) {
-        var values = [config.pathDuration, config.pathDelay, config.pathSleep];
-        var points = Array.isArray(config.path) ? config.path : [];
-        var i;
-
-        for (i = 0; i < points.length; i += 1) {
-          values.push(points[i].x, points[i].y);
-        }
-
-        return values.join("|");
-      }
-
-      function normalizePath(input) {
-        var points = Array.isArray(input) ? input : [];
-        var normalized = [];
+      function normalizePath(path) {
+        var source = Array.isArray(path) ? path : [];
+        var points = [];
         var i;
         var point;
-        var x;
-        var y;
 
-        for (i = 0; i < points.length; i += 1) {
-          point = points[i] || {};
-          x = Number(point.x);
-          y = Number(point.y);
-          if (!Number.isFinite(x) || !Number.isFinite(y)) {
-            continue;
-          }
-          normalized.push({
-            x: clamp(x, 0, 1),
-            y: clamp(y, 0, 1)
+        for (i = 0; i < source.length; i += 1) {
+          point = source[i] || {};
+          points.push({
+            x: clamp(finite(point.x, 0), 0, 1),
+            y: clamp(finite(point.y, 0), 0, 1)
           });
         }
 
-        return normalized;
+        return points;
+      }
+
+      function pathConfigKey(config) {
+        var parts = [config.pathDuration, config.pathDelay, config.pathSleep];
+        var i;
+
+        for (i = 0; i < config.path.length; i += 1) {
+          parts.push(config.path[i].x);
+          parts.push(config.path[i].y);
+        }
+
+        return parts.join("|");
       }
 
       function resetPathTimeline() {
         pathElapsedMs = 0;
       }
 
-      function advancePath(elapsedMs) {
-        if (cfg.path.length > 0) {
-          pathElapsedMs += Math.max(0, finite(elapsedMs, 0));
+      function advancePathTimeline(elapsedMs) {
+        var pointCount = cfg.path.length;
+        var segmentDuration;
+        var movementDuration;
+        var cycleDuration;
+
+        if (pointCount < 2) {
+          pathElapsedMs = 0;
+          return;
         }
+
+        segmentDuration = cfg.pathDuration / pointCount;
+        movementDuration = segmentDuration * (pointCount - 1);
+        cycleDuration = cfg.pathDelay + movementDuration + cfg.pathSleep;
+
+        if (cycleDuration <= 0) {
+          pathElapsedMs = 0;
+          return;
+        }
+
+        pathElapsedMs = (pathElapsedMs + elapsedMs) % cycleDuration;
       }
 
-      function resolvePathOrigin() {
-        var points = cfg.path;
-        var first;
-        var last;
-        var activeElapsed;
-        var cycleDuration;
-        var cycleElapsed;
-        var normalizedProgress;
-        var segmentPosition;
+      function currentPathOrigin() {
+        var pointCount = cfg.path.length;
+        var firstPoint;
+        var lastPoint;
+        var segmentDuration;
+        var movementDuration;
+        var movementElapsed;
         var segmentIndex;
-        var segmentProgress;
-        var fromPoint;
-        var toPoint;
+        var segmentElapsed;
+        var progress;
+        var startPoint;
+        var endPoint;
 
-        if (!points || points.length === 0) {
+        if (pointCount === 0) {
           return { x: cfg.x, y: cfg.y };
         }
 
-        first = points[0];
-        if (points.length === 1 || pathElapsedMs < cfg.pathDelay) {
+        firstPoint = cfg.path[0];
+        lastPoint = cfg.path[pointCount - 1];
+
+        if (pointCount === 1 || pathElapsedMs < cfg.pathDelay) {
           return {
-            x: first.x * cfg.viewportWidth,
-            y: first.y * cfg.viewportHeight
+            x: firstPoint.x * cfg.viewportWidth,
+            y: firstPoint.y * cfg.viewportHeight
           };
         }
 
-        last = points[points.length - 1];
-        activeElapsed = pathElapsedMs - cfg.pathDelay;
-        cycleDuration = cfg.pathDuration + cfg.pathSleep;
-        cycleElapsed = cycleDuration > 0 ? activeElapsed % cycleDuration : 0;
+        segmentDuration = cfg.pathDuration / pointCount;
+        movementDuration = segmentDuration * (pointCount - 1);
+        movementElapsed = pathElapsedMs - cfg.pathDelay;
 
-        if (cycleElapsed >= cfg.pathDuration) {
+        if (movementElapsed >= movementDuration) {
           return {
-            x: last.x * cfg.viewportWidth,
-            y: last.y * cfg.viewportHeight
+            x: lastPoint.x * cfg.viewportWidth,
+            y: lastPoint.y * cfg.viewportHeight
           };
         }
 
-        normalizedProgress = clamp(cycleElapsed / cfg.pathDuration, 0, 1);
-        segmentPosition = normalizedProgress * (points.length - 1);
-        segmentIndex = Math.min(points.length - 2, Math.floor(segmentPosition));
-        segmentProgress = segmentPosition - segmentIndex;
-        fromPoint = points[segmentIndex];
-        toPoint = points[segmentIndex + 1];
+        segmentIndex = Math.min(pointCount - 2, Math.floor(movementElapsed / segmentDuration));
+        segmentElapsed = movementElapsed - segmentIndex * segmentDuration;
+        progress = clamp(segmentElapsed / segmentDuration, 0, 1);
+        startPoint = cfg.path[segmentIndex];
+        endPoint = cfg.path[segmentIndex + 1];
 
         return {
-          x: lerp(fromPoint.x, toPoint.x, segmentProgress) * cfg.viewportWidth,
-          y: lerp(fromPoint.y, toPoint.y, segmentProgress) * cfg.viewportHeight
+          x: lerp(startPoint.x, endPoint.x, progress) * cfg.viewportWidth,
+          y: lerp(startPoint.y, endPoint.y, progress) * cfg.viewportHeight
         };
       }
 

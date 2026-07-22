@@ -446,10 +446,7 @@
   let dropTargetId = "";
   let menuFrozen = false;
   let outlineCollapsed = false;
-  let layoutQueryHost = null;
-  let previewRenderToken = 0;
   const scopedImports = [];
-  const scopedImportSources = Object.create(null);
   const collapsedOutlineIds = new Set();
 
   const DEFAULT_QHTML = 'div { padding: "18px"; text { Edit this QHTML content. } }';
@@ -529,7 +526,6 @@
   });
   const RESIZE_MINIMUM_PIXELS = 24;
   const RESIZE_EPSILON = 0.5;
-  let fittingLayoutBounds = false;
 
   function nextId() {
     nodeCounter += 1;
@@ -873,7 +869,6 @@
     const value = String(path || "").trim();
     if (value && !scopedImports.includes(value)) {
       scopedImports.push(value);
-      fetchScopedImportSource(value);
     }
   }
 
@@ -887,112 +882,6 @@
       return body;
     }
     return scopedImports.map((path) => "q-import { " + path + " }").join("\n") + "\n\n" + body;
-  }
-
-  function importUrl(path) {
-    return new URL(String(path || ""), document.baseURI).href;
-  }
-
-  function fetchScopedImportSource(path) {
-    const key = String(path || "").trim();
-    if (!key) {
-      return Promise.resolve("");
-    }
-    const cached = scopedImportSources[key];
-    if (cached && Object.prototype.hasOwnProperty.call(cached, "source")) {
-      return Promise.resolve(cached.source);
-    }
-    if (cached && cached.promise) {
-      return cached.promise;
-    }
-    const promise = fetch(importUrl(key))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Unable to inline q-import " + key + ": " + response.status);
-        }
-        return response.text();
-      })
-      .then((text) => {
-        scopedImportSources[key] = { source: text };
-        return text;
-      });
-    scopedImportSources[key] = { promise: promise };
-    return promise;
-  }
-
-  function topLevelComponentBlocks(source) {
-    const text = String(source || "");
-    const blocks = [];
-    const componentRe = /\bq-component\s+([A-Za-z_][\w-]*)\b[^{]*\{/y;
-    let quote = "";
-    let escape = false;
-    for (let index = 0; index < text.length; index += 1) {
-      const ch = text[index];
-      if (quote) {
-        if (escape) {
-          escape = false;
-        } else if (ch === "\\") {
-          escape = true;
-        } else if (ch === quote) {
-          quote = "";
-        }
-        continue;
-      }
-      if (ch === '"' || ch === "'" || ch === "`") {
-        quote = ch;
-        continue;
-      }
-      componentRe.lastIndex = index;
-      const match = componentRe.exec(text);
-      if (!match) {
-        continue;
-      }
-      const open = componentRe.lastIndex - 1;
-      const close = findMatchingBrace(text, open);
-      if (close < 0) {
-        continue;
-      }
-      blocks.push({
-        name: match[1],
-        source: text.slice(index, close + 1).trim()
-      });
-      index = close;
-    }
-    return blocks;
-  }
-
-  function inlineImportSource(path, source) {
-    const normalizedPath = String(path || "").replace(/\\/g, "/");
-    if (normalizedPath.endsWith("page-builder/palette.qhtml")) {
-      return topLevelComponentBlocks(source)
-        .filter((block) => block.name !== "pageBuilderPalette" && block.name !== "page-builder-palette")
-        .map((block) => block.source)
-        .join("\n\n");
-    }
-    return String(source || "").trim();
-  }
-
-  async function sourceWithInlinedImports(source) {
-    const body = String(source || "").trim();
-    if (!scopedImports.length) {
-      return body;
-    }
-    const inlined = [];
-    for (const path of scopedImports) {
-      const importSource = await fetchScopedImportSource(path);
-      const portableSource = inlineImportSource(path, importSource);
-      if (portableSource.trim()) {
-        inlined.push(portableSource.trim());
-      }
-    }
-    return inlined.concat(body ? [body] : []).join("\n\n");
-  }
-
-  function normalizeEditorQHTMLSource(source) {
-    const normalized = normalizeQHTMLThroughDomTree(source);
-    const split = splitTopLevelImports(normalized);
-    split.imports.forEach(addScopedImport);
-    return split.source || "";
   }
 
   function qhtmlModule() {
@@ -1315,101 +1204,28 @@
     }
   }
 
-  function renderPreview(scheduleFit) {
+  function renderPreview() {
     if (!previewHost) {
       return;
     }
-    const mount = document.getElementById("layoutPreviewMount");
-    if (!mount) {
-      return;
-    }
-    const token = ++previewRenderToken;
     const source = renderedPreviewSource();
-    const nextHost = createPreviewBufferHost();
-    mount.appendChild(nextHost);
-    mountSourceIntoPreviewHost(nextHost, source);
-    waitForPreviewHostReady(nextHost, token, () => finalizePreviewBuffer(nextHost, token, scheduleFit, 0));
-  }
-
-  function createPreviewBufferHost() {
-    const host = document.createElement("q-html7");
-    host.className = "lb-preview-host lb-preview-buffer";
-    host.setAttribute("aria-hidden", "true");
-    host.style.position = "absolute";
-    host.style.visibility = "hidden";
-    host.style.pointerEvents = "none";
-    host.style.inset = "0 auto auto 0";
-    host.style.zIndex = "-1";
-    return host;
-  }
-
-  function mountSourceIntoPreviewHost(host, source) {
-    host.removeAttribute("ready");
-    host.qhtmlSource = source;
-    if (typeof host.fromQHTML === "function") {
-      host.fromQHTML(source);
+    previewHost.qhtmlSource = source;
+    if (typeof previewHost.fromQHTML === "function") {
+      previewHost.fromQHTML(source);
     } else if (window.QHTML7 && window.QHTML7.runtime && typeof window.QHTML7.runtime.mountElement === "function") {
-      host.textContent = source;
-      window.QHTML7.runtime.mountElement(host);
+      previewHost.textContent = source;
+      window.QHTML7.runtime.mountElement(previewHost);
     } else {
-      host.textContent = source;
+      previewHost.textContent = source;
     }
-  }
-
-  function waitForPreviewHostReady(host, token, callback, attempts) {
-    const count = Number(attempts) || 0;
-    if (token !== previewRenderToken) {
-      host.remove();
-      return;
-    }
-    if (host.getAttribute("ready") === "1" || count >= 20) {
-      callback();
-      return;
-    }
-    window.setTimeout(() => waitForPreviewHostReady(host, token, callback, count + 1), 16);
-  }
-
-  function finalizePreviewBuffer(host, token, scheduleFit, pass) {
-    if (token !== previewRenderToken) {
-      host.remove();
-      return;
-    }
-    layoutQueryHost = host;
-    enforceRenderedFill(root, null);
-    const changed = scheduleFit !== false && fitAllLayoutBounds(pass, host, false);
-    layoutQueryHost = null;
-    if (changed && pass < 3) {
-      mountSourceIntoPreviewHost(host, renderedPreviewSource());
-      waitForPreviewHostReady(host, token, () => finalizePreviewBuffer(host, token, scheduleFit, pass + 1));
-      return;
-    }
-    swapPreviewBuffer(host, token);
-  }
-
-  function swapPreviewBuffer(host, token) {
-    if (token !== previewRenderToken) {
-      host.remove();
-      return;
-    }
-    const oldHost = previewHost;
-    host.id = "layoutPreview";
-    host.className = "lb-preview-host";
-    host.removeAttribute("aria-hidden");
-    host.style.position = "";
-    host.style.visibility = "";
-    host.style.pointerEvents = "";
-    host.style.inset = "";
-    host.style.zIndex = "";
-    previewHost = host;
-    if (oldHost && oldHost !== host) {
-      oldHost.remove();
-    }
-    enforceRenderedFill(root, null);
-    refreshOutlines();
+    window.setTimeout(() => {
+      enforceRenderedFill(root, null);
+      refreshOutlines();
+    }, 0);
   }
 
   function refreshOutlines() {
-    const mount = layoutQueryHost || previewHost || document.getElementById("layoutPreviewMount");
+    const mount = document.getElementById("layoutPreviewMount");
     if (!mount) {
       return;
     }
@@ -1623,7 +1439,7 @@
   }
 
   function nearestLayoutElement(element, excludeId) {
-    const mount = layoutQueryHost || previewHost || document.getElementById("layoutPreviewMount");
+    const mount = document.getElementById("layoutPreviewMount");
     const excluded = excludeId ? findNodeById(excludeId) : null;
     let current = element;
     while (current && mount && mount.contains(current)) {
@@ -1649,7 +1465,7 @@
   }
 
   function layoutElementForResizeEvent(event) {
-    const mount = previewHost || document.getElementById("layoutPreviewMount");
+    const mount = document.getElementById("layoutPreviewMount");
     let current = document.elementFromPoint(event.clientX, event.clientY) || event.target;
     while (current && mount && mount.contains(current)) {
       if (current.hasAttribute && current.hasAttribute("data-layout-id")) {
@@ -1804,7 +1620,7 @@
   }
 
   function clearDropHighlight() {
-    const mount = previewHost || document.getElementById("layoutPreviewMount");
+    const mount = document.getElementById("layoutPreviewMount");
     if (!mount) {
       return;
     }
@@ -1882,174 +1698,6 @@
     return node;
   }
 
-  function hasDirectLayoutChild(node, type) {
-    return Boolean(node && Array.isArray(node.children) && node.children.some((child) => child && child.type === type));
-  }
-
-  function paletteDropWrapperType(target) {
-    if (target && target.type === "q-row" && hasDirectLayoutChild(target, "q-col")) {
-      return "q-col";
-    }
-    if (target && target.type === "q-col" && hasDirectLayoutChild(target, "q-row")) {
-      return "q-row";
-    }
-    return "";
-  }
-
-  function applyAutoFitAxis(node, parent, axis, requiredPixels) {
-    const element = layoutElementById(node.id);
-    if (!element || !Number.isFinite(requiredPixels) || requiredPixels <= RESIZE_MINIMUM_PIXELS) {
-      return false;
-    }
-    const rect = element.getBoundingClientRect();
-    if (requiredPixels <= rect[axis.size] + RESIZE_EPSILON) {
-      return false;
-    }
-    const item = captureConstraintItem(node, parent, element.parentElement, axis);
-    if (!item) {
-      return false;
-    }
-    applyConstraintItemSize(item, axis, requiredPixels);
-    return true;
-  }
-
-  function layoutEntriesBottomUp(node, parent, out) {
-    const entries = out || [];
-    if (!node) {
-      return entries;
-    }
-    (node.children || []).forEach((child) => layoutEntriesBottomUp(child, node, entries));
-    if (isLayoutType(node.type)) {
-      entries.push({
-        node: node,
-        parent: parent || null
-      });
-    }
-    return entries;
-  }
-
-  function layoutContainmentSize(element) {
-    if (!element) {
-      return null;
-    }
-    const own = element.getBoundingClientRect();
-    let requiredRight = own.right;
-    let requiredBottom = own.bottom;
-    Array.from(element.querySelectorAll("*")).forEach((child) => {
-      const rect = child.getBoundingClientRect();
-      if (rect.width <= 0 && rect.height <= 0) {
-        return;
-      }
-      requiredRight = Math.max(requiredRight, rect.right);
-      requiredBottom = Math.max(requiredBottom, rect.bottom);
-    });
-    return {
-      width: Math.max(
-        RESIZE_MINIMUM_PIXELS,
-        Math.ceil(requiredRight - own.left),
-        Math.ceil(element.scrollWidth || 0)
-      ),
-      height: Math.max(
-        RESIZE_MINIMUM_PIXELS,
-        Math.ceil(requiredBottom - own.top),
-        Math.ceil(element.scrollHeight || 0)
-      )
-    };
-  }
-
-  function renderedContentHeight(element) {
-    if (!element) {
-      return RESIZE_MINIMUM_PIXELS;
-    }
-    const own = element.getBoundingClientRect();
-    let requiredBottom = own.top;
-    Array.from(element.children || []).forEach((child) => {
-      const rect = child.getBoundingClientRect();
-      if (rect.width <= 0 && rect.height <= 0) {
-        return;
-      }
-      requiredBottom = Math.max(requiredBottom, rect.bottom);
-    });
-    const descendantsHeight = Math.max(0, Math.ceil(requiredBottom - own.top));
-    return Math.max(
-      RESIZE_MINIMUM_PIXELS,
-      descendantsHeight,
-      intrinsicContentHeight(element)
-    );
-  }
-
-  function minHeightUnitInfo(node, element, renderedPixels) {
-    const parsed = parseLengthValue(node && node.props ? node.props.minHeight : "");
-    if (parsed) {
-      return resizeUnitInfo(node, "minHeight", element, renderedPixels);
-    }
-    return { unit: "px", basePixels: 1 };
-  }
-
-  function syncNodeMinHeightToContent(node, element) {
-    if (!node || !isLayoutType(node.type) || !element) {
-      return false;
-    }
-    node.props = normalizedPropsFor(node.type, node.props);
-    const contentHeight = renderedContentHeight(element);
-    const baseline = isBuilderRoot(node)
-      ? Math.max(RESIZE_MINIMUM_PIXELS, window.innerHeight * 0.75)
-      : 0;
-    const requiredHeight = Math.max(
-      RESIZE_MINIMUM_PIXELS,
-      contentHeight,
-      Number.isFinite(baseline) ? baseline : 0
-    );
-    const currentHeight = lengthValueToPixels(node, "minHeight", element, "height");
-    if (Number.isFinite(currentHeight) && Math.abs(currentHeight - requiredHeight) <= RESIZE_EPSILON) {
-      return false;
-    }
-    const value = formatLengthValue(requiredHeight, minHeightUnitInfo(node, element, requiredHeight));
-    setNodeProp(node, "minHeight", value);
-    return true;
-  }
-
-  function fitAllLayoutBounds(pass, queryHost, renderOnChange) {
-    if (fittingLayoutBounds && !pass) {
-      return false;
-    }
-    const previousQueryHost = layoutQueryHost;
-    if (queryHost) {
-      layoutQueryHost = queryHost;
-    }
-    fittingLayoutBounds = true;
-    const currentPass = Number(pass) || 0;
-    const entries = layoutEntriesBottomUp(root, null, []);
-    let changed = false;
-    try {
-      entries.forEach((entry) => {
-        const element = layoutElementById(entry.node.id);
-        const bounds = layoutContainmentSize(element);
-        if (!element || !bounds) {
-          return;
-        }
-        changed = syncNodeMinHeightToContent(entry.node, element) || changed;
-        const rect = element.getBoundingClientRect();
-        const viewportWidth = Math.max(RESIZE_MINIMUM_PIXELS, window.innerWidth - Math.max(0, rect.left) - 16);
-        const requiredWidth = Math.min(Math.max(bounds.width, rect.width), viewportWidth);
-        changed = applyAutoFitAxis(entry.node, entry.parent, RESIZE_AXIS.horizontal, requiredWidth) || changed;
-      });
-      if (changed) {
-        normalizeLayoutFillTree(root, null);
-        if (renderOnChange !== false) {
-          renderPreview(false);
-        }
-        if (renderOnChange !== false && currentPass < 2) {
-          window.setTimeout(() => fitAllLayoutBounds(currentPass + 1, queryHost, renderOnChange), 80);
-        }
-      }
-      return changed;
-    } finally {
-      fittingLayoutBounds = false;
-      layoutQueryHost = previousQueryHost;
-    }
-  }
-
   function dropQHTMLAtPoint(source, x, y, meta) {
     const qhtmlSource = String(source || "").trim();
     if (!qhtmlSource) {
@@ -2073,11 +1721,10 @@
       meta.scopeImports.forEach(addScopedImport);
     }
 
-    const wrapperType = paletteDropWrapperType(target);
-    if (wrapperType) {
-      const wrapper = createNode(wrapperType, [qhtmlNode], { label: false });
-      target.children.push(wrapper);
-      activeId = wrapper.id;
+    if (target.type === "q-row") {
+      const col = createNode("q-col", [qhtmlNode], { label: false });
+      target.children.push(col);
+      activeId = col.id;
       inserted = true;
     } else {
       target.children.push(qhtmlNode);
@@ -2087,7 +1734,6 @@
 
     if (inserted) {
       renderPreview();
-      window.setTimeout(() => fitAllLayoutBounds(0), 80);
       setStatus("Dropped " + (meta && meta.displayName ? meta.displayName : "palette item"));
     }
     return inserted;
@@ -2243,7 +1889,7 @@
       return false;
     }
 
-    const element = layoutElementById(targetId);
+    const element = document.querySelector('[data-layout-id="' + CSS.escape(targetId) + '"]');
     if (!element) {
       return false;
     }
@@ -2385,18 +2031,62 @@
         return scoped;
       }
     }
-    const queryRoot = layoutQueryHost || previewHost || document;
-    return queryRoot.querySelector ? queryRoot.querySelector(selector) : null;
+    return document.querySelector(selector);
+  }
+
+  function layoutDescendantBounds(element) {
+    if (!element) {
+      return null;
+    }
+    const own = element.getBoundingClientRect();
+    const descendants = Array.from(element.querySelectorAll("*")).filter((child) => {
+      const rect = child.getBoundingClientRect();
+      return rect.width > 0 || rect.height > 0;
+    });
+    if (!descendants.length) {
+      return {
+        width: Math.max(RESIZE_MINIMUM_PIXELS, own.width),
+        height: Math.max(RESIZE_MINIMUM_PIXELS, own.height)
+      };
+    }
+
+    let left = own.left;
+    let top = own.top;
+    let right = own.left;
+    let bottom = own.top;
+    descendants.forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+    });
+    return {
+      width: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(right - own.left)),
+      height: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(bottom - own.top))
+    };
+  }
+
+  function renderedMinimumSize(node) {
+    const element = selectedElementForNode(node);
+    const bounds = layoutDescendantBounds(element);
+    if (!bounds) {
+      return {
+        width: RESIZE_MINIMUM_PIXELS,
+        height: RESIZE_MINIMUM_PIXELS
+      };
+    }
+    return bounds;
   }
 
   function applyRenderedMinimums(node) {
     if (!node || !isLayoutType(node.type)) {
       return;
     }
-    const element = selectedElementForNode(node);
-    if (element) {
-      syncNodeMinHeightToContent(node, element);
-    }
+    node.props = normalizedPropsFor(node.type, node.props);
+    const minimum = renderedMinimumSize(node);
+    setNodeProp(node, "minWidth", Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(minimum.width)) + "px");
+    setNodeProp(node, "minHeight", Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(minimum.height)) + "px");
   }
 
   function normalizeHexColor(value) {
@@ -3157,7 +2847,7 @@
   }
 
   function saveEditor() {
-    const value = normalizeEditorQHTMLSource(editorValue());
+    const value = normalizeQHTMLThroughDomTree(editorValue());
     if (editorMode === "add-qhtml") {
       const target = currentTarget().node || root;
       const next = createNode("qhtml", []);
@@ -3168,10 +2858,7 @@
       const found = findNodeById(editorTargetId);
       if (found && found.node) {
         const parsed = sourceHasSingleLayoutRoot(value) ? parseLayoutSource(value) : null;
-        if (isBuilderRoot(found.node)) {
-          root = forceBuilderRoot(parsed && parsed.type !== "qhtml" ? parsed : parseLayoutSource(value));
-          activeId = root.id;
-        } else if (parsed && parsed.type !== "qhtml") {
+        if (parsed && parsed.type !== "qhtml") {
           replaceNode(found.node, parsed);
           activeId = parsed.id;
         } else {
@@ -3241,15 +2928,6 @@
     }
     const index = found.parent.children.indexOf(oldNode);
     found.parent.children.splice(index, 1, newNode);
-  }
-
-  function forceBuilderRoot(node) {
-    const next = node && node.type === "q-layout" ? node : createBuilderRoot(node ? [node] : []);
-    next.builderRoot = true;
-    next.name = "";
-    next.props = normalizedPropsFor("q-layout", next.props);
-    setNodeProp(next, "data-lb-builder-root", "1");
-    return next;
   }
 
   function closeEditor(force) {
@@ -3329,27 +3007,17 @@
     setStatus("Properties updated");
   }
 
-  async function exportFile() {
-    try {
-      const roots = userRootNodes();
-      const source = roots.length
-        ? roots.map((node) => modelToQHTML(node, 0)).join("\n\n")
-        : "";
-      const portableSource = await sourceWithInlinedImports(source);
-      const blob = new Blob([portableSource + "\n"], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "layout.qhtml";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setStatus("Exported layout.qhtml");
-    } catch (error) {
-      setStatus(error && error.message ? error.message : "Export failed");
-      throw error;
-    }
+  function exportFile() {
+    const blob = new Blob([currentSource() + "\n"], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "layout.qhtml";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Exported layout.qhtml");
   }
 
   function openFile(file) {
@@ -3369,16 +3037,16 @@
   function getActiveSource() {
     const found = currentTarget();
     if (isBuilderRoot(found.node)) {
-      return modelToQHTML(root, 0);
+      return currentSource();
     }
-    return modelToQHTML(found.node || firstUserRoot() || root, 0);
+    return sourceWithScopedImports(modelToQHTML(found.node || firstUserRoot() || root, 0));
   }
 
   function handleCanvasPointer(event) {
     if (interaction || menuFrozen) {
       return;
     }
-    const mount = previewHost || document.getElementById("layoutPreviewMount");
+    const mount = document.getElementById("layoutPreviewMount");
     if (!mount) {
       return;
     }
@@ -3548,7 +3216,7 @@
     const deleteButton = document.querySelector("#lbMenu [data-action='delete']");
     const cssButton = document.querySelector("#lbMenu [data-menu-open='css']");
     if (editButton) {
-      editButton.disabled = false;
+      editButton.disabled = rootTarget;
     }
     if (propertiesButton) {
       propertiesButton.disabled = false;
@@ -3607,6 +3275,9 @@
         showSubmenu(cssMenu, button);
       } else if (action === "edit") {
         const target = currentTarget().node || root;
+        if (isBuilderRoot(target)) {
+          return;
+        }
         openEditor("edit", target.id, getActiveSource());
       } else if (action === "properties") {
         openProperties();

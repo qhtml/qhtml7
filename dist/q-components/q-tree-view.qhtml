@@ -145,7 +145,7 @@ q-component q-tree-view {
     return button;
   }
 
-  function _renderEntries(_parent, entries, parentPath, depth) {
+  function _renderEntries(parent, entries, parentPath, depth) {
     var component = this;
     var keys = Object.keys(entries || {});
     keys.forEach(function(key) {
@@ -202,7 +202,7 @@ q-component q-tree-view {
         component._renderEntries(list, children, path, depth + 1);
         item.appendChild(list);
       }
-      _parent.appendChild(item);
+      parent.appendChild(item);
     });
   }
 

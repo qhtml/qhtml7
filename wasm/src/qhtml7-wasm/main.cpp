@@ -1,5 +1,4 @@
 #include <QCoreApplication>
-#include "qhtml_dom_bridge.hpp"
 #include "qhtml_types.hpp"
 #include "qhtml_parser.hpp"
 #ifdef __EMSCRIPTEN__

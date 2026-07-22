@@ -23,11 +23,8 @@
 
 #include <emscripten/bind.h>
 
-#include "qhtml_dom_bridge.hpp"
-
 #include <algorithm>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <string>
 
@@ -226,7 +223,6 @@ class QHTMLVideoPlayer;
 class QHTMLParticleEmitter;
 class QHTMLLogger;
 class QHTMLNode;
-class QHTMLDomTree;
 class QHTMLJavaScriptRuntime;
 struct QHTMLWebExportOptions;
 struct QHTMLWebBundle;
@@ -464,24 +460,17 @@ public:
     QHTMLNode(const QHTMLNode &) = delete;
     QHTMLNode &operator=(const QHTMLNode &) = delete;
 
-    QHTMLNode *qhtmlParentObj = nullptr;
+    QHTMLNode *qhtmlParent = nullptr;
     QHash<int, QHTMLNode *> qhtmlChildren;
     QHash<QString, QString> qhtmlProperties;
     QHTMLContext *qhtmlContext = nullptr;
     QHTMLLogger *qhtmlLogger = nullptr;
 
-    QHTMLNode *qhtmlParent() const { return qhtmlParentObj; }
-    QHTMLNode *qhtmlParentJs() const { return qhtmlParentObj; }
-    QHTMLNode *parentJs() const { return qhtmlParentJs(); }
+    QHTMLNode *parent() const { return qhtmlParent; }
+    QHTMLNode *parentJs() const { return qhtmlParent; }
     virtual QHTMLJavaScriptRuntime *javascriptRuntime() const
     {
-        return qhtmlParentObj ? qhtmlParentObj->javascriptRuntime() : nullptr;
-    }
-    virtual void markNodeIndexDirty()
-    {
-        if (qhtmlParentObj) {
-            qhtmlParentObj->markNodeIndexDirty();
-        }
+        return qhtmlParent ? qhtmlParent->javascriptRuntime() : nullptr;
     }
 
     int childCount() const { return qhtmlChildren.size(); }
@@ -513,48 +502,17 @@ public:
         return out;
     }
 
-    bool matchesType(const QString &typeName) const;
-    bool matchesTypeJs(const std::string &typeName) const
-    {
-        return matchesType(QString::fromStdString(typeName));
-    }
-
     void collectChildrenByType(const QString &typeName, QVector<QHTMLNode *> &out) const
     {
         for (QHTMLNode *child : children()) {
             if (!child) {
                 continue;
             }
-            if (child->matchesType(typeName)) {
+            if (child->qhtmlType() == typeName) {
                 out.append(child);
             }
             child->collectChildrenByType(typeName, out);
         }
-    }
-
-    QHTMLNode *findChildByType(const QString &typeName) const
-    {
-        QVector<QHTMLNode *> matches;
-        collectChildrenByType(typeName, matches);
-        return matches.isEmpty() ? nullptr : matches.first();
-    }
-
-    QHTMLNode *findChildByTypeJs(const std::string &typeName) const
-    {
-        return findChildByType(QString::fromStdString(typeName));
-    }
-
-    emscripten::val directChildrenByTypeJs(const std::string &typeName) const
-    {
-        emscripten::val out = emscripten::val::array();
-        const QString wanted = QString::fromStdString(typeName);
-        int outIndex = 0;
-        for (QHTMLNode *child : children()) {
-            if (child && child->matchesType(wanted)) {
-                out.set(outIndex++, child);
-            }
-        }
-        return out;
     }
 
     emscripten::val findChildrenByTypeJs(const std::string &typeName) const
@@ -583,11 +541,10 @@ public:
             }
         }
         qhtmlChildren = compacted;
-        child->qhtmlParentObj = nullptr;
+        child->qhtmlParent = nullptr;
         if (child->qhtmlContext) {
             child->qhtmlContext->setParentContext(nullptr);
         }
-        markNodeIndexDirty();
         return child;
     }
 
@@ -611,36 +568,9 @@ public:
         return nullptr;
     }
 
-    QHTMLNode *findDescendantByUUIDJs(const std::string &uuid) const
-    {
-        return findDescendantByUUID(QString::fromStdString(uuid));
-    }
-
-    QHTMLNode *findByUUID(const QString &uuid) const
-    {
-        const QString wantedUUID = uuid.trimmed();
-        if (wantedUUID.isEmpty()) {
-            return nullptr;
-        }
-        if (qhtmlUUID() == wantedUUID) {
-            return const_cast<QHTMLNode *>(this);
-        }
-        return findDescendantByUUID(wantedUUID);
-    }
-
-    QHTMLNode *findByUUIDJs(const std::string &uuid) const
-    {
-        return findByUUID(QString::fromStdString(uuid));
-    }
-
     bool containsDescendantUUID(const QString &uuid) const
     {
         return findDescendantByUUID(uuid) != nullptr;
-    }
-
-    bool containsDescendantUUIDJs(const std::string &uuid) const
-    {
-        return containsDescendantUUID(QString::fromStdString(uuid));
     }
 
     void appendChild(QHTMLNode *child)
@@ -648,7 +578,7 @@ public:
         if (!child) {
             return;
         }
-        child->qhtmlParentObj = this;
+        child->qhtmlParent = this;
         if (child->qhtmlContext) {
             child->qhtmlContext->setParentContext(qhtmlContext);
         }
@@ -657,7 +587,6 @@ public:
         if (qhtmlLogger) {
             qhtmlBindLoggerToNode(qhtmlLogger, child);
         }
-        markNodeIndexDirty();
     }
 
     void insertChild(int index, QHTMLNode *child)
@@ -672,7 +601,7 @@ public:
                 shifted.insert(i < boundedIndex ? i : i + 1, existing);
             }
         }
-        child->qhtmlParentObj = this;
+        child->qhtmlParent = this;
         if (child->qhtmlContext) {
             child->qhtmlContext->setParentContext(qhtmlContext);
         }
@@ -682,7 +611,6 @@ public:
         if (qhtmlLogger) {
             qhtmlBindLoggerToNode(qhtmlLogger, child);
         }
-        markNodeIndexDirty();
     }
 
     void appendChildJs(QHTMLNode *child) { appendChild(child); }
@@ -700,71 +628,9 @@ public:
     {
         qDeleteAll(qhtmlChildren);
         qhtmlChildren.clear();
-        markNodeIndexDirty();
     }
 
     void clearChildrenJs() { clearChildren(); }
-
-    QHTMLDomTree *domTree() const;
-    QHTMLDomTree *domTreeJs() const { return domTree(); }
-    QString treeUUID() const;
-    std::string treeUUIDJs() const { return treeUUID().toStdString(); }
-    int indexInParent() const;
-    QString componentName() const;
-    std::string componentNameJs() const { return componentName().toStdString(); }
-
-    QString childrenQHTML() const;
-    std::string childrenQHTMLJs() const { return childrenQHTML().toStdString(); }
-    QString childrenHTML() const;
-    std::string childrenHTMLJs() const { return childrenHTML().toStdString(); }
-    QString childrenJSONText() const;
-    std::string childrenJSONTextJs() const { return childrenJSONText().toStdString(); }
-    emscripten::val childrenJSONJs() const;
-
-    QVector<QHTMLNode *> createQHTMLObjects(const QString &source,
-                                            int index = -1,
-                                            bool notifyBrowser = true);
-    QHTMLNode *createQHTMLObject(const QString &source);
-    QHTMLNode *createQHTMLObjectAt(int index, const QString &source);
-    QHTMLNode *createQHTMLObjectJs(const std::string &source)
-    {
-        return createQHTMLObject(QString::fromStdString(source));
-    }
-    QHTMLNode *createQHTMLObjectAtJs(int index, const std::string &source)
-    {
-        return createQHTMLObjectAt(index, QString::fromStdString(source));
-    }
-    emscripten::val createQHTMLObjectsJs(const std::string &source);
-    bool clearQHTMLObjects();
-    bool clearQHTMLObjectsJs() { return clearQHTMLObjects(); }
-    bool removeFromParent();
-    bool removeFromParentJs() { return removeFromParent(); }
-
-    QString attributeValue(const QString &name) const;
-    std::string attributeValueJs(const std::string &name) const
-    {
-        return attributeValue(QString::fromStdString(name)).toStdString();
-    }
-    bool setAttributeValue(const QString &name, const QString &value);
-    bool setAttributeValueJs(const std::string &name, const std::string &value)
-    {
-        return setAttributeValue(QString::fromStdString(name), QString::fromStdString(value));
-    }
-    bool removeAttributeValue(const QString &name);
-    bool removeAttributeValueJs(const std::string &name)
-    {
-        return removeAttributeValue(QString::fromStdString(name));
-    }
-    bool hasClass(const QString &className) const;
-    bool hasClassJs(const std::string &className) const
-    {
-        return hasClass(QString::fromStdString(className));
-    }
-    bool setClassEnabled(const QString &className, bool enabled);
-    bool setClassEnabledJs(const std::string &className, bool enabled)
-    {
-        return setClassEnabled(QString::fromStdString(className), enabled);
-    }
 
     int appendQHTMLSource(const QString &source);
     int appendQHTMLSourceJs(const std::string &source) { return appendQHTMLSource(QString::fromStdString(source)); }
@@ -1022,13 +888,13 @@ public:
 
     void setAttributeJs(const std::string &key, const std::string &value)
     {
-        setAttributeValue(QString::fromStdString(key), QString::fromStdString(value));
+        setAttribute(QString::fromStdString(key), QString::fromStdString(value));
     }
 
     QString attribute(const QString &key) const { return m_attributes.value(key); }
     std::string attributeJs(const std::string &key) const
     {
-        return attributeValue(QString::fromStdString(key)).toStdString();
+        return attribute(QString::fromStdString(key)).toStdString();
     }
     QHash<QString, QString> attributes() const { return m_attributes; }
 
@@ -1236,7 +1102,6 @@ public:
             m_keyword == QStringLiteral("q-callback") ||
             m_keyword == QStringLiteral("q-macro") ||
             m_keyword == QStringLiteral("q-rewrite") ||
-            m_keyword == QStringLiteral("q-keyword") ||
             m_keyword == QStringLiteral("q-switch") ||
             m_keyword == QStringLiteral("q-anchor") ||
             m_keyword.startsWith(QStringLiteral("q-anchor-"))) {
@@ -1276,7 +1141,7 @@ class QHTMLLogger final : public QObject, public QHTMLTypedNode
     Q_OBJECT
 public:
     using QHTMLNode::children;
-    using QHTMLNode::qhtmlParentObj;
+    using QHTMLNode::parent;
     using QHTMLNode::setProperty;
 
     explicit QHTMLLogger(const QString &name = QString(),
@@ -1478,7 +1343,7 @@ inline QHTMLLogger *QHTMLNode::logger() const
     if (qhtmlLogger) {
         return qhtmlLogger;
     }
-    return qhtmlParentObj ? qhtmlParentObj->logger() : nullptr;
+    return qhtmlParent ? qhtmlParent->logger() : nullptr;
 }
 
 inline void QHTMLNode::setLogger(QHTMLLogger *logger)
@@ -1667,7 +1532,7 @@ class QHTMLSignal final : public QObject, public QHTMLTypedNode
 {
     Q_OBJECT
 public:
-    using QHTMLNode::qhtmlParentObj;
+    using QHTMLNode::parent;
     using QHTMLNode::setProperty;
 
     explicit QHTMLSignal(const QString &name = QString(),
@@ -1740,7 +1605,7 @@ public:
 
     QString signalUUID() const { return m_signal ? m_signal->qhtmlUUID() : QString(); }
     QString functionUUID() const { return m_function ? m_function->qhtmlUUID() : QString(); }
-    QString receiverUUID() const { return m_function && m_function->qhtmlParent() ? m_function->qhtmlParent()->qhtmlUUID() : QString(); }
+    QString receiverUUID() const { return m_function && m_function->parent() ? m_function->parent()->qhtmlUUID() : QString(); }
 
 private:
     QHTMLSignal *m_signal = nullptr;
@@ -1846,7 +1711,7 @@ inline bool QHTMLSignal::connect(QHTMLFunction *function)
 
 inline int QHTMLSignal::emitSignal(const QStringList &arguments, QHTMLNode *sender)
 {
-    QHTMLNode *resolvedSender = sender ? sender : qhtmlParent();
+    QHTMLNode *resolvedSender = sender ? sender : parent();
     emit maybeLog(QStringLiteral("Signal ") + qhtmlName() +
                   QStringLiteral(" emitted by ") +
                   (resolvedSender ? resolvedSender->qhtmlUUID() : QStringLiteral("<none>")) +
@@ -2183,19 +2048,6 @@ public:
         return renderHtmlForContext(contextNode);
     }
 
-    QString renderHtmlWithChildRenderer(const QHTMLNode *contextNode,
-                                        const std::function<QString(QHTMLNode *)> &renderer) const
-    {
-        QString out = QStringLiteral("<div qhtml-layout=\"") + escapeAttribute(keyword()) +
-                      QStringLiteral("\" qhtml-node=\"") + escapeAttribute(qhtmlUUID()) +
-                      QStringLiteral("\" class=\"") + escapeAttribute(layoutClass()) +
-                      QStringLiteral("\" style=\"") + escapeAttribute(layoutStyle()) +
-                      QStringLiteral("\"") + layoutAttributes(contextNode) + QStringLiteral(">");
-        out += renderLayoutChildren(contextNode ? contextNode : this, renderer);
-        out += QStringLiteral("</div>");
-        return out;
-    }
-
 private:
     static QHash<QString, QString> attributesFromJs(emscripten::val attributes)
     {
@@ -2223,19 +2075,6 @@ private:
         out += renderLayoutChildren(contextNode ? contextNode : this);
         out += QStringLiteral("</div>");
         return out;
-    }
-
-    static QString renderWithOptionalRenderer(QHTMLNode *node,
-                                              const QHTMLNode *contextNode,
-                                              const std::function<QString(QHTMLNode *)> &renderer)
-    {
-        if (!node) {
-            return QString();
-        }
-        if (renderer) {
-            return renderer(node);
-        }
-        return node->renderHtmlInContext(contextNode);
     }
 
 protected:
@@ -2554,7 +2393,7 @@ protected:
 
     QString parentComputedItemStyle() const
     {
-        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(qhtmlParent());
+        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(parent());
         return layoutParent ? layoutParent->computedItemStyleForChild(this) : QString();
     }
 
@@ -2719,7 +2558,7 @@ protected:
 
     bool parentIsRowLayout() const
     {
-        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(qhtmlParent());
+        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(parent());
         return layoutParent && layoutParent->direction() == QStringLiteral("row");
     }
 
@@ -2758,7 +2597,7 @@ protected:
 
     QString parentRowColumnMinWidth() const
     {
-        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(qhtmlParent());
+        const QHTMLLayout *layoutParent = dynamic_cast<const QHTMLLayout *>(parent());
         if (!layoutParent) {
             return QString();
         }
@@ -2807,25 +2646,13 @@ protected:
 
     QString renderLayoutChildren(const QHTMLNode *contextNode) const
     {
-        return renderLayoutChildren(contextNode, std::function<QString(QHTMLNode *)>());
-    }
-
-    QString renderLayoutChildren(const QHTMLNode *contextNode,
-                                 const std::function<QString(QHTMLNode *)> &renderer) const
-    {
         if (hasGeneratedGrid()) {
-            return renderGeneratedGrid(contextNode, renderer);
+            return renderGeneratedGrid(contextNode);
         }
-        return renderSequentialLayoutChildren(contextNode, renderer);
+        return renderSequentialLayoutChildren(contextNode);
     }
 
     QString renderSequentialLayoutChildren(const QHTMLNode *contextNode) const
-    {
-        return renderSequentialLayoutChildren(contextNode, std::function<QString(QHTMLNode *)>());
-    }
-
-    QString renderSequentialLayoutChildren(const QHTMLNode *contextNode,
-                                           const std::function<QString(QHTMLNode *)> &renderer) const
     {
         QString out;
         for (QHTMLNode *child : children()) {
@@ -2833,15 +2660,11 @@ protected:
                 continue;
             }
             if (isLayoutNode(child)) {
-                if (QHTMLLayout *layoutChild = dynamic_cast<QHTMLLayout *>(child)) {
-                    out += layoutChild->renderHtmlWithChildRenderer(contextNode, renderer);
-                } else {
-                    out += renderWithOptionalRenderer(child, contextNode, renderer);
-                }
+                out += child->renderHtmlInContext(contextNode);
             } else {
                 out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
                        escapeAttribute(itemStyle(child)) + QStringLiteral("\">") +
-                       renderWithOptionalRenderer(child, contextNode, renderer) +
+                       child->renderHtmlInContext(contextNode) +
                        QStringLiteral("</div>");
             }
         }
@@ -2866,12 +2689,6 @@ protected:
 
     QString renderGeneratedGrid(const QHTMLNode *contextNode) const
     {
-        return renderGeneratedGrid(contextNode, std::function<QString(QHTMLNode *)>());
-    }
-
-    QString renderGeneratedGrid(const QHTMLNode *contextNode,
-                                const std::function<QString(QHTMLNode *)> &renderer) const
-    {
         const QVector<QHTMLNode *> items = gridItems();
         int rowCount = qMax(1, rows());
         int colCount = qMax(1, cols());
@@ -2892,11 +2709,7 @@ protected:
             for (int col = 0; col < colCount; ++col) {
                 QHTMLNode *item = itemIndex < items.size() ? items.at(itemIndex++) : nullptr;
                 if (item && item->qhtmlType() == QStringLiteral("QHTMLColumnLayout")) {
-                    if (QHTMLLayout *layoutItem = dynamic_cast<QHTMLLayout *>(item)) {
-                        out += layoutItem->renderHtmlWithChildRenderer(contextNode, renderer);
-                    } else {
-                        out += renderWithOptionalRenderer(item, contextNode, renderer);
-                    }
+                    out += item->renderHtmlInContext(contextNode);
                 } else {
                     out += layoutBoxHtml(QStringLiteral("q-col"),
                                          QStringLiteral("column"),
@@ -2905,7 +2718,7 @@ protected:
                     if (item) {
                         out += QStringLiteral("<div qhtml-layout-item=\"1\" class=\"qhtml-layout-item\" style=\"") +
                                escapeAttribute(itemStyle(item)) + QStringLiteral("\">") +
-                               renderWithOptionalRenderer(item, contextNode, renderer) +
+                               item->renderHtmlInContext(contextNode) +
                                QStringLiteral("</div>");
                     }
                     out += QStringLiteral("</div>");
@@ -3087,8 +2900,8 @@ public:
 
     QHTMLComponentInstance *owner() const { return m_owner; }
     QHTMLComponentInstance *ownerJs() const { return m_owner; }
-    QHTMLComponentSlot *definitionSlot() const;
-    QHTMLComponentSlot *definitionSlotJs() const { return definitionSlot(); }
+    QHTMLComponentSlot *definitionSlot() const { return m_definitionSlot; }
+    QHTMLComponentSlot *definitionSlotJs() const { return m_definitionSlot; }
 
     QHTMLNode *append(QHTMLNode *node);
     QHTMLNode *appendJs(QHTMLNode *node) { return append(node); }
@@ -3096,38 +2909,10 @@ public:
     bool removeJs(QHTMLNode *node) { return remove(node); }
     QVector<QHTMLNode *> children() const;
     emscripten::val childrenJs() const;
-    emscripten::val childListJs() const { return childrenJs(); }
-
-    QHTMLNode *createQHTMLObject(const QString &source);
-    QHTMLNode *createQHTMLObjectJs(const std::string &source)
-    {
-        return createQHTMLObject(QString::fromStdString(source));
-    }
-    emscripten::val createQHTMLObjectsJs(const std::string &source);
-    int fromQHTMLContents(const QString &source);
-    int fromQHTMLJs(const std::string &source)
-    {
-        return fromQHTMLContents(QString::fromStdString(source));
-    }
-    bool clear();
-    QString toQHTMLContents() const;
-    std::string toQHTMLContentsJs() const { return toQHTMLContents().toStdString(); }
-    QString toHTMLContents() const;
-    std::string toHTMLContentsJs() const { return toHTMLContents().toStdString(); }
-    QString toJSONText() const;
-    std::string toJSONTextJs() const { return toJSONText().toStdString(); }
-    emscripten::val toJSONJs() const;
-    QString plainText() const;
-    std::string plainTextJs() const { return plainText().toStdString(); }
-    QHTMLNode *findByUUID(const QString &uuid) const;
-    QHTMLNode *findByUUIDJs(const std::string &uuid) const
-    {
-        return findByUUID(QString::fromStdString(uuid));
-    }
 
 private:
     QHTMLComponentInstance *m_owner = nullptr;
-    QString m_slotName;
+    QHTMLComponentSlot *m_definitionSlot = nullptr;
 };
 
 class QHTMLComponentDefinition final : public QObject, public QHTMLTypedNode
@@ -3202,7 +2987,8 @@ public:
 
     ~QHTMLComponentInstance() override
     {
-        clearSlotViews();
+        qDeleteAll(m_slotViews);
+        m_slotViews.clear();
     }
 
     void setDefinition(QHTMLComponentDefinition *definition)
@@ -3253,27 +3039,19 @@ public:
 
     emscripten::val slotsJs() const
     {
-        ensureSlotViews();
+        refreshSlotViews();
         emscripten::val out = emscripten::val::array();
-        int outIndex = 0;
-        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
-            if (!componentSlot) {
-                continue;
-            }
-            if (QHTMLComponentInstanceSlot *view = slotView(componentSlot->qhtmlName())) {
-                out.set(outIndex++, view);
-            }
+        for (int i = 0; i < m_slotViews.size(); ++i) {
+            out.set(i, m_slotViews.at(i));
         }
         return out;
     }
 
-    QHTMLComponentSlot *slotDefinitionAt(int index) const
+    QHTMLComponentSlot *slotAt(int index) const
     {
         const QVector<QHTMLComponentSlot *> localSlots = collectSlots();
         return index >= 0 && index < localSlots.size() ? localSlots.at(index) : nullptr;
     }
-
-    QHTMLComponentInstanceSlot *slotViewAt(int index) const;
 
     QHTMLComponentSlot *slot(const QString &name) const
     {
@@ -3285,20 +3063,9 @@ public:
         return nullptr;
     }
 
-    QHTMLComponentSlot *slotDefinitionJs(const std::string &name) const
+    QHTMLComponentSlot *slotJs(const std::string &name) const
     {
         return slot(QString::fromStdString(name));
-    }
-
-    QHTMLComponentInstanceSlot *slotView(const QString &name) const;
-    QHTMLComponentInstanceSlot *slotViewJs(const std::string &name) const
-    {
-        return slotView(QString::fromStdString(name));
-    }
-
-    QHTMLNode *slotMutationTarget(const QString &slotName, bool createIfMissing = true) const
-    {
-        return slotOverride(slotName, createIfMissing);
     }
 
     QString slotNames() const
@@ -3456,21 +3223,6 @@ public:
         return renderHtmlWithContext(context);
     }
 
-    QString renderContentHtml() const
-    {
-        if (!m_definition) {
-            return QHTMLTypedNode::renderHtml();
-        }
-        SlotRenderContext context;
-        const SlotRenderContext localContext = context.withInstance(this);
-        return renderTemplateWithSlots(localContext) + renderUnslottedInstanceChildren(localContext);
-    }
-
-    std::string renderContentHtmlJs() const
-    {
-        return renderContentHtml().toStdString();
-    }
-
     QString renderSlotForOwnedDefinition(QHTMLComponentSlot *componentSlot) const
     {
         SlotRenderContext context;
@@ -3480,18 +3232,6 @@ public:
     static QString ownerDefinitionUUIDForSlot(QHTMLComponentSlot *componentSlot)
     {
         return componentSlotOwnerDefinitionUUID(componentSlot);
-    }
-
-    std::string slotHtmlJs(const std::string &primaryName, const std::string &fallbackName = std::string()) const
-    {
-        return slotHtml(QString::fromStdString(primaryName),
-                        QString::fromStdString(fallbackName)).toStdString();
-    }
-
-    std::string slotPlainTextJs(const std::string &primaryName, const std::string &fallbackName = std::string()) const
-    {
-        return slotPlainText(QString::fromStdString(primaryName),
-                             QString::fromStdString(fallbackName)).toStdString();
     }
 
 private:
@@ -3734,13 +3474,6 @@ private:
         if (node->qhtmlType() == QStringLiteral("QHTMLLayout") ||
             node->qhtmlType() == QStringLiteral("QHTMLRowLayout") ||
             node->qhtmlType() == QStringLiteral("QHTMLColumnLayout")) {
-            if (QHTMLLayout *layout = dynamic_cast<QHTMLLayout *>(node)) {
-                return layout->renderHtmlWithChildRenderer(
-                    this,
-                    [this, &context](QHTMLNode *child) {
-                        return renderNodeWithSlots(child, context);
-                    });
-            }
             return node->renderHtmlInContext(this);
         }
 
@@ -3762,7 +3495,12 @@ private:
         }
 
         if (node->qhtmlType() == QStringLiteral("QHTMLThemeApplication")) {
-            return renderChildrenWithSlots(node, context);
+            QString out = QStringLiteral("<q-theme-application qhtml-theme=\"") + escapeAttribute(node->qhtmlName()) +
+                          QStringLiteral("\" qhtml-application=\"") + escapeAttribute(node->qhtmlUUID()) +
+                          QStringLiteral("\">");
+            out += renderChildrenWithSlots(node, context);
+            out += QStringLiteral("</q-theme-application>");
+            return out;
         }
 
         return renderChildrenWithSlots(node, context);
@@ -3817,8 +3555,10 @@ private:
         if (name.isEmpty()) {
             return nullptr;
         }
-        if (QHTMLNode *overrideNode = findSlotOverrideInChildren(name)) {
-            return overrideNode;
+        for (QHTMLNode *child : children()) {
+            if (child && child->qhtmlName() == name) {
+                return child;
+            }
         }
         if (createIfMissing) {
             QHTMLNode *overrideNode = new QHTMLNode(QStringLiteral("QHTMLComponentInstanceSlotOverride"), name);
@@ -3826,53 +3566,6 @@ private:
             return overrideNode;
         }
         return nullptr;
-    }
-
-    QHTMLNode *findSlotOverrideInChildren(const QString &name) const
-    {
-        for (QHTMLNode *child : children()) {
-            if (!child) {
-                continue;
-            }
-            if (child->qhtmlName() == name) {
-                return child;
-            }
-        }
-        for (QHTMLNode *child : children()) {
-            if (QHTMLNode *found = findNestedSlotOverride(child, name)) {
-                return found;
-            }
-        }
-        return nullptr;
-    }
-
-    static QHTMLNode *findNestedSlotOverride(QHTMLNode *node, const QString &name)
-    {
-        if (!node || name.isEmpty()) {
-            return nullptr;
-        }
-        if (isSlotOverrideSearchBoundary(node)) {
-            return nullptr;
-        }
-        if (node->qhtmlName() == name) {
-            return node;
-        }
-        for (QHTMLNode *child : node->children()) {
-            if (QHTMLNode *found = findNestedSlotOverride(child, name)) {
-                return found;
-            }
-        }
-        return nullptr;
-    }
-
-    static bool isSlotOverrideSearchBoundary(QHTMLNode *node)
-    {
-        if (!node) {
-            return true;
-        }
-        const QString type = node->qhtmlType();
-        return type == QStringLiteral("QHTMLComponentDefinition") ||
-               type == QStringLiteral("QHTMLComponentInstance");
     }
 
     QString renderSingleSlotInstanceChildren(const QString &slotName, const SlotRenderContext &context) const
@@ -3925,8 +3618,8 @@ private:
             return nullptr;
         }
         QHTMLNode *root = node;
-        while (root->qhtmlParent()) {
-            root = root->qhtmlParent();
+        while (root->parent()) {
+            root = root->parent();
         }
         return root;
     }
@@ -4015,28 +3708,6 @@ private:
         return child && !isRuntimeInstanceChild(child);
     }
 
-    static bool subtreeIsSlotOverrideContainer(QHTMLNode *node, const QSet<QString> &slotNames)
-    {
-        if (!node || slotNames.isEmpty() || isSlotOverrideSearchBoundary(node)) {
-            return false;
-        }
-        if (slotNames.contains(node->qhtmlName())) {
-            return true;
-        }
-        bool foundSlotOverride = false;
-        for (QHTMLNode *child : node->children()) {
-            if (!child || !isRenderableInstanceChild(child)) {
-                continue;
-            }
-            if (subtreeIsSlotOverrideContainer(child, slotNames)) {
-                foundSlotOverride = true;
-                continue;
-            }
-            return false;
-        }
-        return foundSlotOverride;
-    }
-
     QString renderUnslottedInstanceChildren(const SlotRenderContext &context) const
     {
         QString out;
@@ -4052,9 +3723,6 @@ private:
                 continue;
             }
             if (slotNames.contains(child->qhtmlName())) {
-                continue;
-            }
-            if (subtreeIsSlotOverrideContainer(child, slotNames)) {
                 continue;
             }
             if (!isRenderableInstanceChild(child)) {
@@ -4176,29 +3844,12 @@ private:
     QHTMLComponentDefinition *m_definition = nullptr;
     mutable QVector<QHTMLComponentInstanceSlot *> m_slotViews;
 
-    void clearSlotViews() const
+    void refreshSlotViews() const
     {
         qDeleteAll(m_slotViews);
         m_slotViews.clear();
-    }
-
-    void ensureSlotViews() const
-    {
         for (QHTMLComponentSlot *componentSlot : collectSlots()) {
-            if (!componentSlot || componentSlot->qhtmlName().trimmed().isEmpty()) {
-                continue;
-            }
-            bool found = false;
-            for (QHTMLComponentInstanceSlot *view : m_slotViews) {
-                if (view && view->qhtmlName() == componentSlot->qhtmlName()) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                m_slotViews.append(new QHTMLComponentInstanceSlot(
-                    const_cast<QHTMLComponentInstance *>(this), componentSlot));
-            }
+            m_slotViews.append(new QHTMLComponentInstanceSlot(const_cast<QHTMLComponentInstance *>(this), componentSlot));
         }
     }
 
@@ -4255,64 +3906,24 @@ inline QHTMLComponentInstanceSlot::QHTMLComponentInstanceSlot(QHTMLComponentInst
                      definitionSlot ? definitionSlot->qhtmlName() : QString())
 {
     m_owner = owner;
-    m_slotName = definitionSlot ? definitionSlot->qhtmlName() : QString();
+    m_definitionSlot = definitionSlot;
     setQHTMLType(QStringLiteral("QHTMLComponentInstanceSlot"));
     setProperty(QStringLiteral("kind"), QStringLiteral("component-instance-slot"));
 }
 
-inline QHTMLComponentSlot *QHTMLComponentInstanceSlot::definitionSlot() const
-{
-    return m_owner ? m_owner->slot(m_slotName) : nullptr;
-}
-
-inline void qhtmlNotifyComponentContentReplaced(QHTMLComponentInstance *component,
-                                                 const QString &slotName = QString())
-{
-    if (!component) {
-        return;
-    }
-    qhtml::QHTMLTreeMutationCommand command;
-    command.operation = "component-content-replaced";
-    command.treeUUID = component->treeUUID().toStdString();
-    command.parentUUID = component->qhtmlParent()
-        ? component->qhtmlParent()->qhtmlUUID().toStdString()
-        : std::string();
-    command.targetUUID = component->qhtmlUUID().toStdString();
-    command.componentUUID = component->qhtmlUUID().toStdString();
-    command.slotName = slotName.toStdString();
-    command.qhtmlType = component->qhtmlType().toStdString();
-    command.qhtmlName = component->qhtmlName().toStdString();
-    command.qhtmlSource = component->toQHTML().toStdString();
-    command.htmlSource = component->renderContentHtml().toStdString();
-    command.jsonSource = component->toJSONText().toStdString();
-    qhtml::DomBridge::notifyQHTMLMutation(command);
-}
-
 inline QHTMLNode *QHTMLComponentInstanceSlot::append(QHTMLNode *node)
 {
-    QHTMLNode *created = m_owner && definitionSlot()
-        ? m_owner->appendToSlot(qhtmlName(), node)
-        : nullptr;
-    if (created) {
-        qhtmlNotifyComponentContentReplaced(m_owner, qhtmlName());
-    }
-    return created;
+    return m_owner && m_definitionSlot ? m_owner->appendToSlot(qhtmlName(), node) : nullptr;
 }
 
 inline bool QHTMLComponentInstanceSlot::remove(QHTMLNode *node)
 {
-    const bool removed = m_owner && definitionSlot()
-        ? m_owner->removeFromSlot(qhtmlName(), node)
-        : false;
-    if (removed) {
-        qhtmlNotifyComponentContentReplaced(m_owner, qhtmlName());
-    }
-    return removed;
+    return m_owner && m_definitionSlot ? m_owner->removeFromSlot(qhtmlName(), node) : false;
 }
 
 inline QVector<QHTMLNode *> QHTMLComponentInstanceSlot::children() const
 {
-    return m_owner && definitionSlot() ? m_owner->slotChildren(qhtmlName()) : QVector<QHTMLNode *>();
+    return m_owner && m_definitionSlot ? m_owner->slotChildren(qhtmlName()) : QVector<QHTMLNode *>();
 }
 
 inline emscripten::val QHTMLComponentInstanceSlot::childrenJs() const
@@ -4323,159 +3934,6 @@ inline emscripten::val QHTMLComponentInstanceSlot::childrenJs() const
         out.set(i, localChildren.at(i));
     }
     return out;
-}
-
-inline QHTMLComponentInstanceSlot *QHTMLComponentInstance::slotViewAt(int index) const
-{
-    const QVector<QHTMLComponentSlot *> localSlots = collectSlots();
-    if (index < 0 || index >= localSlots.size() || !localSlots.at(index)) {
-        return nullptr;
-    }
-    return slotView(localSlots.at(index)->qhtmlName());
-}
-
-inline QHTMLComponentInstanceSlot *QHTMLComponentInstance::slotView(const QString &name) const
-{
-    const QString wanted = name.trimmed();
-    if (wanted.isEmpty() || !slot(wanted)) {
-        return nullptr;
-    }
-    ensureSlotViews();
-    for (QHTMLComponentInstanceSlot *view : m_slotViews) {
-        if (view && view->qhtmlName() == wanted) {
-            return view;
-        }
-    }
-    return nullptr;
-}
-
-inline QHTMLNode *QHTMLComponentInstanceSlot::createQHTMLObject(const QString &source)
-{
-    if (!m_owner || !definitionSlot()) {
-        return nullptr;
-    }
-    QHTMLNode *target = m_owner->slotMutationTarget(qhtmlName(), true);
-    return target ? target->createQHTMLObject(source) : nullptr;
-}
-
-inline emscripten::val QHTMLComponentInstanceSlot::createQHTMLObjectsJs(const std::string &source)
-{
-    emscripten::val out = emscripten::val::array();
-    if (!m_owner || !definitionSlot()) {
-        return out;
-    }
-    QHTMLNode *target = m_owner->slotMutationTarget(qhtmlName(), true);
-    if (!target) {
-        return out;
-    }
-    const QVector<QHTMLNode *> created = target->createQHTMLObjects(QString::fromStdString(source));
-    for (int i = 0; i < created.size(); ++i) {
-        out.set(i, created.at(i));
-    }
-    return out;
-}
-
-inline int QHTMLComponentInstanceSlot::fromQHTMLContents(const QString &source)
-{
-    if (!m_owner || !definitionSlot()) {
-        return 0;
-    }
-    QHTMLNode *target = m_owner->slotMutationTarget(qhtmlName(), true);
-    if (!target) {
-        return 0;
-    }
-    target->clearChildren();
-    const int inserted = target->createQHTMLObjects(source, 0, false).size();
-    qhtmlNotifyComponentContentReplaced(m_owner, qhtmlName());
-    return inserted;
-}
-
-inline bool QHTMLComponentInstanceSlot::clear()
-{
-    if (!m_owner || !definitionSlot()) {
-        return false;
-    }
-    QHTMLNode *target = m_owner->slotMutationTarget(qhtmlName(), true);
-    if (!target) {
-        return false;
-    }
-    const int previousCount = target->childCount();
-    const bool cleared = target->clearQHTMLObjects();
-    if (cleared && previousCount == 0) {
-        qhtmlNotifyComponentContentReplaced(m_owner, qhtmlName());
-    }
-    return cleared;
-}
-
-inline QString QHTMLComponentInstanceSlot::toQHTMLContents() const
-{
-    QStringList out;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            out.append(child->toQHTML());
-        }
-    }
-    return out.join(QLatin1Char('\n'));
-}
-
-inline QString QHTMLComponentInstanceSlot::toHTMLContents() const
-{
-    QString out;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            out += child->renderHtmlInContext(m_owner);
-        }
-    }
-    return out;
-}
-
-inline QString QHTMLComponentInstanceSlot::toJSONText() const
-{
-    QJsonArray array;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            array.append(child->toJsonObject());
-        }
-    }
-    return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
-}
-
-inline emscripten::val QHTMLComponentInstanceSlot::toJSONJs() const
-{
-    return emscripten::val::global("JSON").call<emscripten::val>("parse", toJSONText().toStdString());
-}
-
-inline QString QHTMLComponentInstanceSlot::plainText() const
-{
-    QString out = toHTMLContents();
-    out.remove(QRegularExpression(QStringLiteral("<[^>]*>")));
-    out.replace(QStringLiteral("&nbsp;"), QStringLiteral(" "));
-    out.replace(QStringLiteral("&lt;"), QStringLiteral("<"));
-    out.replace(QStringLiteral("&gt;"), QStringLiteral(">"));
-    out.replace(QStringLiteral("&quot;"), QStringLiteral("\""));
-    out.replace(QStringLiteral("&#39;"), QStringLiteral("'"));
-    out.replace(QStringLiteral("&amp;"), QStringLiteral("&"));
-    return out.simplified();
-}
-
-inline QHTMLNode *QHTMLComponentInstanceSlot::findByUUID(const QString &uuid) const
-{
-    const QString wanted = uuid.trimmed();
-    if (wanted.isEmpty()) {
-        return nullptr;
-    }
-    for (QHTMLNode *child : children()) {
-        if (!child) {
-            continue;
-        }
-        if (child->qhtmlUUID() == wanted) {
-            return child;
-        }
-        if (QHTMLNode *found = child->findDescendantByUUID(wanted)) {
-            return found;
-        }
-    }
-    return nullptr;
 }
 
 class QHTMLWorker final : public QHTMLTypedNode
@@ -6015,7 +5473,7 @@ private:
     {
         JSValue object = JS_NewObject(m_context);
         QVector<const QHTMLNode *> chain;
-        for (const QHTMLNode *cursor = node; cursor; cursor = cursor->qhtmlParent()) {
+        for (const QHTMLNode *cursor = node; cursor; cursor = cursor->parent()) {
             chain.prepend(cursor);
         }
         for (const QHTMLNode *scope : chain) {
@@ -6211,7 +5669,7 @@ inline QString qhtmlResolveExpressionValue(QString expression,
     while (currentNode && index < parts.size()) {
         const QString part = parts.at(index).trimmed();
         if (part == QStringLiteral("qhtmlParent")) {
-            currentNode = currentNode->qhtmlParent();
+            currentNode = currentNode->parent();
             current = const_cast<QHTMLNode *>(currentNode);
             ++index;
             continue;
@@ -6508,7 +5966,7 @@ private:
                 return property;
             }
         }
-        for (QHTMLNode *scope = qhtmlParent(); scope; scope = scope->qhtmlParent()) {
+        for (QHTMLNode *scope = parent(); scope; scope = scope->parent()) {
             if (QHTMLProperty *property = findPropertyInChildren(scope, name)) {
                 return property;
             }
@@ -8881,15 +8339,6 @@ public:
         return out;
     }
 
-    QString sourceQHTML(int indentLevel = 0) const override
-    {
-        QStringList lines;
-        for (QHTMLNode *child : children()) {
-            lines.append(child->sourceQHTML(0));
-        }
-        return sourceBlock(qhtmlName(), lines.join(QLatin1Char('\n')), indentLevel);
-    }
-
 private:
     QHTMLStyle *m_style = nullptr;
 };
@@ -8912,16 +8361,13 @@ public:
 
     QString renderHtml() const override
     {
-        return QHTMLTypedNode::renderHtml();
-    }
-
-    QString sourceQHTML(int indentLevel = 0) const override
-    {
-        QStringList lines;
-        for (QHTMLNode *child : children()) {
-            lines.append(child->sourceQHTML(0));
-        }
-        return sourceBlock(qhtmlName(), lines.join(QLatin1Char('\n')), indentLevel);
+        QString out = QStringLiteral("<q-theme-application qhtml-theme=\"") + escapeAttribute(qhtmlName()) +
+                      QStringLiteral("\" qhtml-theme-uuid=\"") + escapeAttribute(themeUUID()) +
+                      QStringLiteral("\" qhtml-application=\"") + escapeAttribute(qhtmlUUID()) +
+                      QStringLiteral("\">");
+        out += QHTMLTypedNode::renderHtml();
+        out += QStringLiteral("</q-theme-application>");
+        return out;
     }
 
 private:
@@ -9389,18 +8835,11 @@ public:
 
     QHTMLSignalBus *qhtmlSignalBus = nullptr;
     QHTMLJavaScriptRuntime *qhtmlJavaScriptRuntime = nullptr;
-    QHash<QString, QHTMLNode *> qhtmlNodesByUUID;
-    QVector<QHTMLNode *> qhtmlIndexedNodes;
 
     void loadFromAST(QHTMLAstNode *astRoot);
     void loadFromASTWithContext(QHTMLAstNode *astRoot, QHTMLNode *contextNode);
     void loadFromASTWithContextJs(QHTMLAstNode *astRoot, QHTMLNode *contextNode) { loadFromASTWithContext(astRoot, contextNode); }
-    void clear()
-    {
-        clearChildren();
-        qhtmlNodesByUUID.clear();
-        qhtmlIndexedNodes.clear();
-    }
+    void clear() { clearChildren(); }
     QHTMLNode *root() { return this; }
     QHTMLNode *rootJs() { return this; }
     QHTMLSignalBus *signalBus() const { return qhtmlSignalBus; }
@@ -9416,77 +8855,8 @@ public:
     {
         return compileJavaScript(QString::fromStdString(source));
     }
-    void rebuildNodeIndex()
-    {
-        qhtmlNodesByUUID.clear();
-        qhtmlIndexedNodes.clear();
-        indexNodeByUUID(this);
-    }
-    void markNodeIndexDirty() override
-    {
-        qhtmlNodesByUUID.clear();
-        qhtmlIndexedNodes.clear();
-    }
-    void rebuildNodeIndexJs() { rebuildNodeIndex(); }
-    emscripten::val nodeUUIDListJs()
-    {
-        if (qhtmlIndexedNodes.isEmpty()) {
-            rebuildNodeIndex();
-        }
-        emscripten::val out = emscripten::val::array();
-        int outIndex = 0;
-        for (QHTMLNode *node : qhtmlIndexedNodes) {
-            if (!node) {
-                continue;
-            }
-            const QString uuid = node->qhtmlUUID().trimmed();
-            if (uuid.isEmpty()) {
-                continue;
-            }
-            out.set(outIndex, uuid.toStdString());
-            outIndex += 1;
-        }
-        return out;
-    }
-    QHTMLNode *findByUUID(const QString &uuid)
-    {
-        const QString wantedUUID = uuid.trimmed();
-        if (wantedUUID.isEmpty()) {
-            return nullptr;
-        }
-        if (qhtmlNodesByUUID.isEmpty()) {
-            rebuildNodeIndex();
-        }
-        return qhtmlNodesByUUID.value(wantedUUID, nullptr);
-    }
-    QHTMLNode *findByUUIDJs(const std::string &uuid)
-    {
-        return findByUUID(QString::fromStdString(uuid));
-    }
-
-    QVector<QHTMLNode *> insertDynamicQHTML(QHTMLNode *parent, int index, const QString &source);
-    emscripten::val insertDynamicQHTMLJs(QHTMLNode *parent, int index, const std::string &source);
-    void notifyDynamicMutation(const qhtml::QHTMLTreeMutationCommand &command) const
-    {
-        qhtml::DomBridge::notifyQHTMLMutation(command);
-    }
 
 private:
-    void indexNodeByUUID(QHTMLNode *node)
-    {
-        if (!node) {
-            return;
-        }
-        const QString uuid = node->qhtmlUUID().trimmed();
-        if (!uuid.isEmpty()) {
-            qhtmlNodesByUUID.insert(uuid, node);
-        }
-        qhtmlIndexedNodes.append(node);
-        for (QHTMLNode *child : node->children()) {
-            indexNodeByUUID(child);
-        }
-    }
-
     void indexComponentDefinitions();
     void indexComponentDefinitionsFor(QHTMLNode *scope);
     void resolveComponentExtends();
@@ -9517,339 +8887,6 @@ private:
     QHTMLNode *themeApplicationFrom(QHTMLDomElement *node, QHTMLTheme *theme) const;
     static void moveChildren(QHTMLNode *from, QHTMLNode *to);
 };
-
-inline QHTMLDomTree *QHTMLNode::domTree() const
-{
-    const QHTMLNode *node = this;
-    while (node && node->qhtmlParent()) {
-        node = node->qhtmlParent();
-    }
-    return const_cast<QHTMLDomTree *>(dynamic_cast<const QHTMLDomTree *>(node));
-}
-
-inline QString QHTMLNode::treeUUID() const
-{
-    if (QHTMLDomTree *tree = domTree()) {
-        return tree->qhtmlUUID();
-    }
-    return QString();
-}
-
-inline int QHTMLNode::indexInParent() const
-{
-    if (!qhtmlParentObj) {
-        return -1;
-    }
-    for (int i = 0; i < qhtmlParentObj->childCount(); ++i) {
-        if (qhtmlParentObj->childAt(i) == this) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-inline QString QHTMLNode::componentName() const
-{
-    if (const QHTMLComponentInstance *instance = dynamic_cast<const QHTMLComponentInstance *>(this)) {
-        if (instance->definition() && !instance->definition()->qhtmlName().trimmed().isEmpty()) {
-            return instance->definition()->qhtmlName().trimmed();
-        }
-        QString value = instance->property(QStringLiteral("qhtmlComponentName")).trimmed();
-        if (value.isEmpty()) {
-            value = instance->property(QStringLiteral("componentName")).trimmed();
-        }
-        if (!value.isEmpty()) {
-            return value;
-        }
-        return instance->keyword().trimmed();
-    }
-    return QString();
-}
-
-inline bool QHTMLNode::matchesType(const QString &typeName) const
-{
-    QString wanted = typeName.trimmed().toLower();
-    if (wanted.isEmpty()) {
-        return false;
-    }
-    wanted.remove(QLatin1Char('<'));
-    wanted.remove(QLatin1Char('>'));
-    wanted.remove(QLatin1Char(' '));
-    wanted.remove(QLatin1Char('-'));
-    wanted.remove(QLatin1Char('_'));
-
-    auto normalized = [](QString value) {
-        value = value.trimmed().toLower();
-        value.remove(QLatin1Char('<'));
-        value.remove(QLatin1Char('>'));
-        value.remove(QLatin1Char(' '));
-        value.remove(QLatin1Char('-'));
-        value.remove(QLatin1Char('_'));
-        return value;
-    };
-
-    if (normalized(qhtmlType()) == wanted || normalized(qhtmlName()) == wanted) {
-        return true;
-    }
-    if (const QHTMLDomElement *element = dynamic_cast<const QHTMLDomElement *>(this)) {
-        if (normalized(element->tagName()) == wanted) {
-            return true;
-        }
-        if (wanted == QStringLiteral("anonymoushtmlfragment") ||
-            wanted == QStringLiteral("anonymoushtmlelement") ||
-            wanted == QStringLiteral("htmlelement")) {
-            return true;
-        }
-    }
-    if (const QHTMLTypedNode *typed = dynamic_cast<const QHTMLTypedNode *>(this)) {
-        if (normalized(typed->keyword()) == wanted) {
-            return true;
-        }
-    }
-    if (const QHTMLComponentInstance *component = dynamic_cast<const QHTMLComponentInstance *>(this)) {
-        if (normalized(component->componentName()) == wanted ||
-            wanted == QStringLiteral("component") ||
-            wanted == QStringLiteral("componentinstance")) {
-            return true;
-        }
-    }
-    if (dynamic_cast<const QHTMLComponentSlot *>(this) &&
-        (wanted == QStringLiteral("slot") || wanted == QStringLiteral("componentslot"))) {
-        return true;
-    }
-    return false;
-}
-
-inline QString QHTMLNode::childrenQHTML() const
-{
-    QStringList out;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            out.append(child->toQHTML());
-        }
-    }
-    return out.join(QLatin1Char('\n'));
-}
-
-inline QString QHTMLNode::childrenHTML() const
-{
-    QString out;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            out += child->renderHtmlInContext(this);
-        }
-    }
-    return out;
-}
-
-inline QString QHTMLNode::childrenJSONText() const
-{
-    QJsonArray array;
-    for (QHTMLNode *child : children()) {
-        if (child) {
-            array.append(child->toJsonObject());
-        }
-    }
-    return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
-}
-
-inline emscripten::val QHTMLNode::childrenJSONJs() const
-{
-    return emscripten::val::global("JSON").call<emscripten::val>("parse", childrenJSONText().toStdString());
-}
-
-inline void qhtmlPopulateMutationScope(const QHTMLNode *node,
-                                         qhtml::QHTMLTreeMutationCommand &command)
-{
-    if (!node) {
-        return;
-    }
-    if (node->qhtmlType() == QStringLiteral("QHTMLComponentInstanceSlotOverride")) {
-        if (const QHTMLComponentInstance *component = dynamic_cast<const QHTMLComponentInstance *>(node->qhtmlParent())) {
-            command.componentUUID = component->qhtmlUUID().toStdString();
-            command.slotName = node->qhtmlName().toStdString();
-            return;
-        }
-    }
-    const QHTMLNode *cursor = node;
-    while (cursor) {
-        if (const QHTMLComponentInstance *component = dynamic_cast<const QHTMLComponentInstance *>(cursor)) {
-            command.componentUUID = component->qhtmlUUID().toStdString();
-            return;
-        }
-        cursor = cursor->qhtmlParent();
-    }
-}
-
-inline bool QHTMLNode::clearQHTMLObjects()
-{
-    const int removed = childCount();
-    if (removed == 0) {
-        return true;
-    }
-    clearChildren();
-    qhtml::QHTMLTreeMutationCommand command;
-    if (QHTMLDomTree *tree = domTree()) {
-        command.treeUUID = tree->qhtmlUUID().toStdString();
-    }
-    command.operation = "children-cleared";
-    command.parentUUID = qhtmlUUID().toStdString();
-    command.targetUUID = qhtmlUUID().toStdString();
-    command.qhtmlType = qhtmlType().toStdString();
-    command.qhtmlName = qhtmlName().toStdString();
-    command.count = removed;
-    qhtmlPopulateMutationScope(this, command);
-    if (qhtmlType() == QStringLiteral("QHTMLComponentInstanceSlotOverride")) {
-        if (QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(qhtmlParent())) {
-            command.operation = "component-content-replaced";
-            command.targetUUID = component->qhtmlUUID().toStdString();
-            command.qhtmlType = component->qhtmlType().toStdString();
-            command.qhtmlName = component->qhtmlName().toStdString();
-            command.qhtmlSource = component->toQHTML().toStdString();
-            command.htmlSource = component->renderContentHtml().toStdString();
-            command.jsonSource = component->toJSONText().toStdString();
-        }
-    }
-    qhtml::DomBridge::notifyQHTMLMutation(command);
-    return true;
-}
-
-inline bool QHTMLNode::removeFromParent()
-{
-    QHTMLNode *owner = qhtmlParent();
-    const int index = indexInParent();
-    if (!owner || index < 0) {
-        return false;
-    }
-    qhtml::QHTMLTreeMutationCommand command;
-    if (QHTMLDomTree *tree = domTree()) {
-        command.treeUUID = tree->qhtmlUUID().toStdString();
-    }
-    command.operation = "node-removed";
-    command.parentUUID = owner->qhtmlUUID().toStdString();
-    command.targetUUID = qhtmlUUID().toStdString();
-    command.qhtmlType = qhtmlType().toStdString();
-    command.qhtmlName = qhtmlName().toStdString();
-    command.index = index;
-    command.count = 1;
-    qhtmlPopulateMutationScope(this, command);
-    QHTMLNode *detached = owner->takeChildAt(index);
-    if (!detached) {
-        return false;
-    }
-    qhtml::DomBridge::notifyQHTMLMutation(command);
-    delete detached;
-    return true;
-}
-
-inline QString QHTMLNode::attributeValue(const QString &name) const
-{
-    const QString key = name.trimmed();
-    if (key.isEmpty()) {
-        return QString();
-    }
-    if (const QHTMLDomElement *element = dynamic_cast<const QHTMLDomElement *>(this)) {
-        return element->attribute(key);
-    }
-    if (const QHTMLTypedNode *typed = dynamic_cast<const QHTMLTypedNode *>(this)) {
-        return typed->attribute(key);
-    }
-    return property(key);
-}
-
-inline bool QHTMLNode::setAttributeValue(const QString &name, const QString &value)
-{
-    const QString key = name.trimmed();
-    if (key.isEmpty()) {
-        return false;
-    }
-    if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(this)) {
-        element->setAttribute(key, value);
-    } else if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(this)) {
-        typed->setAttribute(key, value);
-    } else {
-        setProperty(key, value);
-    }
-    qhtml::QHTMLTreeMutationCommand command;
-    if (QHTMLDomTree *tree = domTree()) {
-        command.treeUUID = tree->qhtmlUUID().toStdString();
-    }
-    command.operation = "attribute-set";
-    command.parentUUID = qhtmlParent() ? qhtmlParent()->qhtmlUUID().toStdString() : std::string();
-    command.targetUUID = qhtmlUUID().toStdString();
-    command.qhtmlType = qhtmlType().toStdString();
-    command.qhtmlName = qhtmlName().toStdString();
-    command.attributeName = key.toStdString();
-    command.attributeValue = value.toStdString();
-    qhtmlPopulateMutationScope(this, command);
-    qhtml::DomBridge::notifyQHTMLMutation(command);
-    return true;
-}
-
-inline bool QHTMLNode::removeAttributeValue(const QString &name)
-{
-    const QString key = name.trimmed();
-    if (key.isEmpty()) {
-        return false;
-    }
-    bool existed = false;
-    if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(this)) {
-        QHash<QString, QString> values = element->attributes();
-        existed = values.remove(key) > 0;
-        element->setAttributes(values);
-    } else if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(this)) {
-        QHash<QString, QString> values = typed->attributes();
-        existed = values.remove(key) > 0;
-        typed->setAttributes(values);
-    } else {
-        existed = qhtmlProperties.remove(key) > 0;
-    }
-    if (!existed) {
-        return false;
-    }
-    qhtml::QHTMLTreeMutationCommand command;
-    if (QHTMLDomTree *tree = domTree()) {
-        command.treeUUID = tree->qhtmlUUID().toStdString();
-    }
-    command.operation = "attribute-removed";
-    command.parentUUID = qhtmlParent() ? qhtmlParent()->qhtmlUUID().toStdString() : std::string();
-    command.targetUUID = qhtmlUUID().toStdString();
-    command.attributeName = key.toStdString();
-    qhtmlPopulateMutationScope(this, command);
-    qhtml::DomBridge::notifyQHTMLMutation(command);
-    return true;
-}
-
-inline bool QHTMLNode::hasClass(const QString &className) const
-{
-    const QString wanted = className.trimmed();
-    if (wanted.isEmpty()) {
-        return false;
-    }
-    return attributeValue(QStringLiteral("class"))
-        .split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts)
-        .contains(wanted);
-}
-
-inline bool QHTMLNode::setClassEnabled(const QString &className, bool enabled)
-{
-    const QString wanted = className.trimmed();
-    if (wanted.isEmpty()) {
-        return false;
-    }
-    QStringList classes = attributeValue(QStringLiteral("class"))
-        .split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-    const bool contains = classes.contains(wanted);
-    if (enabled && !contains) {
-        classes.append(wanted);
-    } else if (!enabled && contains) {
-        classes.removeAll(wanted);
-    } else {
-        return true;
-    }
-    classes.removeDuplicates();
-    return setAttributeValue(QStringLiteral("class"), classes.join(QLatin1Char(' ')));
-}
 
 inline QString qhtmlStandaloneHtmlSelectorForNode(const QHTMLNode *node)
 {
@@ -10278,26 +9315,26 @@ inline QStringList qhtmlStringListFromJsonValue(const QJsonValue &value)
     return out;
 }
 
-inline bool qhtmlIsInternalRuntimeChild(const QHTMLNode *_parent, const QHTMLNode *child)
+inline bool qhtmlIsInternalRuntimeChild(const QHTMLNode *parent, const QHTMLNode *child)
 {
-    if (!_parent || !child) {
+    if (!parent || !child) {
         return false;
     }
-    if (const QHTMLTimer *timer = dynamic_cast<const QHTMLTimer *>(_parent)) {
+    if (const QHTMLTimer *timer = dynamic_cast<const QHTMLTimer *>(parent)) {
         return child == timer->timeoutSignal();
     }
-    if (const QHTMLPropertyAnimation *animation = dynamic_cast<const QHTMLPropertyAnimation *>(_parent)) {
+    if (const QHTMLPropertyAnimation *animation = dynamic_cast<const QHTMLPropertyAnimation *>(parent)) {
         return child == animation->startedSignal() ||
                child == animation->stoppedSignal() ||
                child == animation->steppedSignal() ||
                child == animation->endedSignal() ||
                child == animation->finishedSignal();
     }
-    if (const QHTMLScriptAction *action = dynamic_cast<const QHTMLScriptAction *>(_parent)) {
+    if (const QHTMLScriptAction *action = dynamic_cast<const QHTMLScriptAction *>(parent)) {
         return child == action->startedSignal() ||
                child == action->finishedSignal();
     }
-    if (const QHTMLAnimationGroup *group = dynamic_cast<const QHTMLAnimationGroup *>(_parent)) {
+    if (const QHTMLAnimationGroup *group = dynamic_cast<const QHTMLAnimationGroup *>(parent)) {
         return child == group->startedSignal() ||
                child == group->stoppedSignal() ||
                child == group->finishedSignal();
@@ -10505,7 +9542,7 @@ inline bool QHTMLNode::setPropertyValue(const QString &key, const QString &value
         }
     }
 
-    QHTMLNode *parentNode = qhtmlParent();
+    QHTMLNode *parentNode = parent();
     QSet<QString> parentVisited;
     while (parentNode && !parentVisited.contains(parentNode->qhtmlUUID())) {
         parentVisited.insert(parentNode->qhtmlUUID());
@@ -10523,7 +9560,7 @@ inline bool QHTMLNode::setPropertyValue(const QString &key, const QString &value
                 }
             }
         }
-        parentNode = parentNode->qhtmlParent();
+        parentNode = parentNode->parent();
     }
 
     QHash<QString, QString> attributes;
@@ -10651,8 +9688,8 @@ inline bool qhtmlNodeConsumesJavaScriptBlock(const QHTMLNode *node)
 inline const QHTMLNode *qhtmlTopScope(const QHTMLNode *node)
 {
     const QHTMLNode *scope = node;
-    while (scope && scope->qhtmlParent()) {
-        scope = scope->qhtmlParent();
+    while (scope && scope->parent()) {
+        scope = scope->parent();
     }
     return scope ? scope : node;
 }
@@ -11362,53 +10399,15 @@ inline bool QHTMLNode::fromJSONJs(emscripten::val value)
 
 inline int QHTMLNode::fromQHTML(const QString &source)
 {
-    const QString stableUUID = qhtmlUUID();
     clearChildren();
-    int inserted = createQHTMLObjects(source, childCount(), false).size();
+    const int inserted = appendQHTMLSource(source);
     if (inserted == 1 && childCount() == 1 && !dynamic_cast<QHTMLDomTree *>(this)) {
         QHTMLNode *parsed = childAt(0);
         if (parsed && parsed->qhtmlType() == qhtmlType()) {
-            QJsonObject object = parsed->toJsonObject();
-            object.insert(QStringLiteral("qhtmlUUID"), stableUUID);
-            object.insert(QStringLiteral("uuid"), stableUUID);
+            const QJsonObject object = parsed->toJsonObject();
             delete takeChildAt(0);
-            inserted = fromJsonObject(object) ? 1 : 0;
-            setQHTMLUUID(stableUUID);
+            return fromJsonObject(object) ? 1 : 0;
         }
-    }
-
-    if (inserted > 0) {
-        markNodeIndexDirty();
-        if (QHTMLDomTree *tree = domTree()) {
-            tree->rebuildNodeIndex();
-        }
-        qhtml::QHTMLTreeMutationCommand command;
-        command.operation = "node-content-replaced";
-        command.treeUUID = treeUUID().toStdString();
-        command.parentUUID = qhtmlParent() ? qhtmlParent()->qhtmlUUID().toStdString() : std::string();
-        command.targetUUID = qhtmlUUID().toStdString();
-        command.qhtmlType = qhtmlType().toStdString();
-        command.qhtmlName = qhtmlName().toStdString();
-        command.qhtmlSource = toQHTML().toStdString();
-        command.htmlSource = childrenHTML().toStdString();
-        command.jsonSource = toJSONText().toStdString();
-        qhtmlPopulateMutationScope(this, command);
-
-        if (QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(this)) {
-            command.operation = "component-content-replaced";
-            command.htmlSource = component->renderContentHtml().toStdString();
-        } else if (qhtmlType() == QStringLiteral("QHTMLComponentInstanceSlotOverride")) {
-            if (QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(qhtmlParent())) {
-                command.operation = "component-content-replaced";
-                command.targetUUID = component->qhtmlUUID().toStdString();
-                command.qhtmlType = component->qhtmlType().toStdString();
-                command.qhtmlName = component->qhtmlName().toStdString();
-                command.qhtmlSource = component->toQHTML().toStdString();
-                command.htmlSource = component->renderContentHtml().toStdString();
-                command.jsonSource = component->toJSONText().toStdString();
-            }
-        }
-        qhtml::DomBridge::notifyQHTMLMutation(command);
     }
     return inserted;
 }

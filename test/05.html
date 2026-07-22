@@ -100,39 +100,35 @@
     <q-html id="animation-root">
 q-component stress-rect {
   q-property label: "0"
-  q-property numSteps: 15
-
-  q-logger { q-property }
-
+  q-property numSteps: 150
   q-property-animation widthAnim {
-    target: this.parent()
+    target: this
     property: "width"
-    duration: 1400
+    duration: 140
     steps: this.numSteps
     easing: "linear"
     repeat: false
-    from: 125
-    to: 500
-    running: false
+    from: 84
+    to: 520
+    running: true
 
     onstepped(value, currentStep) {
-      var status = this.querySelector(".rect-status");
+      var status = this.ownerElement.querySelector(".rect-status");
       if (status) {
         status.textContent = "width " + Math.round(value) + "px / step " + currentStep;
       }
     }
 
     onended {
-  var oldFrom = this.from;
-      this.from = this.to  ;
-      this.to = oldFrom + (10 * this.parent().numSteps);
-       start();
+      var oldFrom = this.from;
+        this.from = this.to;
+      this.to = oldFrom;
+      this.start();
     }
   }
 
-
   q-property-animation opacityAnim {
-    target: this.parent()
+    target: this
     property: "opacity"
     duration: 1400
     steps: 100
@@ -140,20 +136,22 @@ q-component stress-rect {
     repeat: false
     from: 0.58
     to: 1
-    running: false
+    running: true
 
     onended {
       var oldFrom = this.from;
-      this.from = this.to  ;
-      this.to = oldFrom + this.parent().numSteps;
+      this.from = this.to ;
+      this.to = oldFrom;
       this.start();
     }
   }
 
   onready {
-
+    var rect = this;
+    this.widthAnim.to = this.widthAnim.to + this.numSteps;
+    this.widthAnim.duration = this.widthAnim.duration + (10 * this.numSteps);
         this.widthAnim.start();
-
+        this.opacityAnim.start();
   }
 
   div.rect-body {
@@ -166,7 +164,7 @@ q-component stress-rect {
 }
 
 q-component stress-stage {
-  q-property somearray: [300, 350, 600]
+  q-property somearray: [5, 10, 15, 20, 25, 30, 35, 40, 45, 100, 200, 300, 400]
   div.animation-stage {
     for (num in this.somearray) {
       stress-rect {

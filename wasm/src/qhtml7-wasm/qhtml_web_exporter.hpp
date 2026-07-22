@@ -20,7 +20,6 @@ struct QHTMLWebExportOptions
     bool includeGeneratorMetadata = true;
     bool prettyPrint = true;
     bool failOnUnsupportedBehavior = false;
-    bool warnOnWasmOnlyDynamicObjectApi = true;
     QString documentTitle = QStringLiteral("QHTML Export");
     QString language = QStringLiteral("en");
     QString rootAttribute = QStringLiteral("data-qhtml-export-root");

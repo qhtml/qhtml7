@@ -85,8 +85,21 @@
     }
 
 
-    .path-editor-button {
+    .path-control-row {
       grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
+      gap: 10px;
+      align-items: end;
+    }
+
+    .path-control-row .field {
+      min-width: 0;
+    }
+
+    .path-editor-button {
+      min-height: 38px;
+      align-self: end;
     }
 
     .path-field-note {
@@ -104,7 +117,7 @@
       display: none;
       overflow: hidden;
       cursor: crosshair;
-      background: rgba(2, 6, 23, 0.08);
+      background: rgba(2, 6, 23, 0.06);
       touch-action: none;
       user-select: none;
     }
@@ -117,13 +130,13 @@
       pointer-events: none;
     }
 
-    .path-editor-instructions {
+    .path-editor-overlay-hint {
       position: absolute;
       top: 14px;
       left: 50%;
-      transform: translateX(-50%);
       z-index: 2;
       max-width: calc(100% - 28px);
+      transform: translateX(-50%);
       box-sizing: border-box;
       border: 1px solid rgba(148, 163, 184, 0.34);
       border-radius: 999px;
@@ -136,43 +149,36 @@
       pointer-events: none;
     }
 
-    .path-editor-actions {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 3;
-      display: grid;
-      grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) minmax(90px, 1fr);
+    .path-editor-controls {
+      display: none;
+      grid-template-columns: minmax(160px, 1fr) repeat(4, minmax(88px, auto));
       gap: 10px;
-      padding: 14px;
+      align-items: center;
       box-sizing: border-box;
-      background: linear-gradient(180deg, transparent, rgba(2, 6, 23, 0.94) 32%);
-      cursor: default;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.94);
+      padding: 12px;
     }
 
-    .path-editor-actions button {
-      min-height: 42px;
-      border: 1px solid rgba(148, 163, 184, 0.34);
-      border-radius: 10px;
-      background: #1f2937;
-      color: #e5e7eb;
-      font-weight: 850;
-      cursor: pointer;
+    .path-editor-status {
+      min-width: 0;
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 750;
     }
 
-    .path-editor-actions button:last-child {
-      background: #22c55e;
-      color: #04130a;
-    }
+    @media (max-width: 860px) {
+      .path-editor-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
 
-    .path-editor-actions button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
+      .path-editor-status {
+        grid-column: 1 / -1;
+      }
     }
   </style>
-  <script src="../dist/particle-emitter.js"></script>
-  <script src="../dist/qhtml.js"></script>
+  <script src="../../dist/qhtml-wasm.js"></script>
 </head>
 <body>
 <q-html version="7">
@@ -307,7 +313,7 @@ q-style stageShell {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 
@@ -651,117 +657,104 @@ q-component particleEditorApp {
     ];
   }
 
+  function appendPathNumberField(fieldset, captionText, id, step, min) {
+    var label = document.createElement("label");
+    var caption = document.createElement("span");
+    var numberInput = document.createElement("input");
+    label.className = "field";
+    caption.className = "field-label";
+    caption.textContent = captionText;
+    numberInput.className = "editor-input";
+    numberInput.id = id;
+    numberInput.type = "number";
+    numberInput.step = step;
+    numberInput.min = min;
+    label.appendChild(caption);
+    label.appendChild(numberInput);
+    fieldset.appendChild(label);
+  }
+
   function buildPathFields(grid) {
     var editor = this;
     var fieldset = document.createElement("fieldset");
     var legend = document.createElement("legend");
+    var controlRow = document.createElement("div");
     var pathButton = document.createElement("button");
-    var status = document.createElement("div");
+    var pathLabel = document.createElement("label");
+    var pathCaption = document.createElement("span");
     var pathInput = document.createElement("input");
+    var note = document.createElement("div");
 
-    fieldset.className = "field-group";
+    fieldset.className = "field-group field-group-full";
     legend.className = "group-title";
     legend.textContent = "Emitter Path";
-    pathButton.type = "button";
-    pathButton.id = "editEmitterPathButton";
-    pathButton.className = "tool primary path-editor-button";
-    pathButton.textContent = "Emitter Path";
-    status.id = "pathPointStatus";
-    status.className = "path-field-note";
-    pathInput.type = "hidden";
-    pathInput.id = "pe-path";
+    controlRow.className = "path-control-row";
 
+    pathButton.type = "button";
+    pathButton.id = "setEmitterPathButton";
+    pathButton.className = "tool primary path-editor-button";
+    pathButton.textContent = "Set Path";
+
+    pathLabel.className = "field";
+    pathCaption.className = "field-label";
+    pathCaption.textContent = "Normalized Path Points (X Y X Y ...)";
+    pathInput.className = "editor-input";
+    pathInput.id = "pe-path";
+    pathInput.type = "text";
+    pathInput.placeholder = "0.1 0.5 0.5 0.2 0.9 0.8";
+
+    note.id = "pathPointStatus";
+    note.className = "path-field-note";
+
+    pathLabel.appendChild(pathCaption);
+    pathLabel.appendChild(pathInput);
+    controlRow.appendChild(pathButton);
+    controlRow.appendChild(pathLabel);
     fieldset.appendChild(legend);
-    fieldset.appendChild(pathButton);
-    fieldset.appendChild(status);
-    fieldset.appendChild(pathInput);
+    fieldset.appendChild(controlRow);
+    fieldset.appendChild(note);
     this.appendPathNumberField(fieldset, "Duration (ms)", "pe-duration", "1", "1");
     this.appendPathNumberField(fieldset, "Delay (ms)", "pe-delay", "1", "0");
     this.appendPathNumberField(fieldset, "Sleep (ms)", "pe-sleep", "1", "0");
     grid.appendChild(fieldset);
 
     pathButton.addEventListener("click", function() { editor.beginPathEditor(); });
-    this.createPathOverlay();
-  }
-
-  function appendPathNumberField(fieldset, captionText, id, step, min) {
-    var label = document.createElement("label");
-    var caption = document.createElement("span");
-    var input = document.createElement("input");
-    label.className = "field";
-    caption.className = "field-label";
-    caption.textContent = captionText;
-    input.className = "editor-input";
-    input.id = id;
-    input.type = "number";
-    input.step = step;
-    input.min = min;
-    label.appendChild(caption);
-    label.appendChild(input);
-    fieldset.appendChild(label);
+    pathInput.addEventListener("input", function() {
+      editor.updatePathStatus();
+    });
+    pathInput.addEventListener("change", function() {
+      editor.normalizePathInput();
+      editor.updateSelected();
+      editor.updatePathStatus();
+    });
   }
 
   function createPathOverlay() {
-    var editor = this;
     var stage = this.stage();
     var existing = this.querySelector("#pathEditorOverlay");
     if (existing) {
       return existing;
     }
 
+    var editor = this;
     var overlay = document.createElement("div");
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    var instructions = document.createElement("div");
-    var actions = document.createElement("div");
-    var undoButton = document.createElement("button");
-    var cancelButton = document.createElement("button");
-    var saveButton = document.createElement("button");
+    var hint = document.createElement("div");
 
     overlay.id = "pathEditorOverlay";
     overlay.className = "path-editor-overlay";
     svg.id = "pathEditorSvg";
-    instructions.id = "pathEditorInstructions";
-    instructions.className = "path-editor-instructions";
-    actions.className = "path-editor-actions";
-    undoButton.type = "button";
-    undoButton.id = "undoPathButton";
-    undoButton.textContent = "Undo";
-    cancelButton.type = "button";
-    cancelButton.id = "cancelPathButton";
-    cancelButton.textContent = "Cancel";
-    saveButton.type = "button";
-    saveButton.id = "savePathButton";
-    saveButton.textContent = "Save";
+    hint.className = "path-editor-overlay-hint";
+    hint.textContent = "Click anywhere on the stage to append a normalized path point";
 
-    actions.appendChild(undoButton);
-    actions.appendChild(cancelButton);
-    actions.appendChild(saveButton);
     overlay.appendChild(svg);
-    overlay.appendChild(instructions);
-    overlay.appendChild(actions);
+    overlay.appendChild(hint);
     stage.appendChild(overlay);
 
     overlay.addEventListener("click", function(event) {
-      var target = event.target;
-      if (target.closest) {
-        if (target.closest(".path-editor-actions")) {
-          return;
-        }
-      }
       editor.addPathPoint(event);
     });
-    undoButton.addEventListener("click", function(event) {
-      event.stopPropagation();
-      editor.undoPathPoint();
-    });
-    cancelButton.addEventListener("click", function(event) {
-      event.stopPropagation();
-      editor.finishPathEditor(false);
-    });
-    saveButton.addEventListener("click", function(event) {
-      event.stopPropagation();
-      editor.finishPathEditor(true);
-    });
+
     window.addEventListener("resize", function() {
       if (overlay.style.display != "none") {
         editor.renderPathOverlay();
@@ -809,15 +802,24 @@ q-component particleEditorApp {
     return values.join(" ");
   }
 
+  function normalizePathInput() {
+    var pathInput = this.input("pe-path");
+    var normalized = this.serializePath(this.parsePath(pathInput.value));
+    pathInput.value = normalized;
+    return normalized;
+  }
+
   function beginPathEditor() {
     if (this.selectedIndex < 0) {
       return;
     }
+    this.normalizePathInput();
     this.updateSelected();
     this.pathEditingIndex = this.selectedIndex;
     this.pathDraft = this.parsePath(this.emitters[this.selectedIndex].path);
     this.closeEditorDialog();
-    this.querySelector("#pathEditorOverlay").style.display = "block";
+    this.createPathOverlay().style.display = "block";
+    this.querySelector("#pathEditorControls").style.display = "grid";
     this.renderPathOverlay();
   }
 
@@ -844,14 +846,25 @@ q-component particleEditorApp {
     }
   }
 
-  function finishPathEditor(save) {
+  function clearPathPoints() {
+    this.pathDraft = [];
+    this.renderPathOverlay();
+  }
+
+  function finishPathEditor(saveChanges) {
     var overlay = this.querySelector("#pathEditorOverlay");
-    overlay.style.display = "none";
-    if (save == true) {
+    if (overlay) {
+      overlay.style.display = "none";
+    }
+    this.querySelector("#pathEditorControls").style.display = "none";
+
+    if (saveChanges == true) {
       this.selectedIndex = this.pathEditingIndex;
       this.setValue("pe-path", this.serializePath(this.pathDraft));
       this.updateSelected();
+      this.updatePathStatus();
     }
+
     this.pathEditingIndex = -1;
     this.pathDraft = [];
     this.openEditorDialog();
@@ -860,8 +873,9 @@ q-component particleEditorApp {
   function renderPathOverlay() {
     var overlay = this.querySelector("#pathEditorOverlay");
     var svg = this.querySelector("#pathEditorSvg");
-    var status = this.querySelector("#pathEditorInstructions");
+    var status = this.querySelector("#pathEditorStatus");
     var undoButton = this.querySelector("#undoPathButton");
+    var clearButton = this.querySelector("#clearPathButton");
     var width = Math.max(1, overlay.clientWidth);
     var height = Math.max(1, overlay.clientHeight);
     var svgNamespace = "http://www.w3.org/2000/svg";
@@ -899,8 +913,9 @@ q-component particleEditorApp {
       index = index + 1;
     }
 
-    status.textContent = "Click the stage to add path points — " + this.pathDraft.length + " point(s)";
+    status.textContent = this.pathDraft.length + " path point(s) — coordinates are stored from 0.0 to 1.0";
     undoButton.disabled = this.pathDraft.length == 0;
+    clearButton.disabled = this.pathDraft.length == 0;
   }
 
   function updatePathStatus() {
@@ -910,8 +925,8 @@ q-component particleEditorApp {
     }
     var count = this.parsePath(this.fieldValue("pe-path")).length;
     status.textContent = count == 0
-      ? "No path is defined. Fixed X/Y coordinates remain active."
-      : count + " path point(s) defined as normalized canvas coordinates.";
+      ? "No path is defined. The emitter continues using its fixed X/Y origin."
+      : count + " point(s) defined. Each transfer is linearly tweened for duration / number of points.";
   }
 
   function buildForm() {
@@ -951,13 +966,17 @@ q-component particleEditorApp {
         editor.buildPathFields(grid);
       }
     });
+    this.createPathOverlay();
+    this.updatePathStatus();
   }
 
   function wireForm() {
     var editor = this;
     this.querySelectorAll(".editor-input").forEach(function(input) {
-      input.oninput = function() { editor.updateSelected(); };
-      input.onchange = function() { editor.updateSelected(); };
+      if (input.id != "pe-path") {
+        input.oninput = function() { editor.updateSelected(); };
+        input.onchange = function() { editor.updateSelected(); };
+      }
     });
   }
 
@@ -971,6 +990,10 @@ q-component particleEditorApp {
     this.querySelector("#refreshExportButton").addEventListener("click", function() { editor.refreshExport(); });
     this.querySelector("#closeEditorButton").addEventListener("click", function() { editor.closeEditorDialog(); });
     this.querySelector("#closeExportButton").addEventListener("click", function() { editor.closeExportDialog(); });
+    this.querySelector("#undoPathButton").addEventListener("click", function() { editor.undoPathPoint(); });
+    this.querySelector("#clearPathButton").addEventListener("click", function() { editor.clearPathPoints(); });
+    this.querySelector("#cancelPathButton").addEventListener("click", function() { editor.finishPathEditor(false); });
+    this.querySelector("#savePathButton").addEventListener("click", function() { editor.finishPathEditor(true); });
   }
 
   function openDialog(id) {
@@ -1160,7 +1183,6 @@ q-component particleEditorApp {
     this.applyEmitterAttributes(data);
     this.renderEmitterList();
     this.refreshExport();
-    this.updatePathStatus();
   }
 
   function deleteSelected() {
@@ -1312,6 +1334,23 @@ q-component particleEditorApp {
           }
           div.stage {
             id: "particle-stage"
+          }
+          div#pathEditorControls.path-editor-controls {
+            span#pathEditorStatus.path-editor-status {
+              text { 0 path point(s) }
+            }
+            button#undoPathButton.tool {
+              text { Undo }
+            }
+            button#clearPathButton.tool.danger {
+              text { Clear }
+            }
+            button#cancelPathButton.tool {
+              text { Cancel }
+            }
+            button#savePathButton.tool.primary {
+              text { Save }
+            }
           }
         }
 

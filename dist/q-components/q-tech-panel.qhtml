@@ -808,6 +808,15 @@ q-component q-tech-panel {
   q-property suppressUnslottedChildren: true
 
   function contentContainer() {
+    if (!this || !this.children) {
+      return this;
+    }
+    for (var i = 0; i < this.children.length; i += 1) {
+      var child = this.children[i];
+      if (String(child.tagName || "").toLowerCase() === "q-theme-application") {
+        return child;
+      }
+    }
     return this;
   }
 
@@ -855,6 +864,8 @@ q-component q-tech-panel {
   }
 
   function paintValueFromPrimer(kind) {
+    var eventName = kind === "mask" ? "paintmask" : "paintbackground";
+    var painterName = kind === "mask" ? "q-tech-panel-mask-painter" : "q-tech-panel-painter";
     var primer = this.primerElement(kind);
     if (!primer) {
       return "";
@@ -867,6 +878,23 @@ q-component q-tech-panel {
     }
     if (styleValue.indexOf("paint(") >= 0) {
       return styleValue;
+    }
+    var registry = this.__qhtmlRegistry;
+    var bindings = registry && registry.paintBindingsByElement ? registry.paintBindingsByElement.get(primer) : null;
+    if (bindings && typeof bindings.forEach === "function") {
+      var found = "";
+      bindings.forEach(function(binding) {
+        if (
+          !found &&
+          binding &&
+          binding.eventName === eventName &&
+          binding.painterName === painterName &&
+          binding.paintName
+        ) {
+          found = "paint(" + binding.paintName + ")";
+        }
+      });
+      return found;
     }
     return "";
   }

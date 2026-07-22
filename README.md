@@ -234,8 +234,7 @@ q-component info-card {
 }
 ```
 
-This only defines `info-card`. It does not render anything until it is instantiated. 
-You do this with a simple `info-card { }` and  thats it.
+This only defines `info-card`. It does not render anything until it is instantiated.
 
 ### Instantiate A Component
 
@@ -247,8 +246,7 @@ q-component info-card {
   }
 }
 
-
-info-card { } 
+info-card { }
 ```
 
 Simplified resulting HTML:
@@ -262,7 +260,7 @@ Simplified resulting HTML:
 </info-card>
 ```
 
-
+The actual DOM may include QHTML runtime attributes such as `component-instance` and `qhtml-node`. Those are runtime bookkeeping attributes and are omitted from examples.
 
 ### Named Instances
 
@@ -276,14 +274,11 @@ q-component status-pill {
 status-pill headerStatus { }
 ```
 
-The instance name is `headerStatus`, which becomes available to the QHTML declarative syntax and to javascript objects for a variety of uses.
-
-
-
+The instance name is `headerStatus`.
 
 ### Define Properties
 
-Use `q-property` inside a component definition and then reference it 
+Use `q-property` inside a component definition:
 
 ```qhtml
 q-component badge {
