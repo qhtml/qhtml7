@@ -1,5 +1,5 @@
 (function (globalScope) {
-  const QHTML_VERSION = "4.3.15";
+  const QHTML_VERSION = "4.3.21";
   globalScope.QHTML_VERSION = QHTML_VERSION;
 })(typeof globalThis !== "undefined" ? globalThis : window);
 
@@ -25,6 +25,21 @@
   let activePropertyTransactionId = "";
   let propertyTransactionCounter = 0;
   let qhtmlContentLoadedDispatchPending = false;
+  const qhtmlReferenceFacades = new WeakMap();
+  const qhtmlReferenceNodeFacades = new WeakMap();
+  const qhtmlReferenceAliases = new WeakMap();
+  const QHTML_DIRECT_ALIAS_RESERVED_NAMES = new Set([
+    "qhtmlNode",
+    "qhtmlDomTree",
+    "qhtmlResolve",
+    "qhtmlResolveNode",
+    "qhtmlHasReference",
+    "qhtmlReferenceNames",
+    "qhtmlReferenceUUIDs",
+    "qhtmlReferences",
+    "qhtmlReferenceNodes",
+    "__qhtmlRegistry"
+  ]);
 
   if (!globalScope.QHTML7 || !globalScope.QHTML7.Module) {
     throw new Error("qhtml-element.js must be loaded after qhtml-wasm.js initializes WASM");
@@ -809,12 +824,23 @@
     }
   }
 
+  const QHTML_JAVASCRIPT_RESERVED_WORDS = new Set([
+    "await", "break", "case", "catch", "class", "const", "continue", "debugger",
+    "default", "delete", "do", "else", "enum", "export", "extends", "false",
+    "finally", "for", "function", "if", "implements", "import", "in",
+    "instanceof", "interface", "let", "new", "null", "package", "private",
+    "protected", "public", "return", "static", "super", "switch", "this",
+    "throw", "true", "try", "typeof", "var", "void", "while", "with",
+    "yield", "arguments", "eval"
+  ]);
+
+  function isValidPropertyIdentifier(name) {
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(String(name || ""));
+  }
+
   function isValidContextIdentifier(name) {
-    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(String(name || "")) &&
-      ![
-        "this", "arguments", "const", "let", "var", "function", "return", "class", "new",
-        "if", "else", "for", "while", "do", "switch", "case", "break", "continue"
-      ].includes(String(name || ""));
+    const text = String(name || "");
+    return isValidPropertyIdentifier(text) && !QHTML_JAVASCRIPT_RESERVED_WORDS.has(text);
   }
 
   function qhtmlNodeType(node) {
@@ -1414,6 +1440,14 @@
     // Runtime helpers must be injected before user/DOM symbols so they cannot be
     // shadowed by an element id/name or a registry entry with the same identifier.
     reserve("$", createQHTMLSelectorHelper(domElement, sourceRegistry));
+    reserve("qhtmlResolve", function (nameOrUUID) {
+      return resolveQHTMLRuntimeReference(domElement, nameOrUUID, sourceRegistry);
+    });
+    reserve("qhtmlResolveNode", function (nameOrUUID) {
+      return resolveQHTMLReferenceNode(domElement, nameOrUUID, sourceRegistry);
+    });
+    reserve("qhtmlReferences", qhtmlReferenceFacadeFor(domElement, sourceRegistry, false));
+    reserve("qhtmlReferenceNodes", qhtmlReferenceFacadeFor(domElement, sourceRegistry, true));
     reserve("qhtmlMakeSignal", globalScope.qhtmlMakeSignal);
     reserve("qhtml", qhtmlRuntimeFragment);
     reserve("QMap", globalScope.QMap);
@@ -2145,6 +2179,42 @@
     return parseQHTMLJsonNodeToJs(structuredNode);
   }
 
+  function ownQHTMLRuntimeMember(owner, name, type) {
+    if (!owner || !name) {
+      return undefined;
+    }
+
+    if (type === "QHTMLProperty" &&
+        owner.__qhtmlProperties &&
+        Object.prototype.hasOwnProperty.call(owner.__qhtmlProperties, name)) {
+      return owner.__qhtmlProperties[name].value;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(owner, name);
+    if (!descriptor) {
+      return undefined;
+    }
+    if (descriptor.get && descriptor.get.__qhtmlReferenceAlias === true) {
+      return undefined;
+    }
+    if (Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      const value = descriptor.value;
+      if (type === "QHTMLFunction" && value && value.__qhtmlFunctionNode) {
+        return value;
+      }
+      if (type === "QHTMLSignal" && value && value.__qhtmlSignalNode) {
+        return value;
+      }
+      if (type === "QHTMLProperty") {
+        return value;
+      }
+    }
+    if (typeof descriptor.get === "function" && type === "QHTMLProperty") {
+      return descriptor.get.call(owner);
+    }
+    return undefined;
+  }
+
   function runtimeValueForQHTMLReference(referenceNode, registry, selfElement) {
     if (!referenceNode || !registry) {
       return undefined;
@@ -2155,8 +2225,9 @@
 
     if (type === "QHTMLProperty") {
       const owner = ownerElementForQHTMLNode(referenceNode, registry) || selfElement || registry.rootElement;
-      if (owner && name && typeof owner[name] !== "undefined") {
-        return owner[name];
+      const boundValue = ownQHTMLRuntimeMember(owner, name, type);
+      if (typeof boundValue !== "undefined") {
+        return boundValue;
       }
       const structured = structuredPropertyNodeValue(referenceNode);
       if (typeof structured !== "undefined") {
@@ -2166,9 +2237,13 @@
       return resolvePropertyValue(rawValue, owner || selfElement, referenceNode, registry);
     }
 
-    if (type === "QHTMLFunction") {
+    if (type === "QHTMLFunction" || type === "QHTMLSignal") {
       const owner = ownerElementForQHTMLNode(referenceNode, registry) || selfElement || registry.rootElement;
-      return owner && name ? owner[name] : undefined;
+      return ownQHTMLRuntimeMember(owner, name, type);
+    }
+
+    if (type === "QHTMLComponentInstanceSlot") {
+      return referenceNode;
     }
 
     if (type === "QHTMLComponentDefinition") {
@@ -2185,8 +2260,10 @@
         type === "QHTMLCanvas" ||
         type === "QHTMLVideo" ||
         type === "QHTMLParticleEmitter") {
-      return (uuid && registry.elementsByUuid && registry.elementsByUuid.get(uuid)) ||
-             (name && registry.elementsByName && registry.elementsByName.get(name));
+      if (uuid && registry.elementsByUuid) {
+        return registry.elementsByUuid.get(uuid);
+      }
+      return name && registry.elementsByName ? registry.elementsByName.get(name) : undefined;
     }
 
     if (type === "QHTMLTimer") {
@@ -2232,28 +2309,380 @@
              (name && registry.qhtmlClassesByName && registry.qhtmlClassesByName.get(name));
     }
 
-    return undefined;
+    return referenceNode;
+  }
+
+  function isQHTMLWasmReference(value) {
+    return Boolean(value &&
+      typeof value.qhtmlType === "function" &&
+      typeof value.qhtmlUUID === "function");
+  }
+
+  function registryForQHTMLTarget(target) {
+    if (target && target.__qhtmlRegistry) {
+      return target.__qhtmlRegistry;
+    }
+    if (target && target.qhtmlComponentRegistry) {
+      return target.qhtmlComponentRegistry;
+    }
+    if (!isQHTMLWasmReference(target) || !document.querySelectorAll) {
+      return null;
+    }
+    const uuid = qhtmlNodeUuid(target);
+    const roots = document.querySelectorAll(QHTML_ROOT_SELECTOR);
+    for (let index = 0; index < roots.length; index += 1) {
+      const registry = roots[index].__qhtmlRegistry || roots[index].qhtmlComponentRegistry || null;
+      if (!registry) {
+        continue;
+      }
+      if ((uuid && registry.nodesByUuid && registry.nodesByUuid.has(uuid)) ||
+          registry.tree === target) {
+        return registry;
+      }
+    }
+    return null;
+  }
+
+  function qhtmlNodeForReferenceTarget(target, registry) {
+    if (isQHTMLWasmReference(target)) {
+      return target;
+    }
+    if (target && isQHTMLWasmReference(target.qhtmlNode)) {
+      return target.qhtmlNode;
+    }
+    const sourceRegistry = registry || registryForQHTMLTarget(target);
+    if (!target || !sourceRegistry || !sourceRegistry.nodesByUuid) {
+      return null;
+    }
+    const uuid = typeof target.getAttribute === "function"
+      ? (target.getAttribute("component-instance") || target.getAttribute("qhtml-node"))
+      : "";
+    return uuid ? sourceRegistry.nodesByUuid.get(uuid) || null : null;
+  }
+
+  function qhtmlReferenceNameMap(target, registry) {
+    const node = qhtmlNodeForReferenceTarget(target, registry);
+    const out = Object.create(null);
+    if (!node) {
+      return out;
+    }
+    if (typeof node.qhtmlReferenceNames === "function" &&
+        typeof node.qhtmlReferenceByName === "function") {
+      Array.from(node.qhtmlReferenceNames() || []).forEach((name) => {
+        const reference = node.qhtmlReferenceByName(String(name || ""));
+        const uuid = qhtmlNodeUuid(reference);
+        if (name && uuid) {
+          out[String(name)] = uuid;
+        }
+      });
+      return out;
+    }
+    if (typeof node.qhtmlReferenceMap === "function") {
+      const map = node.qhtmlReferenceMap() || {};
+      Object.keys(map).forEach((name) => {
+        const uuid = String(map[name] || "");
+        if (name && uuid) {
+          out[String(name)] = uuid;
+        }
+      });
+    }
+    return out;
+  }
+
+  function qhtmlDirectReferenceNameMap(target, registry) {
+    const sourceRegistry = registry || registryForQHTMLTarget(target);
+    const node = qhtmlNodeForReferenceTarget(target, sourceRegistry);
+    const out = Object.create(null);
+    if (!node) {
+      return out;
+    }
+    const ownerUuid = qhtmlNodeUuid(node);
+    const effectiveMap = qhtmlReferenceNameMap(node, sourceRegistry);
+    Object.keys(effectiveMap).forEach((name) => {
+      const referenceUuid = String(effectiveMap[name] || "");
+      let reference = null;
+      if (referenceUuid && sourceRegistry && sourceRegistry.nodesByUuid) {
+        reference = sourceRegistry.nodesByUuid.get(referenceUuid) || null;
+      }
+      if (!reference && referenceUuid && typeof node.qhtmlReferenceByUUID === "function") {
+        reference = node.qhtmlReferenceByUUID(referenceUuid);
+      }
+      if (!reference || typeof reference.parent !== "function") {
+        return;
+      }
+      const parent = reference.parent();
+      if (!parent || qhtmlNodeUuid(parent) !== ownerUuid) {
+        return;
+      }
+      if (referenceUuid && referenceUuid !== ownerUuid) {
+        out[name] = referenceUuid;
+      }
+    });
+    return out;
+  }
+
+  function resolveQHTMLReferenceNode(target, nameOrUUID, registry) {
+    const sourceRegistry = registry || registryForQHTMLTarget(target);
+    const node = qhtmlNodeForReferenceTarget(target, sourceRegistry);
+    const key = String(nameOrUUID == null ? "" : nameOrUUID).trim();
+    if (!node || !key) {
+      return null;
+    }
+    const names = qhtmlReferenceNameMap(node, sourceRegistry);
+    const uuid = names[key] || key;
+    if (sourceRegistry && sourceRegistry.nodesByUuid && sourceRegistry.nodesByUuid.has(uuid)) {
+      return sourceRegistry.nodesByUuid.get(uuid);
+    }
+    if (typeof node.qhtmlReferenceByUUID === "function") {
+      const byUuid = node.qhtmlReferenceByUUID(uuid);
+      if (byUuid) {
+        return byUuid;
+      }
+    }
+    if (typeof node.qhtmlResolve === "function") {
+      return node.qhtmlResolve(key) || null;
+    }
+    if (typeof node.resolve === "function") {
+      return node.resolve(key) || null;
+    }
+    return null;
+  }
+
+  function resolveQHTMLRuntimeReference(target, nameOrUUID, registry) {
+    const sourceRegistry = registry || registryForQHTMLTarget(target);
+    const referenceNode = resolveQHTMLReferenceNode(target, nameOrUUID, sourceRegistry);
+    if (!referenceNode) {
+      return undefined;
+    }
+    if (!sourceRegistry) {
+      return referenceNode;
+    }
+    const selfElement = isQHTMLWasmReference(target) ? null : target;
+    const value = runtimeValueForQHTMLReference(referenceNode, sourceRegistry, selfElement);
+    return typeof value === "undefined" ? referenceNode : value;
+  }
+
+  function qhtmlReferenceFacadeFor(domElement, registry, rawNodes) {
+    const cache = rawNodes ? qhtmlReferenceNodeFacades : qhtmlReferenceFacades;
+    if (cache.has(domElement)) {
+      return cache.get(domElement);
+    }
+    const facade = new Proxy(Object.create(null), {
+      get(target, property) {
+        if (property === Symbol.toStringTag) {
+          return rawNodes ? "QHTMLReferenceNodes" : "QHTMLReferences";
+        }
+        if (property === "toJSON") {
+          return function () {
+            const map = qhtmlReferenceNameMap(domElement, registry || domElement.__qhtmlRegistry);
+            const result = {};
+            Object.keys(map).forEach((name) => {
+              result[name] = rawNodes
+                ? resolveQHTMLReferenceNode(domElement, name, registry || domElement.__qhtmlRegistry)
+                : resolveQHTMLRuntimeReference(domElement, name, registry || domElement.__qhtmlRegistry);
+            });
+            return result;
+          };
+        }
+        if (typeof property !== "string") {
+          return undefined;
+        }
+        return rawNodes
+          ? resolveQHTMLReferenceNode(domElement, property, registry || domElement.__qhtmlRegistry)
+          : resolveQHTMLRuntimeReference(domElement, property, registry || domElement.__qhtmlRegistry);
+      },
+      has(target, property) {
+        if (typeof property !== "string") {
+          return false;
+        }
+        const map = qhtmlReferenceNameMap(domElement, registry || domElement.__qhtmlRegistry);
+        return Object.prototype.hasOwnProperty.call(map, property) ||
+          Object.values(map).includes(property);
+      },
+      ownKeys() {
+        return Object.keys(qhtmlReferenceNameMap(domElement, registry || domElement.__qhtmlRegistry));
+      },
+      getOwnPropertyDescriptor(target, property) {
+        if (typeof property !== "string") {
+          return undefined;
+        }
+        const map = qhtmlReferenceNameMap(domElement, registry || domElement.__qhtmlRegistry);
+        if (!Object.prototype.hasOwnProperty.call(map, property)) {
+          return undefined;
+        }
+        return { configurable: true, enumerable: true };
+      }
+    });
+    cache.set(domElement, facade);
+    return facade;
+  }
+
+  function installQHTMLReferenceAccess(domElement, registry, installAliases) {
+    if (!domElement) {
+      return;
+    }
+    const sourceRegistry = registry || domElement.__qhtmlRegistry || null;
+    const define = function (name, descriptor) {
+      try {
+        Object.defineProperty(domElement, name, Object.assign({ configurable: true, enumerable: false }, descriptor));
+        return true;
+      } catch (error) {
+        return false;
+      }
+    };
+    define("qhtmlResolveNode", {
+      value(nameOrUUID) {
+        return resolveQHTMLReferenceNode(domElement, nameOrUUID, sourceRegistry || domElement.__qhtmlRegistry);
+      }
+    });
+    define("qhtmlResolve", {
+      value(nameOrUUID) {
+        return resolveQHTMLRuntimeReference(domElement, nameOrUUID, sourceRegistry || domElement.__qhtmlRegistry);
+      }
+    });
+    define("qhtmlHasReference", {
+      value(nameOrUUID) {
+        return Boolean(resolveQHTMLReferenceNode(domElement, nameOrUUID, sourceRegistry || domElement.__qhtmlRegistry));
+      }
+    });
+    define("qhtmlReferenceNames", {
+      value() {
+        return Object.keys(qhtmlReferenceNameMap(domElement, sourceRegistry || domElement.__qhtmlRegistry));
+      }
+    });
+    define("qhtmlReferenceUUIDs", {
+      value() {
+        return Object.values(qhtmlReferenceNameMap(domElement, sourceRegistry || domElement.__qhtmlRegistry));
+      }
+    });
+    define("qhtmlReferences", {
+      get() {
+        return qhtmlReferenceFacadeFor(domElement, sourceRegistry || domElement.__qhtmlRegistry, false);
+      }
+    });
+    define("qhtmlReferenceNodes", {
+      get() {
+        return qhtmlReferenceFacadeFor(domElement, sourceRegistry || domElement.__qhtmlRegistry, true);
+      }
+    });
+
+    if (!installAliases) {
+      return;
+    }
+    const map = qhtmlDirectReferenceNameMap(domElement, sourceRegistry || domElement.__qhtmlRegistry);
+    const previous = qhtmlReferenceAliases.get(domElement) || new Set();
+    previous.forEach((name) => {
+      if (Object.prototype.hasOwnProperty.call(map, name)) {
+        return;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(domElement, name);
+      if (descriptor && descriptor.get && descriptor.get.__qhtmlReferenceAlias === true) {
+        try {
+          delete domElement[name];
+        } catch (error) {
+          // Ignore non-configurable host-object properties.
+        }
+      }
+    });
+    const installed = new Set();
+    previous.forEach((name) => {
+      if (!Object.prototype.hasOwnProperty.call(map, name)) {
+        return;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(domElement, name);
+      if (descriptor && descriptor.get && descriptor.get.__qhtmlReferenceAlias === true) {
+        installed.add(name);
+      }
+    });
+    Object.keys(map).forEach((name) => {
+      if (!isValidPropertyIdentifier(name) ||
+          installed.has(name) ||
+          QHTML_DIRECT_ALIAS_RESERVED_NAMES.has(name)) {
+        return;
+      }
+
+      const currentDescriptor = Object.getOwnPropertyDescriptor(domElement, name);
+      const currentIsReferenceAlias = Boolean(
+        currentDescriptor &&
+        currentDescriptor.get &&
+        currentDescriptor.get.__qhtmlReferenceAlias === true
+      );
+
+      // QHTML references may shadow properties inherited from HTMLElement and
+      // its prototypes, but they must not replace a concrete runtime member
+      // that has already been installed directly on this element.
+      if (currentDescriptor && !currentIsReferenceAlias) {
+        return;
+      }
+
+      const getter = function () {
+        return resolveQHTMLRuntimeReference(
+          domElement,
+          name,
+          sourceRegistry || domElement.__qhtmlRegistry
+        );
+      };
+      getter.__qhtmlReferenceAlias = true;
+
+      // Some direct children (animations, timers, script actions, workers,
+      // and future runtime types) are materialized after reference access is
+      // installed.  Their normal assignment must replace the provisional
+      // alias rather than fail against a getter-only property.
+      const setter = function (value) {
+        try {
+          Object.defineProperty(domElement, name, {
+            configurable: true,
+            enumerable: false,
+            writable: true,
+            value: value
+          });
+          const aliases = qhtmlReferenceAliases.get(domElement);
+          if (aliases) {
+            aliases.delete(name);
+          }
+        } catch (error) {
+          // Leave the lazy resolver in place when the host object refuses the
+          // replacement.  qhtmlResolve(name) remains available either way.
+        }
+      };
+      setter.__qhtmlReferenceAlias = true;
+
+      if (define(name, { get: getter, set: setter })) {
+        installed.add(name);
+      }
+    });
+    qhtmlReferenceAliases.set(domElement, installed);
   }
 
   function resolveLexicalQHTMLReference(name, registry, selfElement) {
-    const contextNode = selfElement && selfElement.qhtmlNode && typeof selfElement.qhtmlNode.resolve === "function"
-      ? selfElement.qhtmlNode
-      : null;
-    if (!contextNode) {
-      return undefined;
-    }
-    const referenceNode = contextNode.resolve(name);
-    return runtimeValueForQHTMLReference(referenceNode, registry, selfElement);
+    const referenceNode = resolveQHTMLReferenceNode(selfElement, name, registry);
+    const value = runtimeValueForQHTMLReference(referenceNode, registry, selfElement);
+    return typeof value === "undefined" ? referenceNode : value;
   }
 
   function addLexicalQHTMLContextBindings(add, domElement, registry) {
-    const contextNode = domElement && domElement.qhtmlNode && typeof domElement.qhtmlNode.contextKeys === "function"
-      ? domElement.qhtmlNode
-      : null;
+    const contextNode = qhtmlNodeForReferenceTarget(domElement, registry);
     if (!contextNode) {
       return;
     }
-    Array.from(contextNode.contextKeys() || []).forEach((name) => {
+    const names = [];
+    const seen = new Set();
+    const addNames = function (values) {
+      Array.from(values || []).forEach((name) => {
+        const text = String(name || "");
+        if (text && !seen.has(text)) {
+          seen.add(text);
+          names.push(text);
+        }
+      });
+    };
+    if (typeof contextNode.qhtmlReferenceNames === "function") {
+      addNames(contextNode.qhtmlReferenceNames());
+    }
+    if (typeof contextNode.contextKeys === "function") {
+      addNames(contextNode.contextKeys());
+    }
+    names.forEach((name) => {
       const value = resolveLexicalQHTMLReference(name, registry, domElement);
       if (typeof value !== "undefined") {
         add(name, value);
@@ -3369,7 +3798,7 @@
         value: function qhtmlSignal(signalName, parameters) {
           const name = String(signalName || "signal").trim() || "signal";
           const signal = createQHTMLObjectSignal(this || target, name, parameters);
-          if (isValidContextIdentifier(name)) {
+          if (isValidPropertyIdentifier(name)) {
             this[name] = signal;
           }
           return signal;
@@ -3402,7 +3831,7 @@
       : [];
     declarations.forEach((declaration) => {
       const signalName = declaration && declaration.name ? String(declaration.name).trim() : "";
-      if (!isValidContextIdentifier(signalName)) {
+      if (!isValidPropertyIdentifier(signalName)) {
         return;
       }
       if (instance[signalName] && typeof instance[signalName].connect === "function") {
@@ -7127,12 +7556,6 @@
       if (typeof instanceNode.qhtmlName === "function" && instanceNode.qhtmlName()) {
         const instanceName = instanceNode.qhtmlName();
         registry.elementsByName.set(instanceName, domElement);
-        const parentComponent = domElement.parentElement && domElement.parentElement.closest
-          ? domElement.parentElement.closest("[component-instance]")
-          : null;
-        if (parentComponent) {
-          parentComponent[instanceName] = domElement;
-        }
       }
       logQHTMLRuntime(
         registry,
@@ -7145,6 +7568,7 @@
       bindRuntimeChildren(domElement, instanceNode, registry);
       bindComponentInstancePropertyAssignments(domElement, instanceNode, registry);
       bindPaintHandlers(domElement, instanceNode, registry);
+      installQHTMLReferenceAccess(domElement, registry, true);
     });
   }
 
@@ -7215,7 +7639,7 @@
     const names = new Set();
     Object.keys(componentElement.__qhtmlProperties || {}).forEach((name) => names.add(name));
     names.forEach((name) => {
-      if (!isValidContextIdentifier(name) || Object.prototype.hasOwnProperty.call(domElement, name)) {
+      if (!isValidPropertyIdentifier(name) || Object.prototype.hasOwnProperty.call(domElement, name)) {
         return;
       }
       try {
@@ -7257,6 +7681,7 @@
       return parentQHTMLComponentFor(domElement, registry || domElement.__qhtmlRegistry);
     };
     bindComponentContextForwarders(domElement, componentElement);
+    installQHTMLReferenceAccess(domElement, registry || domElement.__qhtmlRegistry, false);
     domElement.toJSON = function componentToJSON() {
       return domElement.qhtmlNode.toJSON();
     };
@@ -7401,6 +7826,7 @@
       }
       bindDeclarativeAssignmentAttributes(domElement, node, registry);
       bindRuntimeChildren(domElement, node, registry);
+      installQHTMLReferenceAccess(domElement, registry, true);
     });
   }
 
@@ -7877,6 +8303,7 @@
       logQHTMLRuntime(registry, "QHTMLComponent", "Component definition " + definitionName + " registered", definitionProxy.qhtmlNode);
     });
     bindRuntimeChildren(rootElement, tree, registry);
+    installQHTMLReferenceAccess(rootElement, registry, true);
 
     nodesByUuid.forEach((node) => {
       if (qhtmlNodeType(node) !== "QHTMLWorker") {
@@ -7913,12 +8340,6 @@
       if (typeof instanceNode.qhtmlName === "function" && instanceNode.qhtmlName()) {
         const instanceName = instanceNode.qhtmlName();
         registry.elementsByName.set(instanceName, domElement);
-        const parentComponent = domElement.parentElement && domElement.parentElement.closest
-          ? domElement.parentElement.closest("[component-instance]")
-          : null;
-        if (parentComponent) {
-          parentComponent[instanceName] = domElement;
-        }
       }
       logQHTMLRuntime(
         registry,
@@ -7937,6 +8358,7 @@
       bindDeclarativeAssignmentAttributes(domElement, instanceNode, registry);
       bindRuntimeChildren(domElement, instanceNode, registry);
       bindComponentInstancePropertyAssignments(domElement, instanceNode, registry);
+      installQHTMLReferenceAccess(domElement, registry, true);
 
       domElement.dispatchEvent(new CustomEvent("QHTMLComponentReady", {
         bubbles: true,
@@ -8500,6 +8922,43 @@
       bindComponentDomRuntime(element, tree);
       return tree;
     },
+    resolveReference(target, nameOrUUID) {
+      return resolveQHTMLRuntimeReference(target, nameOrUUID, registryForQHTMLTarget(target));
+    },
+    resolveReferenceNode(target, nameOrUUID) {
+      return resolveQHTMLReferenceNode(target, nameOrUUID, registryForQHTMLTarget(target));
+    },
+    resolveReferenceUUID(target, uuid) {
+      return resolveQHTMLRuntimeReference(target, uuid, registryForQHTMLTarget(target));
+    },
+    referenceMapFor(target) {
+      return Object.assign({}, qhtmlReferenceNameMap(target, registryForQHTMLTarget(target)));
+    },
+    referencesFor(target) {
+      if (target && !isQHTMLWasmReference(target)) {
+        return qhtmlReferenceFacadeFor(target, registryForQHTMLTarget(target), false);
+      }
+      const map = qhtmlReferenceNameMap(target, registryForQHTMLTarget(target));
+      const out = {};
+      Object.keys(map).forEach((name) => {
+        out[name] = resolveQHTMLRuntimeReference(target, name, registryForQHTMLTarget(target));
+      });
+      return out;
+    },
+    referenceNodesFor(target) {
+      if (target && !isQHTMLWasmReference(target)) {
+        return qhtmlReferenceFacadeFor(target, registryForQHTMLTarget(target), true);
+      }
+      const map = qhtmlReferenceNameMap(target, registryForQHTMLTarget(target));
+      const out = {};
+      Object.keys(map).forEach((name) => {
+        out[name] = resolveQHTMLReferenceNode(target, name, registryForQHTMLTarget(target));
+      });
+      return out;
+    },
+    hasReference(target, nameOrUUID) {
+      return Boolean(resolveQHTMLReferenceNode(target, nameOrUUID, registryForQHTMLTarget(target)));
+    },
     async mountTree(element, tree) {
       if (!element || !tree) {
         return null;
@@ -8562,6 +9021,10 @@
     "lifetimevariation",
     "x",
     "y",
+    "path",
+    "duration",
+    "delay",
+    "sleep",
     "width",
     "height",
     "xvariation",
@@ -8623,6 +9086,12 @@
       this._drawPhase = 0;
       this._paintPollCountdown = 1;
       this._lastPaintDuration = 0;
+      this._pathFrame = 0;
+      this._pathStartedAt = 0;
+      this._pathSettingPosition = false;
+      this._pathOriginalX = null;
+      this._pathOriginalY = null;
+      this._pathOriginalCaptured = false;
       this._resizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => this._resize())
         : null;
@@ -8631,6 +9100,7 @@
     }
 
     connectedCallback() {
+      this._capturePathFallbackPosition();
       this._installCanvas();
       this._reloadConfig();
 
@@ -8655,10 +9125,12 @@
       if (this._config.running) {
         this._postWorker({ type: "start" });
         this._startPainter();
+        this._startPathAnimation(true);
       }
     }
 
     disconnectedCallback() {
+      this._stopPathAnimation(false);
       this._stopPainter();
       this._destroyWorker();
 
@@ -8671,7 +9143,19 @@
       this._canvas.remove();
     }
 
-    attributeChangedCallback() {
+    attributeChangedCallback(name, oldValue, newValue) {
+      const attributeName = String(name || "").toLowerCase();
+
+      if ((attributeName === "x" || attributeName === "y") &&
+          this._pathOriginalCaptured &&
+          !this._pathSettingPosition) {
+        if (attributeName === "x") {
+          this._pathOriginalX = newValue;
+        } else {
+          this._pathOriginalY = newValue;
+        }
+      }
+
       if (!this.isConnected) {
         return;
       }
@@ -8691,8 +9175,19 @@
       if (!oldRunning && this._config.running) {
         this._postWorker({ type: "start" });
         this._startPainter();
+        this._startPathAnimation(true);
       } else if (oldRunning && !this._config.running) {
+        this._stopPathAnimation(true);
         this._postWorker({ type: "stop" });
+      } else if (attributeName === "path" ||
+                 attributeName === "duration" ||
+                 attributeName === "delay" ||
+                 attributeName === "sleep") {
+        if (this._config.running && this._readPathPoints().length > 0) {
+          this._startPathAnimation(true);
+        } else {
+          this._stopPathAnimation(true);
+        }
       }
 
       this._applyLayerStyle();
@@ -8786,6 +9281,201 @@
       this._applyLayerStyle();
     }
 
+    _capturePathFallbackPosition() {
+      if (this._pathOriginalCaptured) {
+        return;
+      }
+
+      this._pathOriginalCaptured = true;
+      this._pathOriginalX = this.getAttribute("x");
+      this._pathOriginalY = this.getAttribute("y");
+    }
+
+    _readPathPoints() {
+      const values = String(this.getAttribute("path") || "")
+        .trim()
+        .split(/[\s,]+/)
+        .filter(Boolean);
+      const points = [];
+
+      for (let index = 0; index + 1 < values.length; index += 2) {
+        const x = Number(values[index]);
+        const y = Number(values[index + 1]);
+
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          continue;
+        }
+
+        points.push([clamp(x, 0, 1), clamp(y, 0, 1)]);
+      }
+
+      return points;
+    }
+
+    _pathParentSize() {
+      const parent = this.parentElement;
+
+      if (!parent) {
+        return [0, 0];
+      }
+
+      const style = global.getComputedStyle(parent);
+      const rect = parent.getBoundingClientRect();
+      const width = Number.parseFloat(style.width) || Number(rect.width) || Number(parent.clientWidth) || 0;
+      const height = Number.parseFloat(style.height) || Number(rect.height) || Number(parent.clientHeight) || 0;
+      return [width, height];
+    }
+
+    _applyPathPosition(normalizedX, normalizedY, pathPosition) {
+      const size = this._pathParentSize();
+      const x = clamp(Number(normalizedX) || 0, 0, 1) * size[0];
+      const y = clamp(Number(normalizedY) || 0, 0, 1) * size[1];
+
+      this.setAttribute("pathPos", String(pathPosition));
+
+      this._pathSettingPosition = true;
+      try {
+        this.setAttribute("x", String(x));
+        this.setAttribute("y", String(y));
+      } finally {
+        this._pathSettingPosition = false;
+      }
+    }
+
+    _restorePathFallbackPosition() {
+      if (!this._pathOriginalCaptured) {
+        return;
+      }
+
+      this._pathSettingPosition = true;
+      try {
+        if (this._pathOriginalX == null) {
+          this.removeAttribute("x");
+        } else {
+          this.setAttribute("x", this._pathOriginalX);
+        }
+
+        if (this._pathOriginalY == null) {
+          this.removeAttribute("y");
+        } else {
+          this.setAttribute("y", this._pathOriginalY);
+        }
+      } finally {
+        this._pathSettingPosition = false;
+      }
+
+      this.removeAttribute("pathPos");
+    }
+
+    _startPathAnimation(reset) {
+      const points = this._readPathPoints();
+
+      if (!this.running || points.length === 0) {
+        return;
+      }
+
+      if (reset || !this._pathStartedAt) {
+        this._pathStartedAt = global.performance && typeof global.performance.now === "function"
+          ? global.performance.now()
+          : Date.now();
+      }
+
+      this._updatePathAnimation();
+    }
+
+    _stopPathAnimation(restorePosition) {
+      if (this._pathFrame) {
+        if (typeof global.cancelAnimationFrame === "function") {
+          global.cancelAnimationFrame(this._pathFrame);
+        } else {
+          global.clearTimeout(this._pathFrame);
+        }
+        this._pathFrame = 0;
+      }
+
+      this._pathStartedAt = 0;
+
+      if (restorePosition) {
+        this._restorePathFallbackPosition();
+      }
+    }
+
+    _schedulePathAnimation() {
+      if (this._pathFrame || !this.running || this._readPathPoints().length < 2) {
+        return;
+      }
+
+      if (typeof global.requestAnimationFrame === "function") {
+        this._pathFrame = global.requestAnimationFrame(() => {
+          this._pathFrame = 0;
+          this._updatePathAnimation();
+        });
+      } else {
+        this._pathFrame = global.setTimeout(() => {
+          this._pathFrame = 0;
+          this._updatePathAnimation();
+        }, 16);
+      }
+    }
+
+    _updatePathAnimation() {
+      const points = this._readPathPoints();
+
+      if (!this.running || points.length === 0) {
+        this._stopPathAnimation(false);
+        return;
+      }
+
+      if (points.length === 1) {
+        this._applyPathPosition(points[0][0], points[0][1], 0);
+        return;
+      }
+
+      const now = global.performance && typeof global.performance.now === "function"
+        ? global.performance.now()
+        : Date.now();
+      const duration = Math.max(1, Number(this.getAttribute("duration")) || 1000);
+      const delay = Math.max(0, Number(this.getAttribute("delay")) || 0);
+      const sleep = Math.max(0, Number(this.getAttribute("sleep")) || 0);
+      const segmentDuration = duration / points.length;
+      const movementDuration = segmentDuration * (points.length - 1);
+      const cycleDuration = delay + movementDuration + sleep;
+      const elapsed = Math.max(0, now - this._pathStartedAt);
+      const cycleElapsed = cycleDuration > 0 ? elapsed % cycleDuration : 0;
+
+      if (cycleElapsed < delay) {
+        this._applyPathPosition(points[0][0], points[0][1], 0);
+        this._schedulePathAnimation();
+        return;
+      }
+
+      const movementElapsed = cycleElapsed - delay;
+
+      if (movementElapsed >= movementDuration) {
+        const last = points[points.length - 1];
+        this._applyPathPosition(last[0], last[1], points.length - 1);
+        this._schedulePathAnimation();
+        return;
+      }
+
+      const pathPosition = Math.min(
+        points.length - 2,
+        Math.floor(movementElapsed / segmentDuration)
+      );
+      const progress = clamp(
+        (movementElapsed - (pathPosition * segmentDuration)) / segmentDuration,
+        0,
+        1
+      );
+      const start = points[pathPosition];
+      const end = points[pathPosition + 1];
+      const x = start[0] + ((end[0] - start[0]) * progress);
+      const y = start[1] + ((end[1] - start[1]) * progress);
+
+      this._applyPathPosition(x, y, pathPosition);
+      this._schedulePathAnimation();
+    }
+
     _resize() {
       const parent = this.parentElement;
 
@@ -8806,6 +9496,10 @@
         this._canvas.style.width = `${cssWidth}px`;
         this._canvas.style.height = `${cssHeight}px`;
         this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      if (this.running && this._readPathPoints().length > 0) {
+        this._updatePathAnimation();
       }
     }
 

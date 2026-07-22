@@ -453,6 +453,7 @@ public:
 
     ~QHTMLNode() override
     {
+        clearQHTMLReferences();
         clearChildren();
         delete qhtmlContext;
     }
@@ -463,6 +464,12 @@ public:
     QHTMLNode *qhtmlParent = nullptr;
     QHash<int, QHTMLNode *> qhtmlChildren;
     QHash<QString, QString> qhtmlProperties;
+
+    // Non-owning reference indexes. qhtmlChildren and the containing
+    // QHTMLDomTree remain responsible for object lifetime.
+    QHash<QString, QHTMLReference *> qhtmlReferences;
+    QHash<QString, QString> qhtmlReferenceNames;
+
     QHTMLContext *qhtmlContext = nullptr;
     QHTMLLogger *qhtmlLogger = nullptr;
 
@@ -490,6 +497,15 @@ public:
             }
         }
         return out;
+    }
+
+    // Some QHTML objects own referenceable runtime members that are not part
+    // of the rendered qhtmlChildren list. Component-instance slot proxies and
+    // cloned named component members use this path so they remain owned and
+    // discoverable without being rendered a second time.
+    virtual QVector<QHTMLNode *> ownedReferenceMembers() const
+    {
+        return {};
     }
 
     emscripten::val childListJs() const
@@ -562,6 +578,17 @@ public:
                 return child;
             }
             if (QHTMLNode *found = child->findDescendantByUUID(wantedUUID)) {
+                return found;
+            }
+        }
+        for (QHTMLNode *member : ownedReferenceMembers()) {
+            if (!member) {
+                continue;
+            }
+            if (member->qhtmlUUID() == wantedUUID) {
+                return member;
+            }
+            if (QHTMLNode *found = member->findDescendantByUUID(wantedUUID)) {
                 return found;
             }
         }
@@ -701,6 +728,120 @@ public:
     void updateObjectReference(const QString &name, QHTMLReference *target)
     {
         qhtmlContext->updateObjectReference(name, target);
+    }
+
+    bool addQHTMLReference(QHTMLReference *reference)
+    {
+        return addQHTMLReference(reference ? reference->qhtmlName() : QString(), reference);
+    }
+
+    bool addQHTMLReference(const QString &visibleName, QHTMLReference *reference)
+    {
+        if (!reference) {
+            return false;
+        }
+
+        const QString uuid = reference->qhtmlUUID().trimmed();
+        if (uuid.isEmpty() || uuid == qhtmlUUID()) {
+            return false;
+        }
+
+        QHTMLReference *existingReference = qhtmlReferences.value(uuid, nullptr);
+        if (existingReference && existingReference != reference) {
+            return false;
+        }
+
+        const bool inserted = existingReference == nullptr;
+        if (inserted) {
+            qhtmlReferences.insert(uuid, reference);
+        }
+
+        const QString name = visibleName.trimmed();
+        if (!name.isEmpty()) {
+            qhtmlReferenceNames.insert(name, uuid);
+        }
+        return inserted;
+    }
+
+    bool removeQHTMLReference(const QString &uuid)
+    {
+        const QString normalizedUUID = uuid.trimmed();
+        if (normalizedUUID.isEmpty() || !qhtmlReferences.remove(normalizedUUID)) {
+            return false;
+        }
+
+        for (auto it = qhtmlReferenceNames.begin(); it != qhtmlReferenceNames.end();) {
+            if (it.value() == normalizedUUID) {
+                it = qhtmlReferenceNames.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        return true;
+    }
+
+    void clearQHTMLReferences()
+    {
+        qhtmlReferenceNames.clear();
+        qhtmlReferences.clear();
+    }
+
+    bool hasQHTMLReferenceUUID(const QString &uuid) const
+    {
+        return qhtmlReferences.contains(uuid.trimmed());
+    }
+
+    bool hasQHTMLReferenceName(const QString &name) const
+    {
+        return qhtmlReferenceNames.contains(name.trimmed());
+    }
+
+    bool qhtmlHasReference(const QString &nameOrUUID) const
+    {
+        const QString key = nameOrUUID.trimmed();
+        return !key.isEmpty() &&
+               (qhtmlReferenceNames.contains(key) || qhtmlReferences.contains(key));
+    }
+
+    QHTMLReference *qhtmlReferenceByUUID(const QString &uuid) const
+    {
+        return qhtmlReferences.value(uuid.trimmed(), nullptr);
+    }
+
+    QHTMLReference *qhtmlReferenceByName(const QString &name) const
+    {
+        const QString uuid = qhtmlReferenceNames.value(name.trimmed());
+        return uuid.isEmpty() ? nullptr : qhtmlReferences.value(uuid, nullptr);
+    }
+
+    QStringList qhtmlReferenceUUIDs() const
+    {
+        QStringList values = qhtmlReferences.keys();
+        values.sort();
+        return values;
+    }
+
+    QStringList qhtmlReferenceNamesList() const
+    {
+        QStringList values = qhtmlReferenceNames.keys();
+        values.sort();
+        return values;
+    }
+
+    QHTMLReference *qhtmlResolve(const QString &nameOrUUID) const
+    {
+        const QString key = nameOrUUID.trimmed();
+        if (key.isEmpty()) {
+            return nullptr;
+        }
+
+        if (QHTMLReference *reference = qhtmlReferenceByName(key)) {
+            return reference;
+        }
+        if (QHTMLReference *reference = qhtmlReferenceByUUID(key)) {
+            return reference;
+        }
+        return resolve(key);
     }
 
     QHTMLReference *resolve(const QString &key) const
@@ -2900,8 +3041,8 @@ public:
 
     QHTMLComponentInstance *owner() const { return m_owner; }
     QHTMLComponentInstance *ownerJs() const { return m_owner; }
-    QHTMLComponentSlot *definitionSlot() const { return m_definitionSlot; }
-    QHTMLComponentSlot *definitionSlotJs() const { return m_definitionSlot; }
+    QHTMLComponentSlot *definitionSlot() const;
+    QHTMLComponentSlot *definitionSlotJs() const { return definitionSlot(); }
 
     QHTMLNode *append(QHTMLNode *node);
     QHTMLNode *appendJs(QHTMLNode *node) { return append(node); }
@@ -2912,7 +3053,7 @@ public:
 
 private:
     QHTMLComponentInstance *m_owner = nullptr;
-    QHTMLComponentSlot *m_definitionSlot = nullptr;
+    QString m_slotName;
 };
 
 class QHTMLComponentDefinition final : public QObject, public QHTMLTypedNode
@@ -2973,6 +3114,7 @@ public:
         setQHTMLType(QStringLiteral("QHTMLComponentInstance"));
         m_definition = definition;
         setProperty(QStringLiteral("kind"), QStringLiteral("component-instance"));
+        ensureSlotViews();
     }
 
     QHTMLComponentInstance(const std::string &componentName, const std::string &name)
@@ -2987,19 +3129,93 @@ public:
 
     ~QHTMLComponentInstance() override
     {
-        qDeleteAll(m_slotViews);
-        m_slotViews.clear();
+        clearReferenceMembers();
+        clearSlotViews();
     }
 
     void setDefinition(QHTMLComponentDefinition *definition)
     {
-        m_definition = definition;
+        if (m_definition != definition) {
+            clearReferenceMembers();
+            clearSlotViews();
+            m_definition = definition;
+        }
+        ensureSlotViews();
         emit maybeLog(QStringLiteral("Component instance ") + qhtmlName() +
                       QStringLiteral(" definition set to ") +
                       (definition ? definition->qhtmlName() : QStringLiteral("<none>")));
     }
     QHTMLComponentDefinition *definition() const { return m_definition; }
     QHTMLComponentDefinition *definitionJs() const { return m_definition; }
+
+    int referenceMemberCount() const
+    {
+        return m_referenceMembers.size();
+    }
+
+    QHTMLNode *referenceMemberAt(int index) const
+    {
+        return index >= 0 && index < m_referenceMembers.size()
+                   ? m_referenceMembers.at(index)
+                   : nullptr;
+    }
+
+    QVector<QHTMLNode *> referenceMembers() const
+    {
+        return m_referenceMembers;
+    }
+
+    QVector<QHTMLNode *> ownedReferenceMembers() const override
+    {
+        QVector<QHTMLNode *> out = m_referenceMembers;
+        out.reserve(out.size() + m_slotViews.size());
+        for (QHTMLComponentInstanceSlot *view : m_slotViews) {
+            if (view) {
+                out.append(view);
+            }
+        }
+        return out;
+    }
+
+    bool appendReferenceMember(QHTMLNode *member)
+    {
+        if (!member || member == this || m_referenceMembers.contains(member)) {
+            return false;
+        }
+
+        member->qhtmlParent = this;
+        if (member->qhtmlContext) {
+            member->qhtmlContext->setParentContext(qhtmlContext);
+        }
+        m_referenceMembers.append(member);
+        addQHTMLReference(member->qhtmlName(), member);
+        return true;
+    }
+
+    QHTMLNode *takeReferenceMemberAt(int index)
+    {
+        if (index < 0 || index >= m_referenceMembers.size()) {
+            return nullptr;
+        }
+
+        QHTMLNode *member = m_referenceMembers.takeAt(index);
+        if (!member) {
+            return nullptr;
+        }
+        removeQHTMLReference(member->qhtmlUUID());
+        member->qhtmlParent = nullptr;
+        if (member->qhtmlContext) {
+            member->qhtmlContext->setParentContext(nullptr);
+        }
+        return member;
+    }
+
+    void clearReferenceMembers()
+    {
+        while (!m_referenceMembers.isEmpty()) {
+            delete takeReferenceMemberAt(m_referenceMembers.size() - 1);
+        }
+    }
 
     QString componentDefinitionUUID() const
     {
@@ -3039,7 +3255,7 @@ public:
 
     emscripten::val slotsJs() const
     {
-        refreshSlotViews();
+        ensureSlotViews();
         emscripten::val out = emscripten::val::array();
         for (int i = 0; i < m_slotViews.size(); ++i) {
             out.set(i, m_slotViews.at(i));
@@ -3066,6 +3282,32 @@ public:
     QHTMLComponentSlot *slotJs(const std::string &name) const
     {
         return slot(QString::fromStdString(name));
+    }
+
+    QHTMLComponentInstanceSlot *slotViewAt(int index) const
+    {
+        ensureSlotViews();
+        return index >= 0 && index < m_slotViews.size() ? m_slotViews.at(index) : nullptr;
+    }
+
+    QHTMLComponentInstanceSlot *slotView(const QString &name) const
+    {
+        const QString wantedName = name.trimmed();
+        if (wantedName.isEmpty()) {
+            return nullptr;
+        }
+        ensureSlotViews();
+        for (QHTMLComponentInstanceSlot *view : m_slotViews) {
+            if (view && view->qhtmlName() == wantedName) {
+                return view;
+            }
+        }
+        return nullptr;
+    }
+
+    QHTMLComponentInstanceSlot *slotViewJs(const std::string &name) const
+    {
+        return slotView(QString::fromStdString(name));
     }
 
     QString slotNames() const
@@ -3842,15 +4084,79 @@ private:
     }
 
     QHTMLComponentDefinition *m_definition = nullptr;
+    QVector<QHTMLNode *> m_referenceMembers;
     mutable QVector<QHTMLComponentInstanceSlot *> m_slotViews;
 
-    void refreshSlotViews() const
+    void clearSlotViews() const
     {
-        qDeleteAll(m_slotViews);
-        m_slotViews.clear();
-        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
-            m_slotViews.append(new QHTMLComponentInstanceSlot(const_cast<QHTMLComponentInstance *>(this), componentSlot));
+        QHTMLComponentInstance *self = const_cast<QHTMLComponentInstance *>(this);
+        for (QHTMLComponentInstanceSlot *view : m_slotViews) {
+            if (!view) {
+                continue;
+            }
+            self->removeQHTMLReference(view->qhtmlUUID());
+            view->qhtmlParent = nullptr;
+            if (view->qhtmlContext) {
+                view->qhtmlContext->setParentContext(nullptr);
+            }
+            delete view;
         }
+        m_slotViews.clear();
+    }
+
+    void ensureSlotViews() const
+    {
+        QHTMLComponentInstance *self = const_cast<QHTMLComponentInstance *>(this);
+        QHash<QString, QHTMLComponentInstanceSlot *> existingViews;
+        for (QHTMLComponentInstanceSlot *view : m_slotViews) {
+            if (!view) {
+                continue;
+            }
+            const QString slotName = view->qhtmlName().trimmed();
+            if (slotName.isEmpty() || existingViews.contains(slotName)) {
+                self->removeQHTMLReference(view->qhtmlUUID());
+                delete view;
+                continue;
+            }
+            existingViews.insert(slotName, view);
+        }
+
+        QVector<QHTMLComponentInstanceSlot *> orderedViews;
+        QSet<QString> activeNames;
+        for (QHTMLComponentSlot *componentSlot : collectSlots()) {
+            if (!componentSlot) {
+                continue;
+            }
+            const QString slotName = componentSlot->qhtmlName().trimmed();
+            if (slotName.isEmpty() || activeNames.contains(slotName)) {
+                continue;
+            }
+            activeNames.insert(slotName);
+
+            QHTMLComponentInstanceSlot *view = existingViews.take(slotName);
+            if (!view) {
+                view = new QHTMLComponentInstanceSlot(self, componentSlot);
+            }
+            view->qhtmlParent = self;
+            if (view->qhtmlContext) {
+                view->qhtmlContext->setParentContext(self->qhtmlContext);
+            }
+            orderedViews.append(view);
+            self->addQHTMLReference(slotName, view);
+        }
+
+        for (QHTMLComponentInstanceSlot *staleView : existingViews) {
+            if (!staleView) {
+                continue;
+            }
+            self->removeQHTMLReference(staleView->qhtmlUUID());
+            staleView->qhtmlParent = nullptr;
+            if (staleView->qhtmlContext) {
+                staleView->qhtmlContext->setParentContext(nullptr);
+            }
+            delete staleView;
+        }
+        m_slotViews = orderedViews;
     }
 
     static QHTMLNode *cloneSlotApiNode(QHTMLNode *node)
@@ -3906,24 +4212,29 @@ inline QHTMLComponentInstanceSlot::QHTMLComponentInstanceSlot(QHTMLComponentInst
                      definitionSlot ? definitionSlot->qhtmlName() : QString())
 {
     m_owner = owner;
-    m_definitionSlot = definitionSlot;
+    m_slotName = definitionSlot ? definitionSlot->qhtmlName().trimmed() : QString();
     setQHTMLType(QStringLiteral("QHTMLComponentInstanceSlot"));
     setProperty(QStringLiteral("kind"), QStringLiteral("component-instance-slot"));
 }
 
+inline QHTMLComponentSlot *QHTMLComponentInstanceSlot::definitionSlot() const
+{
+    return m_owner && !m_slotName.isEmpty() ? m_owner->slot(m_slotName) : nullptr;
+}
+
 inline QHTMLNode *QHTMLComponentInstanceSlot::append(QHTMLNode *node)
 {
-    return m_owner && m_definitionSlot ? m_owner->appendToSlot(qhtmlName(), node) : nullptr;
+    return m_owner && definitionSlot() ? m_owner->appendToSlot(qhtmlName(), node) : nullptr;
 }
 
 inline bool QHTMLComponentInstanceSlot::remove(QHTMLNode *node)
 {
-    return m_owner && m_definitionSlot ? m_owner->removeFromSlot(qhtmlName(), node) : false;
+    return m_owner && definitionSlot() ? m_owner->removeFromSlot(qhtmlName(), node) : false;
 }
 
 inline QVector<QHTMLNode *> QHTMLComponentInstanceSlot::children() const
 {
-    return m_owner && m_definitionSlot ? m_owner->slotChildren(qhtmlName()) : QVector<QHTMLNode *>();
+    return m_owner && definitionSlot() ? m_owner->slotChildren(qhtmlName()) : QVector<QHTMLNode *>();
 }
 
 inline emscripten::val QHTMLComponentInstanceSlot::childrenJs() const

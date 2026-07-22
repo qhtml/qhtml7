@@ -1,3 +1,8 @@
+(function (globalScope) {
+  const QHTML_VERSION = "4.3.21";
+  globalScope.QHTML_VERSION = QHTML_VERSION;
+})(typeof globalThis !== "undefined" ? globalThis : window);
+
 (function installParticleEmitter(global) {
   if (!global || !global.customElements) {
     return;

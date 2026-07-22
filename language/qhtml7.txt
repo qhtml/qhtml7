@@ -1090,6 +1090,376 @@ The q-logger node renders no HTML. It must serialize through toQHTML(), toJSON()
 
 ---------
 
+29. QHTML reference passing, component scopes, and browser access
+
+QHTML nodes may expose named QHTML objects through a guarded reference system. The purpose of the system is to make QHTMLProperty, QHTMLFunction, QHTMLSignal, QHTMLComponentInstance, QHTMLComponentInstanceSlot, QHTMLTheme, QHTMLStyle, QHTMLTimer, animation objects, and other named typed QHTML objects reachable from descendants without copying or owning those objects a second time.
+
+The reference system is separate from dot walking. Reference passing resolves the first visible name in the current component scope. Dot walking may later continue from the returned object into that object's members and references.
+
+29a. Reference identity and storage
+
+Every QHTMLNode has two non-owning indexes:
+
+```
+qhtmlReferences     UUID -> QHTMLReference pointer
+qhtmlReferenceNames visible name -> UUID
+```
+
+qhtmlReferences never owns or deletes its targets. qhtmlChildren and the containing QHTMLDomTree remain responsible for normal object ownership. A reference map must never be traversed as an ownership graph.
+
+A reference is not added when:
+
+- the pointer is null;
+- the target UUID is empty;
+- the target UUID is the same as the current node UUID;
+- the same UUID/pointer is already present.
+
+The visible-name index provides normal lexical lookup and shadowing. The UUID index provides stable identity and duplicate prevention. qhtmlResolve(nameOrUUID) checks a visible name first, then an exact UUID, and finally the existing QHTMLContext resolver for compatibility.
+
+The C++/WASM node API includes:
+
+```
+qhtmlResolve(nameOrUUID)
+qhtmlReferenceByName(name)
+qhtmlReferenceByUUID(uuid)
+qhtmlHasReference(nameOrUUID)
+qhtmlReferenceNames()
+qhtmlReferenceUUIDs()
+qhtmlReferenceMap()
+```
+
+qhtmlReferenceMap() returns a JavaScript object containing visible-name-to-UUID entries. It is intended for inspection; browser resolution normally uses qhtmlReferenceNames() and qhtmlReferenceByName() so that it does not repeatedly materialize a complete map.
+
+29b. Scope owners and transparent nodes
+
+The QHTMLDomTree root, QHTMLComponentDefinition, and QHTMLComponentInstance objects are scope owners. Ordinary anonymous/rendered nodes do not create lexical scopes.
+
+For example:
+
+```
+mycomp object1 {
+  div {
+    section {
+      button { }
+    }
+  }
+}
+```
+
+The div, section, and button remain in object1's component scope. They receive the effective object1 reference set but do not create nested reference frames.
+
+Anonymous QHTMLDomElement, text/html fragments, slots, properties, functions, signals, styles, themes, timers, and animations do not create new scopes merely because they are nodes. A new derived component scope is created when traversal enters another QHTMLComponentInstance.
+
+29c. Component members passed downward
+
+A component scope may contain named typed members that belong to the component instance or are already available in its local QHTMLContext. This includes the normal cloned component-definition members such as:
+
+- QHTMLProperty;
+- QHTMLFunction;
+- QHTMLSignal, except ready;
+- QHTMLTimer;
+- QHTMLBehavior;
+- QHTMLPropertyAnimation and QHTMLAnimationGroup;
+- QHTMLScriptAction;
+- QHTMLStyle;
+- QHTMLTheme;
+- other named typed declarations accepted by the reference-declaration filter;
+- persistent QHTMLComponentInstanceSlot proxies;
+- named child QHTMLComponentInstance objects.
+
+These references are passed downward through anonymous descendants. The reference targets are not cloned again during propagation.
+
+The current guarded implementation traverses only the authoritative qhtmlChildren tree when building scopes. It does not traverse qhtmlReferences and does not construct or walk a second non-rendering component ownership graph. Persistent slot proxies are added explicitly as local references but are not treated as descendants.
+
+29d. Parent access is a special case
+
+A named component object is never passed into its own descendants under its declared name.
+
+For example:
+
+```
+mycomp parentObject {
+  childcomp childObject { }
+}
+```
+
+childObject may inherit parentObject's visible properties, functions, non-ready signals, slots, and other allowed members. It must not receive:
+
+```
+parentObject -> parent component instance
+```
+
+The parent object is reached only through the special structural parent operation:
+
+```
+qhtmlParent
+parent()
+```
+
+This avoids cycles such as parentObject -> childObject -> parentObject and prevents recursive context/reference expansion.
+
+The current component is also excluded from its own qhtmlReferences. Therefore object1.object1 is not created merely because the instance was declared as:
+
+```
+mycomp object1 { }
+```
+
+29e. Sibling visibility is one level deep
+
+Named component siblings in the same component scope may reference each other as objects. Only the sibling object itself is copied into the scope. References from inside that sibling are never merged or hoisted outward.
+
+Example:
+
+```
+mycomp obj1 { id: "obj1a" }
+othercomp obj2 { }
+thirdcomp obj3 {
+  mycomp obj1 { id: "obj1b" }
+  mycomp obj4 { }
+}
+```
+
+The intended visible references are:
+
+```
+obj1#obj1a: obj2, obj3
+obj2:       obj1#obj1a, obj3
+obj3:       obj1#obj1b, obj2, obj4
+```
+
+The local obj1 inside obj3 shadows the inherited root obj1. References inside obj1, obj2, or obj4 are not copied into their siblings.
+
+Anonymous wrappers are transparent when collecting one-level named component children:
+
+```
+thirdcomp obj3 {
+  div {
+    section {
+      mycomp obj4 { }
+    }
+  }
+}
+```
+
+obj4 belongs to obj3's component scope, but traversal stops at obj4's component boundary and does not hoist obj4's internal component members into obj3.
+
+29f. Local shadowing
+
+A local visible name replaces an inherited visible name for the current component scope and all anonymous descendants in that scope. The replaced binding remains unchanged in parent and sibling scopes.
+
+Shadowing is name based while object identity remains UUID based. Removing a UUID from an inherited frame also removes every visible name that points to that UUID.
+
+Anonymous DOM nodes do not create branch-local shadow scopes. A shadow becomes a new subtree scope only when traversal enters another QHTMLComponentInstance.
+
+29g. ready signals are lifecycle-local
+
+The automatically generated signal:
+
+```
+q-signal ready()
+```
+
+is never added to qhtmlReferences and is never propagated. ready remains a local lifecycle signal used by the renderer. Excluding ready avoids collisions across nearly every generated QHTML node and prevents lifecycle objects from becoming general lexical references.
+
+29h. Component instance slot references
+
+Each QHTMLComponentInstance maintains persistent QHTMLComponentInstanceSlot proxy objects for the slots defined by its component definition. Calling slots() repeatedly returns stable proxies with stable UUIDs instead of deleting and recreating temporary views.
+
+For:
+
+```
+q-component mycomp {
+  slot someSlot {
+    text { hello world }
+  }
+}
+
+mycomp obj1 {
+  someSlot {
+    text { what up }
+  }
+}
+```
+
+obj1 may resolve:
+
+```
+obj1.qhtmlResolve("someSlot")
+```
+
+The returned slot proxy represents the current instance slot. Its children() operation returns the explicit instance override when present, otherwise the definition/default slot contents according to the existing slot implementation.
+
+Slot proxies store their owner and slot name and resolve the current definition slot through the owner. They do not retain a permanent raw pointer to a possibly replaced definition slot.
+
+Slot proxies are references, not scope owners. Named component instances injected through slot content participate in the nearest component scope according to the same transparent-wrapper and component-boundary rules.
+
+29i. Iterative and guarded propagation
+
+Reference propagation must not recurse through qhtmlReferences. It walks only qhtmlChildren and uses explicit work queues.
+
+Each traversal uses both:
+
+```
+visited node pointers
+visited UUIDs
+```
+
+Pointer guards protect against malformed or duplicate UUIDs. UUID guards protect reference identity and duplicate insertion.
+
+When traversal enters a nested component instance:
+
+1. Copy the inherited reference frame.
+2. Remove the nested component's own UUID and every visible name bound to that UUID.
+3. Add the nested component's local members and one-level named children.
+4. Materialize the resulting references on the component and its anonymous descendants.
+5. Never copy another object's qhtmlReferences into the frame.
+
+The existing parent QHTMLContext chain is not recursively imported through visibleKeys(). Only local context keys are seeded because the inherited frame already represents the parent scope.
+
+29j. DOM element reference API
+
+Every rendered QHTML DOM element receives lazy browser reference access. The browser layer stores names and UUIDs and resolves the current target when accessed. It does not permanently copy new raw WASM pointers onto the DOM element.
+
+Canonical DOM operations:
+
+```
+element.qhtmlResolve("name")
+element.qhtmlResolve(uuid)
+element.qhtmlResolveNode("name")
+element.qhtmlHasReference("name")
+element.qhtmlReferenceNames()
+element.qhtmlReferenceUUIDs()
+```
+
+qhtmlResolve() returns the normal browser/runtime representation when available:
+
+- a QHTMLProperty resolves to its current value;
+- a QHTMLFunction resolves to its callable browser function;
+- a QHTMLSignal resolves to its callable signal function;
+- a QHTMLComponentInstance resolves to its rendered component DOM element;
+- a timer, animation, style, theme, or other browser-bound object resolves to its runtime object;
+- a non-rendered reference such as a slot proxy may resolve to the WASM reference object.
+
+qhtmlResolveNode() always returns the underlying WASM reference object.
+
+Two live proxy views are also installed:
+
+```
+element.qhtmlReferences.someName
+element.qhtmlReferences["someName"]
+element.qhtmlReferences[uuid]
+
+element.qhtmlReferenceNodes.someName
+```
+
+qhtmlReferences returns runtime-facing values/objects. qhtmlReferenceNodes returns WASM reference objects.
+
+29k. Direct DOM aliases are local-only
+
+Named references that are direct children of the current QHTML node may also be installed directly on the rendered DOM element:
+
+```
+element.childObject
+element.customProperty
+element.widthAnim
+```
+
+Direct aliases are not created for inherited parent members or sibling references. Those remain reachable through qhtmlResolve(), qhtmlReferences, qhtmlParent, and future dot walking.
+
+A direct alias may shadow a property inherited from HTMLElement or another DOM prototype. This allows QHTML authors to define custom QHTML properties and functions using useful DOM-like names. A direct alias must not replace a concrete own runtime member already installed on the element.
+
+Late-bound runtime objects such as animations and timers may initially have a provisional alias getter. The alias includes a setter so that the later runtime assignment replaces the provisional alias with a normal writable property instead of throwing a getter-only TypeError.
+
+Existing QHTML property/function/signal runtime bindings are preserved and are not replaced with self-resolving alias getters. This prevents recursive access such as:
+
+```
+property alias getter
+ -> qhtmlResolve(property)
+ -> runtime property lookup
+ -> same alias getter
+```
+
+The following bridge names are reserved and cannot be replaced by direct aliases:
+
+```
+qhtmlNode
+qhtmlDomTree
+qhtmlResolve
+qhtmlResolveNode
+qhtmlReferences
+qhtmlReferenceNodes
+qhtmlReferenceNames
+qhtmlReferenceUUIDs
+qhtmlHasReference
+```
+
+29l. QHTML JavaScript execution context
+
+QHTML event handlers, functions, and other browser script contexts receive the same reference facilities:
+
+```
+qhtmlResolve("object1")
+qhtmlResolveNode("object1")
+qhtmlReferences.object1
+qhtmlReferenceNodes.object1
+```
+
+Visible reference names may also be introduced as unqualified lexical identifiers by the existing script-context binding layer. The new reference scope is consulted before broad legacy/global registries. Existing QHTMLContext names remain available as compatibility fallback.
+
+The same scope rules apply inside scripts: no named parent-component reference, no ready signal, no sibling-internal leakage, and local component shadowing.
+
+29m. QHTML7 runtime-level browser API
+
+External browser scripts may use:
+
+```
+QHTML7.resolveReference(target, nameOrUUID)
+QHTML7.resolveReferenceNode(target, nameOrUUID)
+QHTML7.resolveReferenceUUID(target, uuid)
+QHTML7.referencesFor(target)
+QHTML7.referenceNodesFor(target)
+QHTML7.referenceMapFor(target)
+QHTML7.hasReference(target, nameOrUUID)
+```
+
+The target may be a rendered QHTML DOM element or a compatible QHTML/WASM node. These operations converge on the same name -> UUID -> active object lookup used by element.qhtmlResolve().
+
+29n. Dot walking remains separate
+
+This section does not define complete dot-walking behavior. The first segment is resolved through the current reference scope. A future native dot-walking implementation may then call into the resolved object's own properties, members, and references one segment at a time.
+
+Reference propagation must not pre-copy an object's internal reference map merely to simulate dot walking. For example, siblingObject may be passed as a reference, but siblingObject.internalChild is resolved later through siblingObject rather than hoisted into the current scope.
+
+29o. Reference-passing test page
+
+The minimal browser test is:
+
+```
+test/reference-passing.html
+```
+
+It prints results to the page and browser console instead of using an assertion framework. It exercises:
+
+- loaded runtime/cache resource URLs and version information;
+- two independent QHTMLDomTree instances;
+- property, function, signal, slot, and component resolution;
+- anonymous descendant inheritance;
+- root and component sibling references;
+- local shadowing;
+- self and named-parent exclusion;
+- ready exclusion;
+- prevention of sibling-internal leakage;
+- name and UUID lookup;
+- qhtmlReferences and qhtmlReferenceNodes;
+- direct DOM aliases;
+- QHTML7 runtime helpers;
+- lexical access inside QHTML event handlers.
+
+Any missing reference, stale resource, JavaScript exception, WASM memory error, or stack overflow remains visible in the browser console.
+
+
+---------
+
 Page Builder TODO
 
 - Improve palette drag/drop polish now that the basic path works:

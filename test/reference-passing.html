@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML Reference Passing Test</title>
+  <script src="../dist/qhtml.js?reference-passing-test=20260722-1"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color: #172033;
+      background: #eef3f8;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+    }
+
+    main {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    section {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 16px;
+    }
+
+    h1, h2, p {
+      margin-top: 0;
+    }
+
+    code {
+      background: #e8eef6;
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    .reference-parent-shell,
+    .reference-leaf-shell,
+    .shadow-host-shell {
+      display: block;
+      border: 1px solid #94a3b8;
+      border-radius: 8px;
+      padding: 10px;
+      margin: 8px 0;
+      background: #f8fafc;
+    }
+
+    .transparent-wrapper,
+    .slot-zone {
+      display: block;
+      margin: 8px 0;
+      padding: 8px;
+      border: 1px dashed #94a3b8;
+      border-radius: 6px;
+    }
+
+    button {
+      padding: 7px 10px;
+      margin: 4px;
+    }
+
+    #reference-output {
+      margin: 0;
+      min-height: 220px;
+      max-height: 720px;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      padding: 12px;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #dbeafe;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>QHTML Reference Passing Test</h1>
+      <p>Page marker: <code>reference-passing-test=20260722-1</code></p>
+      <p>This page logs values only. Missing references, exceptions, stale runtime files, and memory errors remain visible in the browser console.</p>
+    </section>
+
+    <section>
+      <h2>Primary reference tree</h2>
+      <q-html id="reference-tree-primary">
+q-component reference-leaf {
+  q-property leafValue: "leaf-default"
+
+  function describeLeaf() {
+    return "describeLeaf:" + String(this.leafValue)
+  }
+
+  q-signal leafSignal(value)
+
+  div.reference-leaf-shell {
+    slot content {
+      text { leaf content }
+    }
+  }
+}
+
+q-component reference-parent {
+  q-property parentValue: "parent-default"
+
+  function describeParent() {
+    return "describeParent:" + String(this.parentValue)
+  }
+
+  q-signal parentSignal(value)
+
+  div.reference-parent-shell {
+    h3 { text { Reference parent } }
+
+    reference-leaf directChild {
+      leafValue: "direct-child"
+    }
+
+    div.transparent-wrapper {
+      reference-leaf wrappedChild {
+        leafValue: "wrapped-child"
+      }
+
+      button#anonymous-descendant {
+        text { Run handler-scope logs }
+        onclick {
+          console.group("[QHTML handler] anonymous descendant")
+          console.log("qhtmlResolve(parentValue)", qhtmlResolve("parentValue"))
+          console.log("qhtmlResolve(directChild)", qhtmlResolve("directChild"))
+          console.log("qhtmlResolve(wrappedChild)", qhtmlResolve("wrappedChild"))
+          console.log("qhtmlResolve(someSlot)", qhtmlResolve("someSlot"))
+          console.log("qhtmlResolve(parentObject) must not be a named parent reference", qhtmlResolve("parentObject"))
+          console.log("qhtmlReferences keys", Object.keys(qhtmlReferences))
+          console.groupEnd()
+        }
+      }
+    }
+
+    div.slot-zone {
+      slot someSlot {
+        text { default someSlot content }
+      }
+    }
+  }
+}
+
+q-component shadow-host {
+  q-property shadowLabel: "shadow-host"
+
+  div.shadow-host-shell {
+    reference-leaf rootSibling {
+      leafValue: "nested-rootSibling-shadow"
+    }
+
+    button#shadow-descendant {
+      text { Run shadow-scope logs }
+      onclick {
+        console.group("[QHTML handler] shadow descendant")
+        console.log("qhtmlResolve(rootSibling)", qhtmlResolve("rootSibling"))
+        console.log("qhtmlResolve(shadowLabel)", qhtmlResolve("shadowLabel"))
+        console.groupEnd()
+      }
+    }
+  }
+}
+
+reference-leaf rootSibling {
+  id: "root-sibling"
+  leafValue: "root-sibling-value"
+}
+
+reference-parent parentObject {
+  id: "parent-object"
+  parentValue: "parent-instance-value"
+
+  someSlot {
+    span { text { explicit slot content } }
+    reference-leaf slotChild {
+      leafValue: "slot-child-value"
+    }
+  }
+}
+
+reference-parent secondParent {
+  id: "second-parent"
+  parentValue: "second-parent-value"
+}
+
+shadow-host shadowObject {
+  id: "shadow-object"
+}
+      </q-html>
+    </section>
+
+    <section>
+      <h2>Second QHTMLDomTree construction smoke test</h2>
+      <q-html id="reference-tree-secondary">
+div#secondary-tree-marker {
+  text { Secondary QHTML tree constructed }
+}
+      </q-html>
+    </section>
+
+    <section>
+      <h2>Console mirror</h2>
+      <pre id="reference-output">waiting for QHTMLContentLoaded...</pre>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const PAGE_MARKER = "reference-passing-test=20260722-1";
+      const output = document.getElementById("reference-output");
+      const lines = [];
+
+      function describe(value) {
+        if (typeof value === "undefined") {
+          return "undefined";
+        }
+        if (value === null) {
+          return "null";
+        }
+        if (typeof value === "string") {
+          return JSON.stringify(value);
+        }
+        if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+          return String(value);
+        }
+        if (typeof value === "function") {
+          return "[Function " + String(value.name || "anonymous") + "]";
+        }
+        if (value instanceof Element) {
+          const id = value.id ? "#" + value.id : "";
+          const instance = value.getAttribute("component-instance");
+          return "<" + value.tagName.toLowerCase() + id + (instance ? " component-instance=" + instance : "") + ">";
+        }
+        if (value && typeof value.qhtmlType === "function") {
+          let type = "";
+          let name = "";
+          let uuid = "";
+          try { type = String(value.qhtmlType() || ""); } catch (error) { type = "<qhtmlType error>"; }
+          try { name = String(value.qhtmlName() || ""); } catch (error) { name = "<qhtmlName error>"; }
+          try { uuid = String(value.qhtmlUUID() || ""); } catch (error) { uuid = "<qhtmlUUID error>"; }
+          return "[WASM " + type + " name=" + JSON.stringify(name) + " uuid=" + uuid + "]";
+        }
+        try {
+          return JSON.stringify(value);
+        } catch (error) {
+          return Object.prototype.toString.call(value);
+        }
+      }
+
+      function write(label, value) {
+        const line = label + ": " + describe(value);
+        lines.push(line);
+        output.textContent = lines.join("\n");
+        console.log("[reference-passing]", label, value);
+      }
+
+      function operation(label, callback) {
+        try {
+          write(label, callback());
+        } catch (error) {
+          lines.push(label + ": THREW " + String(error && error.stack ? error.stack : error));
+          output.textContent = lines.join("\n");
+          console.error("[reference-passing]", label, error);
+        }
+      }
+
+      function ownDescriptorKind(element, name) {
+        if (!element) {
+          return "missing element";
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(element, name);
+        if (!descriptor) {
+          return "no own property";
+        }
+        if (Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+          return "value:" + typeof descriptor.value;
+        }
+        return "accessor:get=" + typeof descriptor.get + ",set=" + typeof descriptor.set;
+      }
+
+      document.addEventListener("QHTMLContentLoaded", function () {
+        setTimeout(function () {
+          lines.length = 0;
+          write("page marker", PAGE_MARKER);
+          write("window.QHTML_VERSION", window.QHTML_VERSION);
+          write("window.QHTML_ENTRYPOINT_EXECUTED", window.QHTML_ENTRYPOINT_EXECUTED);
+          write("window.QHTML7.resolveReference", window.QHTML7 && window.QHTML7.resolveReference);
+
+          Array.from(document.scripts).forEach(function (script, index) {
+            if (/qhtml/i.test(script.src || "")) {
+              write("script[" + index + "]", script.src);
+            }
+          });
+
+          performance.getEntriesByType("resource").forEach(function (entry) {
+            if (/qhtml|\.wasm/i.test(entry.name || "")) {
+              write("resource", entry.name);
+            }
+          });
+
+          const parent = document.getElementById("parent-object");
+          const secondParent = document.getElementById("second-parent");
+          const rootSibling = document.getElementById("root-sibling");
+          const shadow = document.getElementById("shadow-object");
+          const anonymous = document.getElementById("anonymous-descendant");
+          const shadowDescendant = document.getElementById("shadow-descendant");
+          const secondaryMarker = document.getElementById("secondary-tree-marker");
+          const directChild = parent ? parent.querySelector("reference-leaf") : null;
+          const leafElements = parent ? parent.querySelectorAll("reference-leaf") : [];
+          const wrappedChild = leafElements.length > 1 ? leafElements[1] : null;
+          const slotChild = leafElements.length > 2 ? leafElements[2] : null;
+
+          write("primary tree exists", Boolean(document.getElementById("reference-tree-primary")));
+          write("secondary tree marker", secondaryMarker);
+          write("parent element", parent);
+          write("secondParent element", secondParent);
+          write("rootSibling element", rootSibling);
+          write("shadow element", shadow);
+          write("anonymous descendant", anonymous);
+          write("directChild element", directChild);
+          write("wrappedChild element", wrappedChild);
+          write("slotChild element", slotChild);
+
+          operation("parent.qhtmlReferenceNames()", function () { return parent.qhtmlReferenceNames(); });
+          operation("anonymous.qhtmlReferenceNames()", function () { return anonymous.qhtmlReferenceNames(); });
+          operation("directChild.qhtmlReferenceNames()", function () { return directChild.qhtmlReferenceNames(); });
+          operation("rootSibling.qhtmlReferenceNames()", function () { return rootSibling.qhtmlReferenceNames(); });
+
+          operation("parent qhtmlResolve(parentValue)", function () { return parent.qhtmlResolve("parentValue"); });
+          operation("parent qhtmlResolve(describeParent)", function () { return parent.qhtmlResolve("describeParent"); });
+          operation("parent qhtmlResolve(parentSignal)", function () { return parent.qhtmlResolve("parentSignal"); });
+          operation("parent qhtmlResolve(someSlot)", function () { return parent.qhtmlResolve("someSlot"); });
+          operation("parent qhtmlResolve(directChild)", function () { return parent.qhtmlResolve("directChild"); });
+          operation("parent qhtmlResolve(wrappedChild)", function () { return parent.qhtmlResolve("wrappedChild"); });
+          operation("parent qhtmlResolve(rootSibling)", function () { return parent.qhtmlResolve("rootSibling"); });
+          operation("parent qhtmlResolve(secondParent)", function () { return parent.qhtmlResolve("secondParent"); });
+          operation("parent qhtmlResolve(parentObject) self must be absent", function () { return parent.qhtmlResolve("parentObject"); });
+          operation("parent qhtmlResolve(ready) must be absent", function () { return parent.qhtmlResolve("ready"); });
+          operation("parent qhtmlResolve(leafValue) sibling internals must not leak", function () { return parent.qhtmlResolve("leafValue"); });
+
+          operation("anonymous qhtmlResolve(parentValue)", function () { return anonymous.qhtmlResolve("parentValue"); });
+          operation("anonymous qhtmlResolve(directChild)", function () { return anonymous.qhtmlResolve("directChild"); });
+          operation("anonymous qhtmlResolve(wrappedChild)", function () { return anonymous.qhtmlResolve("wrappedChild"); });
+          operation("anonymous qhtmlResolve(someSlot)", function () { return anonymous.qhtmlResolve("someSlot"); });
+          operation("anonymous qhtmlResolve(parentObject) named parent must be absent", function () { return anonymous.qhtmlResolve("parentObject"); });
+          operation("anonymous qhtmlResolve(ready) must be absent", function () { return anonymous.qhtmlResolve("ready"); });
+
+          operation("directChild qhtmlResolve(wrappedChild sibling)", function () { return directChild.qhtmlResolve("wrappedChild"); });
+          operation("directChild qhtmlResolve(parentValue)", function () { return directChild.qhtmlResolve("parentValue"); });
+          operation("directChild qhtmlResolve(parentObject) named parent must be absent", function () { return directChild.qhtmlResolve("parentObject"); });
+          operation("directChild qhtmlResolve(directChild) self must be absent", function () { return directChild.qhtmlResolve("directChild"); });
+          operation("directChild parentComponent() special parent access", function () { return directChild.parentComponent(); });
+          operation("directChild qhtmlNode.parent()", function () { return directChild.qhtmlNode.parent(); });
+
+          operation("rootSibling qhtmlResolve(parentObject root sibling)", function () { return rootSibling.qhtmlResolve("parentObject"); });
+          operation("rootSibling qhtmlResolve(secondParent root sibling)", function () { return rootSibling.qhtmlResolve("secondParent"); });
+          operation("rootSibling qhtmlResolve(directChild sibling internals must not leak)", function () { return rootSibling.qhtmlResolve("directChild"); });
+
+          operation("shadow descendant qhtmlResolve(rootSibling) local shadow", function () { return shadowDescendant.qhtmlResolve("rootSibling"); });
+          operation("shadow descendant rootSibling leafValue", function () {
+            const item = shadowDescendant.qhtmlResolve("rootSibling");
+            return item && item.leafValue;
+          });
+
+          operation("parent.qhtmlReferences.parentValue", function () { return parent.qhtmlReferences.parentValue; });
+          operation("parent.qhtmlReferences.directChild", function () { return parent.qhtmlReferences.directChild; });
+          operation("parent.qhtmlReferenceNodes.someSlot", function () { return parent.qhtmlReferenceNodes.someSlot; });
+          operation("parent qhtmlResolve by UUID", function () {
+            const node = parent.qhtmlResolveNode("directChild");
+            return node ? parent.qhtmlResolve(node.qhtmlUUID()) : undefined;
+          });
+
+          write("own descriptor parentValue", ownDescriptorKind(parent, "parentValue"));
+          write("own descriptor describeParent", ownDescriptorKind(parent, "describeParent"));
+          write("own descriptor parentSignal", ownDescriptorKind(parent, "parentSignal"));
+          write("own descriptor directChild", ownDescriptorKind(parent, "directChild"));
+          write("own descriptor wrappedChild (not structurally direct)", ownDescriptorKind(parent, "wrappedChild"));
+          write("own descriptor rootSibling (sibling; must not be direct alias)", ownDescriptorKind(parent, "rootSibling"));
+          write("own descriptor parentObject (self; must not be direct alias)", ownDescriptorKind(parent, "parentObject"));
+          write("own descriptor anonymous.parentValue (inherited; must not be direct alias)", ownDescriptorKind(anonymous, "parentValue"));
+          write("own descriptor anonymous.directChild (inherited; must not be direct alias)", ownDescriptorKind(anonymous, "directChild"));
+
+          operation("QHTML7.referencesFor(parent)", function () { return window.QHTML7.referencesFor(parent).toJSON(); });
+          operation("QHTML7.referenceMapFor(parent)", function () { return window.QHTML7.referenceMapFor(parent); });
+          operation("QHTML7.resolveReference(parent, directChild)", function () { return window.QHTML7.resolveReference(parent, "directChild"); });
+          operation("QHTML7.resolveReferenceNode(parent, someSlot)", function () { return window.QHTML7.resolveReferenceNode(parent, "someSlot"); });
+
+          operation("invoke parent.describeParent()", function () { return parent.describeParent(); });
+          operation("invoke directChild.describeLeaf()", function () { return directChild.describeLeaf(); });
+
+          operation("click anonymous handler button", function () {
+            anonymous.click();
+            return "clicked";
+          });
+          operation("click shadow handler button", function () {
+            shadowDescendant.click();
+            return "clicked";
+          });
+
+          console.info("[reference-passing] completed output pass", {
+            pageMarker: PAGE_MARKER,
+            qhtmlVersion: window.QHTML_VERSION,
+            lines: lines.length
+          });
+        }, 100);
+      }, { once: true });
+    })();
+  </script>
+</body>
+</html>

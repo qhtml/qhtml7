@@ -2204,9 +2204,6 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
                     if (scope->qhtmlContext) {
                         scope->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
                     }
-                    if (child->qhtmlContext) {
-                        child->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
-                    }
                 }
             }
         }
@@ -2215,9 +2212,574 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
     }
 }
 
+
+namespace qhtml7_reference_detail {
+
+struct ReferenceFrame
+{
+    QHash<QString, QHTMLReference *> byUUID;
+    QHash<QString, QString> byName;
+
+    void bind(const QString &visibleName, QHTMLReference *reference, bool overwriteName = true)
+    {
+        if (!reference) {
+            return;
+        }
+        const QString uuid = reference->qhtmlUUID().trimmed();
+        if (uuid.isEmpty()) {
+            return;
+        }
+        if (!byUUID.contains(uuid)) {
+            byUUID.insert(uuid, reference);
+        }
+        const QString name = visibleName.trimmed();
+        if (!name.isEmpty() && (overwriteName || !byName.contains(name))) {
+            byName.insert(name, uuid);
+        }
+    }
+
+    void removeUUID(const QString &uuidValue)
+    {
+        const QString uuid = uuidValue.trimmed();
+        if (uuid.isEmpty()) {
+            return;
+        }
+        byUUID.remove(uuid);
+        for (auto it = byName.begin(); it != byName.end();) {
+            if (it.value() == uuid) {
+                it = byName.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+};
+
+inline bool isScopeOwner(QHTMLNode *node)
+{
+    return node &&
+           (dynamic_cast<QHTMLDomTree *>(node) ||
+            dynamic_cast<QHTMLComponentDefinition *>(node) ||
+            dynamic_cast<QHTMLComponentInstance *>(node));
+}
+
+inline bool isReferenceDeclaration(QHTMLNode *node)
+{
+    if (!node || node->qhtmlName().trimmed().isEmpty()) {
+        return false;
+    }
+    if (QHTMLSignal *signal = dynamic_cast<QHTMLSignal *>(node)) {
+        if (signal->qhtmlName().compare(QStringLiteral("ready"), Qt::CaseInsensitive) == 0) {
+            return false;
+        }
+    }
+    if (!dynamic_cast<QHTMLTypedNode *>(node)) {
+        return false;
+    }
+    if (dynamic_cast<QHTMLPropertyAssignment *>(node) ||
+        dynamic_cast<QHTMLEventHandler *>(node) ||
+        dynamic_cast<QHTMLConnect *>(node) ||
+        dynamic_cast<QHTMLForNode *>(node) ||
+        dynamic_cast<QHTMLImportNode *>(node) ||
+        dynamic_cast<QHTMLSlotDefault *>(node) ||
+        dynamic_cast<QHTMLStyleApplication *>(node) ||
+        dynamic_cast<QHTMLTransitionApplication *>(node) ||
+        dynamic_cast<QHTMLThemeApplication *>(node)) {
+        return false;
+    }
+    return true;
+}
+
+inline bool isParserGeneratedChild(QHTMLNode *node)
+{
+    if (!node) {
+        return false;
+    }
+    return !node->property(QStringLiteral("__qhtmlDefinitionMember")).trimmed().isEmpty() ||
+           node->property(QStringLiteral("__qhtmlRuntimeReady")) == QStringLiteral("true");
+}
+
+inline QJsonObject structuralCloneJson(QHTMLNode *source)
+{
+    QJsonObject object;
+    if (!source) {
+        return object;
+    }
+
+    object.insert(QStringLiteral("qhtmlType"), source->qhtmlType());
+    object.insert(QStringLiteral("qhtmlName"), source->qhtmlName());
+    object.insert(QStringLiteral("qhtmlProperties"), qhtmlStringHashToJsonObject(source->qhtmlProperties));
+
+    if (QHTMLDomElement *element = dynamic_cast<QHTMLDomElement *>(source)) {
+        object.insert(QStringLiteral("qhtmlTagName"), element->tagName());
+        object.insert(QStringLiteral("qhtmlAttributes"), qhtmlStringHashToJsonObject(element->attributes()));
+    }
+    if (QHTMLTypedNode *typed = dynamic_cast<QHTMLTypedNode *>(source)) {
+        object.insert(QStringLiteral("qhtmlKeyword"), typed->keyword());
+        object.insert(QStringLiteral("qhtmlAttributes"), qhtmlStringHashToJsonObject(typed->attributes()));
+    }
+
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(source)) {
+        QString componentName = instance->property(QStringLiteral("qhtmlComponentName")).trimmed();
+        if (componentName.isEmpty()) {
+            componentName = instance->property(QStringLiteral("componentName")).trimmed();
+        }
+        if (componentName.isEmpty() && instance->definition()) {
+            componentName = instance->definition()->qhtmlName();
+        }
+        object.insert(QStringLiteral("qhtmlComponentName"), componentName);
+        object.insert(QStringLiteral("qhtmlComponentDefinitionUUID"), instance->componentDefinitionUUID());
+    }
+
+    if (QHTMLTextFragment *text = dynamic_cast<QHTMLTextFragment *>(source)) {
+        object.insert(QStringLiteral("qhtmlContents"), text->value());
+    } else if (QHTMLHTMLFragment *html = dynamic_cast<QHTMLHTMLFragment *>(source)) {
+        object.insert(QStringLiteral("qhtmlContents"), html->value());
+    } else if (QHTMLUnknownFragment *unknown = dynamic_cast<QHTMLUnknownFragment *>(source)) {
+        object.insert(QStringLiteral("qhtmlContents"), unknown->value());
+    } else if (QHTMLJavaScriptBlock *scriptBlock = dynamic_cast<QHTMLJavaScriptBlock *>(source)) {
+        object.insert(QStringLiteral("qhtmlContents"), scriptBlock->contents());
+    } else if (QHTMLArrayNode *arrayNode = dynamic_cast<QHTMLArrayNode *>(source)) {
+        object.insert(QStringLiteral("qhtmlContents"), arrayNode->valuesLiteral());
+    } else if (QHTMLMapNode *mapNode = dynamic_cast<QHTMLMapNode *>(source)) {
+        object.insert(QStringLiteral("qhtmlContents"), mapNode->valuesLiteral());
+    } else if (QHTMLJsonValue *jsonValue = dynamic_cast<QHTMLJsonValue *>(source)) {
+        object.insert(QStringLiteral("qhtmlJson"), jsonValue->toJson());
+    } else if (QHTMLJsonArray *jsonArray = dynamic_cast<QHTMLJsonArray *>(source)) {
+        object.insert(QStringLiteral("qhtmlJson"), jsonArray->valuesLiteral());
+    } else if (QHTMLJsonObject *jsonObject = dynamic_cast<QHTMLJsonObject *>(source)) {
+        object.insert(QStringLiteral("qhtmlJson"), jsonObject->valuesLiteral());
+    } else if (QHTMLJsonDocument *jsonDocument = dynamic_cast<QHTMLJsonDocument *>(source)) {
+        object.insert(QStringLiteral("qhtmlJson"), jsonDocument->valuesLiteral());
+    } else if (QHTMLProperty *property = dynamic_cast<QHTMLProperty *>(source)) {
+        object.insert(QStringLiteral("value"), property->value());
+    } else if (QHTMLPropertyAssignment *assignment = dynamic_cast<QHTMLPropertyAssignment *>(source)) {
+        object.insert(QStringLiteral("value"), assignment->value());
+    } else if (QHTMLFunction *function = dynamic_cast<QHTMLFunction *>(source)) {
+        object.insert(QStringLiteral("parameters"), function->parameterList());
+        object.insert(QStringLiteral("body"), function->body());
+    } else if (QHTMLLogger *logger = dynamic_cast<QHTMLLogger *>(source)) {
+        object.insert(QStringLiteral("categories"), logger->categoryList());
+    } else if (QHTMLSignal *signal = dynamic_cast<QHTMLSignal *>(source)) {
+        object.insert(QStringLiteral("parameters"), signal->parameterList());
+    } else if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(source)) {
+        object.insert(QStringLiteral("qhtmlEventName"), handler->eventName());
+        object.insert(QStringLiteral("parameters"), handler->parameterList());
+        object.insert(QStringLiteral("body"), handler->body());
+    } else if (QHTMLScript *script = dynamic_cast<QHTMLScript *>(source)) {
+        object.insert(QStringLiteral("body"), script->body());
+    } else if (QHTMLScriptAction *action = dynamic_cast<QHTMLScriptAction *>(source)) {
+        object.insert(QStringLiteral("body"), action->body());
+    } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(source)) {
+        object.insert(QStringLiteral("body"), style->body());
+    } else if (QHTMLTransition *transition = dynamic_cast<QHTMLTransition *>(source)) {
+        object.insert(QStringLiteral("body"), transition->body());
+    } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(source)) {
+        object.insert(QStringLiteral("body"), theme->body());
+    } else if (QHTMLClass *classNode = dynamic_cast<QHTMLClass *>(source)) {
+        object.insert(QStringLiteral("body"), classNode->body());
+    } else if (QHTMLForNode *forNode = dynamic_cast<QHTMLForNode *>(source)) {
+        object.insert(QStringLiteral("qhtmlVariable"), forNode->variableName());
+        object.insert(QStringLiteral("qhtmlCollection"), forNode->collectionExpression());
+        object.insert(QStringLiteral("body"), forNode->body());
+    } else if (QHTMLConnect *connect = dynamic_cast<QHTMLConnect *>(source)) {
+        object.insert(QStringLiteral("body"), connect->body());
+    } else if (QHTMLImportNode *importNode = dynamic_cast<QHTMLImportNode *>(source)) {
+        object.insert(QStringLiteral("qhtmlImportKind"), importNode->importKind());
+        object.insert(QStringLiteral("body"), importNode->body());
+    } else if (QHTMLPainter *painter = dynamic_cast<QHTMLPainter *>(source)) {
+        object.insert(QStringLiteral("body"), painter->body());
+    } else if (QHTMLComponentDefinition *definition = dynamic_cast<QHTMLComponentDefinition *>(source)) {
+        object.insert(QStringLiteral("componentName"), definition->qhtmlName());
+        object.insert(QStringLiteral("extends"), definition->extendsList().join(QStringLiteral(" ")));
+    }
+
+    QJsonArray children;
+    for (QHTMLNode *child : source->children()) {
+        if (!child || isParserGeneratedChild(child)) {
+            continue;
+        }
+        children.append(structuralCloneJson(child));
+    }
+    object.insert(QStringLiteral("qhtmlChildren"), children);
+    return object;
+}
+
+inline QHTMLNode *cloneReferenceNode(QHTMLNode *source, QHTMLNode *ownerScope)
+{
+    if (!source) {
+        return nullptr;
+    }
+    return QHTMLNode::nodeFromJsonObject(structuralCloneJson(source), ownerScope);
+}
+
+inline void markDefinitionClone(QHTMLNode *clone, QHTMLNode *source)
+{
+    if (!clone || !source) {
+        return;
+    }
+    clone->setProperty(QStringLiteral("__qhtmlDefinitionMember"), source->qhtmlUUID());
+}
+
+inline bool hasDefinitionClone(QHTMLComponentInstance *instance, QHTMLNode *source)
+{
+    if (!instance || !source || source->qhtmlUUID().isEmpty()) {
+        return false;
+    }
+    const QString sourceUUID = source->qhtmlUUID();
+    for (QHTMLNode *child : instance->children()) {
+        if (child && child->property(QStringLiteral("__qhtmlDefinitionMember")) == sourceUUID) {
+            return true;
+        }
+    }
+    for (QHTMLNode *member : instance->referenceMembers()) {
+        if (member && member->property(QStringLiteral("__qhtmlDefinitionMember")) == sourceUUID) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool definitionRepeatsInComponentAncestry(QHTMLComponentInstance *instance)
+{
+    if (!instance || !instance->definition()) {
+        return false;
+    }
+    const QString definitionUUID = instance->definition()->qhtmlUUID();
+    if (definitionUUID.isEmpty()) {
+        return false;
+    }
+    for (QHTMLNode *ancestor = instance->qhtmlParent; ancestor; ancestor = ancestor->qhtmlParent) {
+        QHTMLComponentInstance *ancestorInstance = dynamic_cast<QHTMLComponentInstance *>(ancestor);
+        if (ancestorInstance && ancestorInstance->definition() &&
+            ancestorInstance->definition()->qhtmlUUID() == definitionUUID) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool isLegacyDirectCloneType(QHTMLNode *node)
+{
+    return dynamic_cast<QHTMLConnect *>(node) ||
+           dynamic_cast<QHTMLEventHandler *>(node) ||
+           dynamic_cast<QHTMLProperty *>(node) ||
+           dynamic_cast<QHTMLBehavior *>(node) ||
+           dynamic_cast<QHTMLFunction *>(node) ||
+           dynamic_cast<QHTMLSignal *>(node) ||
+           dynamic_cast<QHTMLTimer *>(node) ||
+           dynamic_cast<QHTMLPropertyAnimation *>(node) ||
+           dynamic_cast<QHTMLAnimationGroup *>(node) ||
+           dynamic_cast<QHTMLScriptAction *>(node) ||
+           dynamic_cast<QHTMLStyle *>(node) ||
+           dynamic_cast<QHTMLTransitionApplication *>(node) ||
+           dynamic_cast<QHTMLTheme *>(node);
+}
+
+inline QVector<QHTMLNode *> additionalDefinitionReferenceMembers(QHTMLComponentDefinition *definition,
+                                                                  bool skipNestedComponents)
+{
+    QVector<QHTMLNode *> out;
+    if (!definition) {
+        return out;
+    }
+
+    QVector<QHTMLNode *> pending;
+    for (int i = definition->childCount() - 1; i >= 0; --i) {
+        if (QHTMLNode *child = definition->childAt(i)) {
+            pending.append(child);
+        }
+    }
+
+    QSet<QString> visited;
+    QSet<const QHTMLNode *> visitedPointers;
+    while (!pending.isEmpty()) {
+        QHTMLNode *node = pending.takeLast();
+        if (!node || isParserGeneratedChild(node) || visitedPointers.contains(node)) {
+            continue;
+        }
+        visitedPointers.insert(node);
+        const QString uuid = node->qhtmlUUID();
+        if (!uuid.isEmpty() && visited.contains(uuid)) {
+            continue;
+        }
+        if (!uuid.isEmpty()) {
+            visited.insert(uuid);
+        }
+
+        if (dynamic_cast<QHTMLComponentDefinition *>(node)) {
+            continue;
+        }
+
+        if (QHTMLComponentInstance *component = dynamic_cast<QHTMLComponentInstance *>(node)) {
+            if (!skipNestedComponents && !component->qhtmlName().trimmed().isEmpty()) {
+                out.append(component);
+            }
+            continue;
+        }
+
+        const bool directChild = node->qhtmlParent == definition;
+        if (isReferenceDeclaration(node) &&
+            !dynamic_cast<QHTMLComponentSlot *>(node) &&
+            !(directChild && isLegacyDirectCloneType(node))) {
+            out.append(node);
+        }
+
+        for (int i = node->childCount() - 1; i >= 0; --i) {
+            if (QHTMLNode *child = node->childAt(i)) {
+                pending.append(child);
+            }
+        }
+    }
+    return out;
+}
+
+inline void seedFrameFromContext(QHTMLNode *scope, ReferenceFrame &frame)
+{
+    if (!scope || !scope->qhtmlContext) {
+        return;
+    }
+    const QStringList keys = scope->qhtmlContext->keys();
+    for (const QString &key : keys) {
+        if (frame.byName.contains(key)) {
+            continue;
+        }
+        QHTMLReference *reference = scope->qhtmlContext->resolve(key);
+        QHTMLNode *referenceNode = dynamic_cast<QHTMLNode *>(reference);
+        if (!referenceNode || !isReferenceDeclaration(referenceNode)) {
+            continue;
+        }
+        if (referenceNode->qhtmlUUID() == scope->qhtmlUUID()) {
+            continue;
+        }
+        frame.bind(key, referenceNode, false);
+    }
+}
+
+inline QVector<QHTMLNode *> scopeOwnedStarts(QHTMLNode *scope)
+{
+    QVector<QHTMLNode *> starts;
+    if (!scope) {
+        return starts;
+    }
+    // Reference scopes follow the real QHTML ownership tree only.  The
+    // non-rendering reference-member collection must never become a second
+    // traversal graph: it can contain cloned component instances and can
+    // therefore form recursive definition chains independent of qhtmlChildren.
+    starts.reserve(scope->childCount());
+    for (int i = 0; i < scope->childCount(); ++i) {
+        if (QHTMLNode *child = scope->childAt(i)) {
+            starts.append(child);
+        }
+    }
+    return starts;
+}
+
+inline QVector<QHTMLNode *> collectLocalDeclarations(QHTMLNode *scope, ReferenceFrame &frame)
+{
+    QVector<QHTMLNode *> nestedScopes;
+
+    // Slots are stable, instance-owned reference proxies, but they are not
+    // structural children and must not be traversed as an ownership graph.
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(scope)) {
+        for (int i = 0; i < instance->slotCount(); ++i) {
+            if (QHTMLComponentInstanceSlot *slot = instance->slotViewAt(i)) {
+                frame.bind(slot->qhtmlName(), slot, true);
+            }
+        }
+    }
+
+    QVector<QHTMLNode *> starts = scopeOwnedStarts(scope);
+    QVector<QHTMLNode *> pending;
+    for (int i = starts.size() - 1; i >= 0; --i) {
+        pending.append(starts.at(i));
+    }
+
+    QSet<QString> visited;
+    QSet<const QHTMLNode *> visitedPointers;
+    QSet<QString> nestedUUIDs;
+    while (!pending.isEmpty()) {
+        QHTMLNode *node = pending.takeLast();
+        if (!node || visitedPointers.contains(node)) {
+            continue;
+        }
+        visitedPointers.insert(node);
+        const QString uuid = node->qhtmlUUID();
+        if (!uuid.isEmpty() && visited.contains(uuid)) {
+            continue;
+        }
+        if (!uuid.isEmpty()) {
+            visited.insert(uuid);
+        }
+
+        if (isScopeOwner(node)) {
+            if (isReferenceDeclaration(node)) {
+                frame.bind(node->qhtmlName(), node, true);
+            }
+            if (!uuid.isEmpty() && !nestedUUIDs.contains(uuid)) {
+                nestedUUIDs.insert(uuid);
+                nestedScopes.append(node);
+            }
+            continue;
+        }
+
+        if (isReferenceDeclaration(node)) {
+            frame.bind(node->qhtmlName(), node, true);
+        }
+
+        for (int i = node->childCount() - 1; i >= 0; --i) {
+            if (QHTMLNode *child = node->childAt(i)) {
+                pending.append(child);
+            }
+        }
+    }
+    return nestedScopes;
+}
+
+inline void materializeFrame(QHTMLNode *node, const ReferenceFrame &frame)
+{
+    if (!node) {
+        return;
+    }
+    node->clearQHTMLReferences();
+    for (auto it = frame.byUUID.constBegin(); it != frame.byUUID.constEnd(); ++it) {
+        node->addQHTMLReference(QString(), it.value());
+    }
+    for (auto it = frame.byName.constBegin(); it != frame.byName.constEnd(); ++it) {
+        QHTMLReference *reference = frame.byUUID.value(it.value(), nullptr);
+        node->addQHTMLReference(it.key(), reference);
+    }
+}
+
+inline QVector<QHTMLNode *> propagateFrameThroughScope(QHTMLNode *scope, const ReferenceFrame &frame)
+{
+    QVector<QHTMLNode *> nestedScopes;
+    if (!scope) {
+        return nestedScopes;
+    }
+
+    materializeFrame(scope, frame);
+
+    QVector<QHTMLNode *> starts = scopeOwnedStarts(scope);
+    QVector<QHTMLNode *> pending;
+    for (int i = starts.size() - 1; i >= 0; --i) {
+        pending.append(starts.at(i));
+    }
+
+    QSet<QString> visited;
+    QSet<const QHTMLNode *> visitedPointers;
+    QSet<QString> nestedUUIDs;
+    while (!pending.isEmpty()) {
+        QHTMLNode *node = pending.takeLast();
+        if (!node || visitedPointers.contains(node)) {
+            continue;
+        }
+        visitedPointers.insert(node);
+        const QString uuid = node->qhtmlUUID();
+        if (!uuid.isEmpty() && visited.contains(uuid)) {
+            continue;
+        }
+        if (!uuid.isEmpty()) {
+            visited.insert(uuid);
+        }
+
+        if (isScopeOwner(node)) {
+            if (!uuid.isEmpty() && !nestedUUIDs.contains(uuid)) {
+                nestedUUIDs.insert(uuid);
+                nestedScopes.append(node);
+            }
+            continue;
+        }
+
+        materializeFrame(node, frame);
+        for (int i = node->childCount() - 1; i >= 0; --i) {
+            if (QHTMLNode *child = node->childAt(i)) {
+                pending.append(child);
+            }
+        }
+    }
+    return nestedScopes;
+}
+
+inline void buildEffectiveReferenceScopes(QHTMLNode *root)
+{
+    if (!root) {
+        return;
+    }
+
+    struct ScopeWorkItem
+    {
+        QHTMLNode *scope = nullptr;
+        ReferenceFrame inherited;
+    };
+
+    QVector<ScopeWorkItem> pending;
+    ScopeWorkItem rootWork;
+    rootWork.scope = root;
+    pending.append(rootWork);
+    QSet<QString> processedScopes;
+    QSet<const QHTMLNode *> processedScopePointers;
+
+    while (!pending.isEmpty()) {
+        ScopeWorkItem work = pending.takeLast();
+        QHTMLNode *scope = work.scope;
+        if (!scope || processedScopePointers.contains(scope)) {
+            continue;
+        }
+        processedScopePointers.insert(scope);
+        const QString scopeUUID = scope->qhtmlUUID();
+        if (!scopeUUID.isEmpty() && processedScopes.contains(scopeUUID)) {
+            continue;
+        }
+        if (!scopeUUID.isEmpty()) {
+            processedScopes.insert(scopeUUID);
+        }
+
+        ReferenceFrame frame = work.inherited;
+        seedFrameFromContext(scope, frame);
+        const QVector<QHTMLNode *> collectedScopes = collectLocalDeclarations(scope, frame);
+        const QVector<QHTMLNode *> propagatedScopes = propagateFrameThroughScope(scope, frame);
+
+        QVector<QHTMLNode *> nestedScopes = collectedScopes;
+        QSet<QString> nestedUUIDs;
+        for (QHTMLNode *nested : nestedScopes) {
+            if (nested && !nested->qhtmlUUID().isEmpty()) {
+                nestedUUIDs.insert(nested->qhtmlUUID());
+            }
+        }
+        for (QHTMLNode *nested : propagatedScopes) {
+            if (!nested) {
+                continue;
+            }
+            const QString uuid = nested->qhtmlUUID();
+            if (!uuid.isEmpty() && nestedUUIDs.contains(uuid)) {
+                continue;
+            }
+            if (!uuid.isEmpty()) {
+                nestedUUIDs.insert(uuid);
+            }
+            nestedScopes.append(nested);
+        }
+
+        for (int i = nestedScopes.size() - 1; i >= 0; --i) {
+            QHTMLNode *nested = nestedScopes.at(i);
+            if (nested) {
+                ScopeWorkItem nestedWork;
+                nestedWork.scope = nested;
+                nestedWork.inherited = frame;
+                nestedWork.inherited.removeUUID(nested->qhtmlUUID());
+                pending.append(nestedWork);
+            }
+        }
+    }
+}
+
+} // namespace qhtml7_reference_detail
+
 inline void QHTMLDomTree::bindComponentMembers()
 {
     bindComponentMembersFor(this);
+    qhtml7_reference_detail::buildEffectiveReferenceScopes(this);
 }
 
 inline void QHTMLDomTree::bindComponentMembersFor(QHTMLNode *scope)
@@ -2226,16 +2788,38 @@ inline void QHTMLDomTree::bindComponentMembersFor(QHTMLNode *scope)
         return;
     }
 
-    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(scope)) {
-        cloneDefinitionMembers(instance);
-    }
+    QVector<QHTMLNode *> pending;
+    pending.append(scope);
+    QSet<QString> visited;
+    QSet<const QHTMLNode *> visitedPointers;
 
-    ensureReadySignal(scope);
-    bindLocalReferences(scope);
+    while (!pending.isEmpty()) {
+        QHTMLNode *node = pending.takeLast();
+        if (!node || visitedPointers.contains(node)) {
+            continue;
+        }
+        visitedPointers.insert(node);
+        const QString uuid = node->qhtmlUUID();
+        if (!uuid.isEmpty() && visited.contains(uuid)) {
+            continue;
+        }
+        if (!uuid.isEmpty()) {
+            visited.insert(uuid);
+        }
 
-    const int childTotal = scope->qhtmlChildren.size();
-    for (int i = 0; i < childTotal; ++i) {
-        bindComponentMembersFor(scope->qhtmlChildren.value(i, nullptr));
+        QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(node);
+        if (instance) {
+            cloneDefinitionMembers(instance);
+        }
+
+        ensureReadySignal(node);
+        bindLocalReferences(node);
+
+        for (int i = node->childCount() - 1; i >= 0; --i) {
+            if (QHTMLNode *child = node->childAt(i)) {
+                pending.append(child);
+            }
+        }
     }
 }
 
@@ -2264,38 +2848,13 @@ inline void QHTMLDomTree::ensureReadySignal(QHTMLNode *scope)
 
     QHTMLSignal *ready = new QHTMLSignal(QStringLiteral("ready"));
     ready->setSignalBus(qhtmlSignalBus);
+    ready->setProperty(QStringLiteral("__qhtmlRuntimeReady"), QStringLiteral("true"));
     scope->appendChild(ready);
 }
 
 inline bool qhtmlNodeIsInheritedContextDeclaration(QHTMLNode *node)
 {
-    if (!node || node->qhtmlName().trimmed().isEmpty()) {
-        return false;
-    }
-    return dynamic_cast<QHTMLComponentDefinition *>(node) ||
-           dynamic_cast<QHTMLComponentInstance *>(node) ||
-           dynamic_cast<QHTMLFunction *>(node) ||
-           dynamic_cast<QHTMLProperty *>(node) ||
-           dynamic_cast<QHTMLArray *>(node) ||
-           dynamic_cast<QHTMLMap *>(node) ||
-           dynamic_cast<QHTMLModel *>(node) ||
-           dynamic_cast<QHTMLModelView *>(node) ||
-           dynamic_cast<QHTMLTimer *>(node) ||
-           dynamic_cast<QHTMLPropertyAnimation *>(node) ||
-           dynamic_cast<QHTMLAnimationGroup *>(node) ||
-           dynamic_cast<QHTMLScriptAction *>(node) ||
-           dynamic_cast<QHTMLBehavior *>(node) ||
-           dynamic_cast<QHTMLStyle *>(node) ||
-           dynamic_cast<QHTMLTransition *>(node) ||
-           dynamic_cast<QHTMLTheme *>(node) ||
-           dynamic_cast<QHTMLClass *>(node) ||
-           dynamic_cast<QHTMLScript *>(node) ||
-           dynamic_cast<QHTMLWorker *>(node) ||
-           dynamic_cast<QHTMLPainter *>(node) ||
-           dynamic_cast<QHTMLCanvas *>(node) ||
-           dynamic_cast<QHTMLVideo *>(node) ||
-           dynamic_cast<QHTMLParticleEmitter *>(node) ||
-           dynamic_cast<QHTMLLayout *>(node);
+    return qhtml7_reference_detail::isReferenceDeclaration(node);
 }
 
 inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
@@ -2304,8 +2863,25 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
         return;
     }
 
-    for (int i = 0; i < scope->qhtmlChildren.size(); ++i) {
-        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
+    QVector<QHTMLNode *> localNodes;
+    localNodes.reserve(scope->childCount());
+    for (int i = 0; i < scope->childCount(); ++i) {
+        if (QHTMLNode *child = scope->childAt(i)) {
+            localNodes.append(child);
+        }
+    }
+
+    // Slot proxies participate as local named references without being
+    // traversed or treated as rendered/owned descendants.
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(scope)) {
+        for (int i = 0; i < instance->slotCount(); ++i) {
+            if (QHTMLComponentInstanceSlot *slot = instance->slotViewAt(i)) {
+                localNodes.append(slot);
+            }
+        }
+    }
+
+    for (QHTMLNode *child : localNodes) {
         if (!child) {
             continue;
         }
@@ -2329,7 +2905,7 @@ inline void QHTMLDomTree::bindLocalReferences(QHTMLNode *scope)
 
         if (qhtmlNodeIsInheritedContextDeclaration(child)) {
             scope->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
-            if (child->qhtmlContext) {
+            if (child->qhtmlContext && !dynamic_cast<QHTMLComponentInstance *>(child)) {
                 child->qhtmlContext->updateObjectReference(child->qhtmlName(), child);
             }
         }
@@ -2343,107 +2919,138 @@ inline void QHTMLDomTree::cloneDefinitionMembers(QHTMLComponentInstance *instanc
     }
 
     QHTMLComponentDefinition *definition = instance->definition();
-    const int childTotal = definition->qhtmlChildren.size();
+    auto appendChildClone = [instance](QHTMLNode *source, QHTMLNode *clone) {
+        if (!source || !clone) {
+            delete clone;
+            return;
+        }
+        qhtml7_reference_detail::markDefinitionClone(clone, source);
+        instance->appendChild(clone);
+    };
+    const int childTotal = definition->childCount();
     for (int i = 0; i < childTotal; ++i) {
-        QHTMLNode *definitionChild = definition->qhtmlChildren.value(i, nullptr);
-        if (!definitionChild) {
+        QHTMLNode *definitionChild = definition->childAt(i);
+        if (!definitionChild ||
+            qhtml7_reference_detail::hasDefinitionClone(instance, definitionChild)) {
             continue;
         }
 
         if (QHTMLConnect *connection = dynamic_cast<QHTMLConnect *>(definitionChild)) {
-            instance->appendChild(connection->cloneConnect());
+            appendChildClone(definitionChild, connection->cloneConnect());
             continue;
         }
 
-        if (definitionChild->qhtmlName().isEmpty()) {
+        const QString memberName = definitionChild->qhtmlName().trimmed();
+        if (memberName.isEmpty()) {
             continue;
         }
 
         if (QHTMLEventHandler *handler = dynamic_cast<QHTMLEventHandler *>(definitionChild)) {
-            instance->appendChild(handler->cloneEventHandler());
+            appendChildClone(definitionChild, handler->cloneEventHandler());
             continue;
         }
 
         if (QHTMLProperty *property = dynamic_cast<QHTMLProperty *>(definitionChild)) {
             bool hasLocalProperty = false;
+            bool hasLocalTypedConflict = false;
             QHTMLPropertyAssignment *assignment = nullptr;
             for (QHTMLNode *instanceChild : instance->children()) {
-                if (!instanceChild || instanceChild->qhtmlName() != property->qhtmlName()) {
+                if (!instanceChild || instanceChild->qhtmlName() != memberName ||
+                    !instanceChild->property(QStringLiteral("__qhtmlDefinitionMember")).isEmpty()) {
                     continue;
                 }
                 if (dynamic_cast<QHTMLProperty *>(instanceChild)) {
                     hasLocalProperty = true;
                     break;
                 }
-                if (!assignment) {
-                    assignment = dynamic_cast<QHTMLPropertyAssignment *>(instanceChild);
+                if (QHTMLPropertyAssignment *localAssignment =
+                        dynamic_cast<QHTMLPropertyAssignment *>(instanceChild)) {
+                    if (!assignment) {
+                        assignment = localAssignment;
+                    }
+                    continue;
+                }
+                if (qhtml7_reference_detail::isReferenceDeclaration(instanceChild)) {
+                    hasLocalTypedConflict = true;
+                    break;
                 }
             }
-            if (!hasLocalProperty) {
+            if (!hasLocalProperty && !hasLocalTypedConflict) {
                 QHTMLProperty *clonedProperty = property->cloneProperty();
                 if (assignment) {
                     clonedProperty->setValue(assignment->value());
                 }
-                instance->appendChild(clonedProperty);
+                appendChildClone(definitionChild, clonedProperty);
             }
             continue;
         }
 
+        if (hasLocalReference(instance, memberName)) {
+            continue;
+        }
+
         if (QHTMLBehavior *behavior = dynamic_cast<QHTMLBehavior *>(definitionChild)) {
-            instance->appendChild(behavior->cloneBehavior());
-            continue;
-        }
-
-        if (hasLocalReference(instance, definitionChild->qhtmlName())) {
-            continue;
-        }
-
-        if (QHTMLFunction *function = dynamic_cast<QHTMLFunction *>(definitionChild)) {
-            instance->appendChild(function->cloneFunction());
+            appendChildClone(definitionChild, behavior->cloneBehavior());
+        } else if (QHTMLFunction *function = dynamic_cast<QHTMLFunction *>(definitionChild)) {
+            appendChildClone(definitionChild, function->cloneFunction());
         } else if (QHTMLSignal *signal = dynamic_cast<QHTMLSignal *>(definitionChild)) {
             QHTMLSignal *clonedSignal = signal->cloneSignal();
             clonedSignal->setSignalBus(qhtmlSignalBus);
-            instance->appendChild(clonedSignal);
+            appendChildClone(definitionChild, clonedSignal);
         } else if (QHTMLTimer *timer = dynamic_cast<QHTMLTimer *>(definitionChild)) {
             QHTMLTimer *clonedTimer = timer->cloneTimer();
             clonedTimer->setSignalBus(qhtmlSignalBus);
-            instance->appendChild(clonedTimer);
-        } else if (QHTMLPropertyAnimation *animation = dynamic_cast<QHTMLPropertyAnimation *>(definitionChild)) {
+            appendChildClone(definitionChild, clonedTimer);
+        } else if (QHTMLPropertyAnimation *animation =
+                       dynamic_cast<QHTMLPropertyAnimation *>(definitionChild)) {
             QHTMLPropertyAnimation *clonedAnimation = animation->cloneAnimation();
             clonedAnimation->setSignalBus(qhtmlSignalBus);
-            instance->appendChild(clonedAnimation);
-        } else if (QHTMLAnimationGroup *animationGroup = dynamic_cast<QHTMLAnimationGroup *>(definitionChild)) {
+            appendChildClone(definitionChild, clonedAnimation);
+        } else if (QHTMLAnimationGroup *animationGroup =
+                       dynamic_cast<QHTMLAnimationGroup *>(definitionChild)) {
             QHTMLAnimationGroup *clonedAnimationGroup = animationGroup->cloneAnimationGroup();
             clonedAnimationGroup->setSignalBus(qhtmlSignalBus);
-            instance->appendChild(clonedAnimationGroup);
-        } else if (QHTMLScriptAction *scriptAction = dynamic_cast<QHTMLScriptAction *>(definitionChild)) {
+            appendChildClone(definitionChild, clonedAnimationGroup);
+        } else if (QHTMLScriptAction *scriptAction =
+                       dynamic_cast<QHTMLScriptAction *>(definitionChild)) {
             QHTMLScriptAction *clonedScriptAction = scriptAction->cloneScriptAction();
             clonedScriptAction->setSignalBus(qhtmlSignalBus);
-            instance->appendChild(clonedScriptAction);
+            appendChildClone(definitionChild, clonedScriptAction);
         } else if (QHTMLStyle *style = dynamic_cast<QHTMLStyle *>(definitionChild)) {
-            instance->appendChild(style->cloneStyle());
-        } else if (QHTMLTransitionApplication *transitionApplication = dynamic_cast<QHTMLTransitionApplication *>(definitionChild)) {
-            instance->appendChild(transitionApplication->cloneApplication());
+            appendChildClone(definitionChild, style->cloneStyle());
+        } else if (QHTMLTransitionApplication *transitionApplication =
+                       dynamic_cast<QHTMLTransitionApplication *>(definitionChild)) {
+            appendChildClone(definitionChild, transitionApplication->cloneApplication());
         } else if (QHTMLTheme *theme = dynamic_cast<QHTMLTheme *>(definitionChild)) {
-            instance->appendChild(theme->cloneTheme());
+            appendChildClone(definitionChild, theme->cloneTheme());
         }
     }
+
 }
 
 inline bool QHTMLDomTree::hasLocalReference(QHTMLNode *scope, const QString &name) const
 {
-    if (!scope || name.isEmpty()) {
+    if (!scope || name.trimmed().isEmpty()) {
         return false;
     }
 
-    if (scope->qhtmlContext && scope->qhtmlContext->containsLocalReference(name)) {
+    const QString wantedName = name.trimmed();
+    if (scope->qhtmlContext && scope->qhtmlContext->containsLocalReference(wantedName)) {
         return true;
     }
 
-    for (int i = 0; i < scope->qhtmlChildren.size(); ++i) {
-        QHTMLNode *child = scope->qhtmlChildren.value(i, nullptr);
-        if (child && child->qhtmlName() == name) {
+    for (int i = 0; i < scope->childCount(); ++i) {
+        QHTMLNode *child = scope->childAt(i);
+        if (child && child->qhtmlName() == wantedName) {
             return true;
+        }
+    }
+    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(scope)) {
+        for (int i = 0; i < instance->slotCount(); ++i) {
+            QHTMLComponentInstanceSlot *slot = instance->slotViewAt(i);
+            if (slot && slot->qhtmlName() == wantedName) {
+                return true;
+            }
         }
     }
     return false;
@@ -2606,6 +3213,8 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
     using emscripten::class_;
     using emscripten::constant;
     using emscripten::function;
+    using emscripten::optional_override;
+    using emscripten::val;
 
     constant("QHTML_QUICKJS_ENABLED", true);
     constant("QHTML_QUICKJS_SIZE_BUDGET_BYTES", QHTML_QUICKJS_SIZE_BUDGET_BYTES);
@@ -2638,6 +3247,46 @@ EMSCRIPTEN_BINDINGS(qhtml7_core)
         .function("updateKeywordReference", &QHTMLNode::updateKeywordReferenceJs)
         .function("updateNamedReference", &QHTMLNode::updateNamedReferenceJs)
         .function("resolve", &QHTMLNode::resolveJs, allow_raw_pointers())
+        .function("qhtmlResolve", optional_override([](QHTMLNode &node, const std::string &nameOrUUID) -> QHTMLReference * {
+            return node.qhtmlResolve(QString::fromStdString(nameOrUUID));
+        }), allow_raw_pointers())
+        .function("qhtmlReferenceByName", optional_override([](QHTMLNode &node, const std::string &name) -> QHTMLReference * {
+            return node.qhtmlReferenceByName(QString::fromStdString(name));
+        }), allow_raw_pointers())
+        .function("qhtmlReferenceByUUID", optional_override([](QHTMLNode &node, const std::string &uuid) -> QHTMLReference * {
+            return node.qhtmlReferenceByUUID(QString::fromStdString(uuid));
+        }), allow_raw_pointers())
+        .function("qhtmlHasReference", optional_override([](const QHTMLNode &node, const std::string &nameOrUUID) {
+            return node.qhtmlHasReference(QString::fromStdString(nameOrUUID));
+        }))
+        .function("qhtmlReferenceNames", optional_override([](const QHTMLNode &node) {
+            val out = val::array();
+            const QStringList names = node.qhtmlReferenceNamesList();
+            for (int index = 0; index < names.size(); ++index) {
+                out.set(index, names.at(index).toStdString());
+            }
+            return out;
+        }))
+        .function("qhtmlReferenceUUIDs", optional_override([](const QHTMLNode &node) {
+            val out = val::array();
+            const QStringList uuids = node.qhtmlReferenceUUIDs();
+            for (int index = 0; index < uuids.size(); ++index) {
+                out.set(index, uuids.at(index).toStdString());
+            }
+            return out;
+        }))
+        .function("qhtmlReferenceMap", optional_override([](const QHTMLNode &node) {
+            val out = val::object();
+            const QStringList names = node.qhtmlReferenceNamesList();
+            for (const QString &name : names) {
+                QHTMLReference *reference = node.qhtmlReferenceByName(name);
+                if (!reference) {
+                    continue;
+                }
+                out.set(name.toStdString(), reference->qhtmlUUID().toStdString());
+            }
+            return out;
+        }))
         .function("resolveType", &QHTMLNode::resolveTypeJs)
         .function("contextKeys", &QHTMLNode::contextKeysJs)
         .function("evaluateExpression", &QHTMLNode::evaluateExpressionJs)

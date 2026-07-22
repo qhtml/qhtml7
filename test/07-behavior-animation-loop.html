@@ -88,48 +88,9 @@
 
     <section>
       <q-html>
-      div {
-      width: "35vw"
-      height: "45vh"
 
-particle-emitter {
-  id: "particle-emitter-1"
-  running: true
-  src: "../tools/assets/particle.png"
-  color: "#08c473"
-  colorOpacity: 0.28
-  emitRate: 74
-  interval: 10
-  maxActiveParticles: 166
-  maxActiveParticlesVariation: 18
-  lifetime: 700
-  lifetimeVariation: 90
-  path: "0.0986 0.2644 0.2104 0.2827 0.2957 0.3011 0.4605 0.3029 0.5297 0.2974 0.5922 0.2901 0.6709 0.2424 0.7855 0.2497 0.8149 0.3617 0.6548 0.7142 0.6102 0.6866 0.5013 0.6664 0.4397 0.6573 0.3468 0.6224 0.2739 0.5526 0.2161 0.4975 0.1725 0.448 0.1251 0.4278 0.0266 0.3984 0.0256 0.4021"
-  duration: 13000
-  delay: 500
-  sleep: 500
-  xVariation: 45
-  yVariation: 20
-  xVelocity: 0
-  yVelocity: -1.75
-  xVelocityVariation: 0
-  yVelocityVariation: 0.04
-  xAcceleration: 0
-  yAcceleration: 0.0028
-  xAccelerationVariation: 0
-  yAccelerationVariation: 0.005
-  startSize: 25
-  endSize: 1
-  startSizeVariation: 7
-  endSizeVariation: 5
-  startOpacity: 0.5
-  endOpacity: 0.02
-  startOpacityVariation: 0.16
-  endOpacityVariation: 0.02
-  zIndex: 1
-  style: "position: absolute; inset: 0px; display: block; pointer-events: none; overflow: hidden; z-index: 1;"
-}
-}
+
+
 q-component behavior-loop-bar {
   q-property barWidth: 1
   q-property nextBarWidth: 100
@@ -141,15 +102,15 @@ q-component behavior-loop-bar {
         steps: 80
 
         onstepped(stepNum, value) {
-          this.ownerElement.querySelector(".behavior-loop-fill").style.width = String(value) + "vh";
-          this.ownerElement.querySelector(".behavior-loop-readout").textContent = "step " + String(stepNum) + ": " + String(Math.round(value)) + "vh";
+        loopDemo.style.width = String(value) + "vh";
+          loopDemo.textContent = "step " + String(stepNum) + ": " + String(Math.round(value)) + "vh";
         }
       }
 
       q-script-action {
-        this.nextBarWidth = this.barWidth == 100 ? 1 : 100;
+        this.qhtmlComponent.nextBarWidth = this.barWidth == 100 ? 1 : 100;
         setTimeout(function() {
-          this.barWidth = this.nextBarWidth;
+          this.qhtmlComponent.barWidth = this.nextBarWidth;
         }.bind(this), 0);
       }
     }
