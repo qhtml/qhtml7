@@ -1,8 +1,3 @@
-(function (globalScope) {
-  const QHTML_VERSION = "4.3.15";
-  globalScope.QHTML_VERSION = QHTML_VERSION;
-})(typeof globalThis !== "undefined" ? globalThis : window);
-
 (function installParticleEmitter(global) {
   if (!global || !global.customElements) {
     return;
@@ -87,8 +82,12 @@
       this._drawPhase = 0;
       this._paintPollCountdown = 1;
       this._lastPaintDuration = 0;
-      this._viewportWidth = 1;
-      this._viewportHeight = 1;
+      this._pathFrame = 0;
+      this._pathStartedAt = 0;
+      this._pathSettingPosition = false;
+      this._pathOriginalX = null;
+      this._pathOriginalY = null;
+      this._pathOriginalCaptured = false;
       this._resizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => this._resize())
         : null;
@@ -97,6 +96,7 @@
     }
 
     connectedCallback() {
+      this._capturePathFallbackPosition();
       this._installCanvas();
       this._reloadConfig();
 
@@ -121,10 +121,12 @@
       if (this._config.running) {
         this._postWorker({ type: "start" });
         this._startPainter();
+        this._startPathAnimation(true);
       }
     }
 
     disconnectedCallback() {
+      this._stopPathAnimation(false);
       this._stopPainter();
       this._destroyWorker();
 
@@ -137,7 +139,19 @@
       this._canvas.remove();
     }
 
-    attributeChangedCallback() {
+    attributeChangedCallback(name, oldValue, newValue) {
+      const attributeName = String(name || "").toLowerCase();
+
+      if ((attributeName === "x" || attributeName === "y") &&
+          this._pathOriginalCaptured &&
+          !this._pathSettingPosition) {
+        if (attributeName === "x") {
+          this._pathOriginalX = newValue;
+        } else {
+          this._pathOriginalY = newValue;
+        }
+      }
+
       if (!this.isConnected) {
         return;
       }
@@ -157,8 +171,19 @@
       if (!oldRunning && this._config.running) {
         this._postWorker({ type: "start" });
         this._startPainter();
+        this._startPathAnimation(true);
       } else if (oldRunning && !this._config.running) {
+        this._stopPathAnimation(true);
         this._postWorker({ type: "stop" });
+      } else if (attributeName === "path" ||
+                 attributeName === "duration" ||
+                 attributeName === "delay" ||
+                 attributeName === "sleep") {
+        if (this._config.running && this._readPathPoints().length > 0) {
+          this._startPathAnimation(true);
+        } else {
+          this._stopPathAnimation(true);
+        }
       }
 
       this._applyLayerStyle();
@@ -252,6 +277,201 @@
       this._applyLayerStyle();
     }
 
+    _capturePathFallbackPosition() {
+      if (this._pathOriginalCaptured) {
+        return;
+      }
+
+      this._pathOriginalCaptured = true;
+      this._pathOriginalX = this.getAttribute("x");
+      this._pathOriginalY = this.getAttribute("y");
+    }
+
+    _readPathPoints() {
+      const values = String(this.getAttribute("path") || "")
+        .trim()
+        .split(/[\s,]+/)
+        .filter(Boolean);
+      const points = [];
+
+      for (let index = 0; index + 1 < values.length; index += 2) {
+        const x = Number(values[index]);
+        const y = Number(values[index + 1]);
+
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          continue;
+        }
+
+        points.push([clamp(x, 0, 1), clamp(y, 0, 1)]);
+      }
+
+      return points;
+    }
+
+    _pathParentSize() {
+      const parent = this.parentElement;
+
+      if (!parent) {
+        return [0, 0];
+      }
+
+      const style = global.getComputedStyle(parent);
+      const rect = parent.getBoundingClientRect();
+      const width = Number.parseFloat(style.width) || Number(rect.width) || Number(parent.clientWidth) || 0;
+      const height = Number.parseFloat(style.height) || Number(rect.height) || Number(parent.clientHeight) || 0;
+      return [width, height];
+    }
+
+    _applyPathPosition(normalizedX, normalizedY, pathPosition) {
+      const size = this._pathParentSize();
+      const x = clamp(Number(normalizedX) || 0, 0, 1) * size[0];
+      const y = clamp(Number(normalizedY) || 0, 0, 1) * size[1];
+
+      this.setAttribute("pathPos", String(pathPosition));
+
+      this._pathSettingPosition = true;
+      try {
+        this.setAttribute("x", String(x));
+        this.setAttribute("y", String(y));
+      } finally {
+        this._pathSettingPosition = false;
+      }
+    }
+
+    _restorePathFallbackPosition() {
+      if (!this._pathOriginalCaptured) {
+        return;
+      }
+
+      this._pathSettingPosition = true;
+      try {
+        if (this._pathOriginalX == null) {
+          this.removeAttribute("x");
+        } else {
+          this.setAttribute("x", this._pathOriginalX);
+        }
+
+        if (this._pathOriginalY == null) {
+          this.removeAttribute("y");
+        } else {
+          this.setAttribute("y", this._pathOriginalY);
+        }
+      } finally {
+        this._pathSettingPosition = false;
+      }
+
+      this.removeAttribute("pathPos");
+    }
+
+    _startPathAnimation(reset) {
+      const points = this._readPathPoints();
+
+      if (!this.running || points.length === 0) {
+        return;
+      }
+
+      if (reset || !this._pathStartedAt) {
+        this._pathStartedAt = global.performance && typeof global.performance.now === "function"
+          ? global.performance.now()
+          : Date.now();
+      }
+
+      this._updatePathAnimation();
+    }
+
+    _stopPathAnimation(restorePosition) {
+      if (this._pathFrame) {
+        if (typeof global.cancelAnimationFrame === "function") {
+          global.cancelAnimationFrame(this._pathFrame);
+        } else {
+          global.clearTimeout(this._pathFrame);
+        }
+        this._pathFrame = 0;
+      }
+
+      this._pathStartedAt = 0;
+
+      if (restorePosition) {
+        this._restorePathFallbackPosition();
+      }
+    }
+
+    _schedulePathAnimation() {
+      if (this._pathFrame || !this.running || this._readPathPoints().length < 2) {
+        return;
+      }
+
+      if (typeof global.requestAnimationFrame === "function") {
+        this._pathFrame = global.requestAnimationFrame(() => {
+          this._pathFrame = 0;
+          this._updatePathAnimation();
+        });
+      } else {
+        this._pathFrame = global.setTimeout(() => {
+          this._pathFrame = 0;
+          this._updatePathAnimation();
+        }, 16);
+      }
+    }
+
+    _updatePathAnimation() {
+      const points = this._readPathPoints();
+
+      if (!this.running || points.length === 0) {
+        this._stopPathAnimation(false);
+        return;
+      }
+
+      if (points.length === 1) {
+        this._applyPathPosition(points[0][0], points[0][1], 0);
+        return;
+      }
+
+      const now = global.performance && typeof global.performance.now === "function"
+        ? global.performance.now()
+        : Date.now();
+      const duration = Math.max(1, Number(this.getAttribute("duration")) || 1000);
+      const delay = Math.max(0, Number(this.getAttribute("delay")) || 0);
+      const sleep = Math.max(0, Number(this.getAttribute("sleep")) || 0);
+      const segmentDuration = duration / points.length;
+      const movementDuration = segmentDuration * (points.length - 1);
+      const cycleDuration = delay + movementDuration + sleep;
+      const elapsed = Math.max(0, now - this._pathStartedAt);
+      const cycleElapsed = cycleDuration > 0 ? elapsed % cycleDuration : 0;
+
+      if (cycleElapsed < delay) {
+        this._applyPathPosition(points[0][0], points[0][1], 0);
+        this._schedulePathAnimation();
+        return;
+      }
+
+      const movementElapsed = cycleElapsed - delay;
+
+      if (movementElapsed >= movementDuration) {
+        const last = points[points.length - 1];
+        this._applyPathPosition(last[0], last[1], points.length - 1);
+        this._schedulePathAnimation();
+        return;
+      }
+
+      const pathPosition = Math.min(
+        points.length - 2,
+        Math.floor(movementElapsed / segmentDuration)
+      );
+      const progress = clamp(
+        (movementElapsed - (pathPosition * segmentDuration)) / segmentDuration,
+        0,
+        1
+      );
+      const start = points[pathPosition];
+      const end = points[pathPosition + 1];
+      const x = start[0] + ((end[0] - start[0]) * progress);
+      const y = start[1] + ((end[1] - start[1]) * progress);
+
+      this._applyPathPosition(x, y, pathPosition);
+      this._schedulePathAnimation();
+    }
+
     _resize() {
       const parent = this.parentElement;
 
@@ -265,10 +485,6 @@
       const cssHeight = Math.max(1, rect.height);
       const pixelWidth = Math.floor(cssWidth * dpr);
       const pixelHeight = Math.floor(cssHeight * dpr);
-      const viewportChanged = this._viewportWidth !== cssWidth || this._viewportHeight !== cssHeight;
-
-      this._viewportWidth = cssWidth;
-      this._viewportHeight = cssHeight;
 
       if (this._canvas.width !== pixelWidth || this._canvas.height !== pixelHeight) {
         this._canvas.width = pixelWidth;
@@ -278,8 +494,8 @@
         this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
-      if (viewportChanged && this._workerReady) {
-        this._postWorkerConfig();
+      if (this.running && this._readPathPoints().length > 0) {
+        this._updatePathAnimation();
       }
     }
 
@@ -331,10 +547,7 @@
         return;
       }
 
-      this._postWorker({
-        type: "config",
-        config: serializeParticleConfig(this._config, this._viewportWidth, this._viewportHeight),
-      });
+      this._postWorker({ type: "config", config: serializeParticleConfig(this._config) });
     }
 
     _onWorkerMessage(event) {
@@ -467,10 +680,6 @@
         lifetimeVariation: Math.max(0, number("lifetimeVariation", 0)),
         x: number("x", 0),
         y: number("y", 0),
-        path: parsePathPoints(text("path", "")),
-        pathDuration: Math.max(1, number("duration", 1000)),
-        pathDelay: Math.max(0, number("delay", 0)),
-        pathSleep: Math.max(0, number("sleep", 0)),
         width: Math.max(0, number("width", 0)),
         height: Math.max(0, number("height", 0)),
         xVariation: number("xVariation", 0),
@@ -872,27 +1081,6 @@
     return !["false", "0", "no", "off"].includes(raw.trim().toLowerCase());
   }
 
-  function parsePathPoints(value) {
-    const tokens = String(value || "").trim().split(/[\s,]+/).filter(Boolean);
-    const points = [];
-
-    for (let index = 0; index + 1 < tokens.length; index += 2) {
-      const x = Number(tokens[index]);
-      const y = Number(tokens[index + 1]);
-
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        continue;
-      }
-
-      points.push({
-        x: clamp(x, 0, 1),
-        y: clamp(y, 0, 1),
-      });
-    }
-
-    return points;
-  }
-
   function vary(value, variation, rng) {
     if (!variation) {
       return value;
@@ -911,19 +1099,13 @@
     };
   }
 
-  function serializeParticleConfig(cfg, viewportWidth, viewportHeight) {
+  function serializeParticleConfig(cfg) {
     return {
       emitRate: cfg.emitRate,
       lifetime: cfg.lifetime,
       lifetimeVariation: cfg.lifetimeVariation,
       x: cfg.x,
       y: cfg.y,
-      path: cfg.path.map((point) => ({ x: point.x, y: point.y })),
-      pathDuration: cfg.pathDuration,
-      pathDelay: cfg.pathDelay,
-      pathSleep: cfg.pathSleep,
-      viewportWidth: Math.max(1, Number(viewportWidth) || 1),
-      viewportHeight: Math.max(1, Number(viewportHeight) || 1),
       width: cfg.width,
       height: cfg.height,
       xVariation: cfg.xVariation,
@@ -978,20 +1160,15 @@
       var emitCarry = 0;
       var timer = 0;
       var lastTime = 0;
-      var pathElapsedMs = 0;
 
       self.onmessage = function(event) {
         var data = event && event.data ? event.data : {};
 
         if (data.type === "config") {
           var oldSeed = cfg.seed;
-          var oldPathKey = pathConfigKey(cfg);
           cfg = normalizeConfig(data.config || cfg);
           if (oldSeed !== cfg.seed) {
             rng = new SeededRandom(cfg.seed);
-          }
-          if (oldPathKey !== pathConfigKey(cfg)) {
-            resetPathTimeline();
           }
           activeLimit = rollActiveLimit();
           if (cfg.running) {
@@ -1002,7 +1179,6 @@
 
         if (data.type === "start") {
           cfg.running = true;
-          resetPathTimeline();
           startTimer();
           return;
         }
@@ -1040,12 +1216,6 @@
           lifetimeVariation: 0,
           x: 0,
           y: 0,
-          path: [],
-          pathDuration: 1000,
-          pathDelay: 0,
-          pathSleep: 0,
-          viewportWidth: 1,
-          viewportHeight: 1,
           width: 0,
           height: 0,
           xVariation: 0,
@@ -1090,12 +1260,6 @@
         next.lifetimeVariation = Math.max(0, finite(next.lifetimeVariation, 0));
         next.x = finite(next.x, 0);
         next.y = finite(next.y, 0);
-        next.path = normalizePath(next.path);
-        next.pathDuration = Math.max(1, finite(next.pathDuration, 1000));
-        next.pathDelay = Math.max(0, finite(next.pathDelay, 0));
-        next.pathSleep = Math.max(0, finite(next.pathSleep, 0));
-        next.viewportWidth = Math.max(1, finite(next.viewportWidth, 1));
-        next.viewportHeight = Math.max(1, finite(next.viewportHeight, 1));
         next.width = Math.max(0, finite(next.width, 0));
         next.height = Math.max(0, finite(next.height, 0));
         next.xVariation = finite(next.xVariation, 0);
@@ -1154,7 +1318,6 @@
         lastTime = current;
 
         if (cfg.running) {
-          advancePathTimeline(elapsedMs);
           emit(elapsedMs);
         }
 
@@ -1223,9 +1386,8 @@
 
       function makeParticle(origin) {
         var hasOrigin = origin && typeof origin === "object";
-        var pathOrigin = currentPathOrigin();
-        var originX = hasOrigin && Number.isFinite(Number(origin.x)) ? Number(origin.x) : pathOrigin.x;
-        var originY = hasOrigin && Number.isFinite(Number(origin.y)) ? Number(origin.y) : pathOrigin.y;
+        var originX = hasOrigin && Number.isFinite(Number(origin.x)) ? Number(origin.x) : cfg.x;
+        var originY = hasOrigin && Number.isFinite(Number(origin.y)) ? Number(origin.y) : cfg.y;
         var emitterOrigin = sampleEmitterOrigin(originX, originY);
 
         return {
@@ -1241,112 +1403,6 @@
           endOpacity: clamp(vary(cfg.endOpacity, cfg.endOpacityVariation), 0, 1),
           lifetime: vary(cfg.lifetime, cfg.lifetimeVariation),
           age: 0
-        };
-      }
-
-      function normalizePath(path) {
-        var source = Array.isArray(path) ? path : [];
-        var points = [];
-        var i;
-        var point;
-
-        for (i = 0; i < source.length; i += 1) {
-          point = source[i] || {};
-          points.push({
-            x: clamp(finite(point.x, 0), 0, 1),
-            y: clamp(finite(point.y, 0), 0, 1)
-          });
-        }
-
-        return points;
-      }
-
-      function pathConfigKey(config) {
-        var parts = [config.pathDuration, config.pathDelay, config.pathSleep];
-        var i;
-
-        for (i = 0; i < config.path.length; i += 1) {
-          parts.push(config.path[i].x);
-          parts.push(config.path[i].y);
-        }
-
-        return parts.join("|");
-      }
-
-      function resetPathTimeline() {
-        pathElapsedMs = 0;
-      }
-
-      function advancePathTimeline(elapsedMs) {
-        var pointCount = cfg.path.length;
-        var segmentDuration;
-        var movementDuration;
-        var cycleDuration;
-
-        if (pointCount < 2) {
-          pathElapsedMs = 0;
-          return;
-        }
-
-        segmentDuration = cfg.pathDuration / pointCount;
-        movementDuration = segmentDuration * (pointCount - 1);
-        cycleDuration = cfg.pathDelay + movementDuration + cfg.pathSleep;
-
-        if (cycleDuration <= 0) {
-          pathElapsedMs = 0;
-          return;
-        }
-
-        pathElapsedMs = (pathElapsedMs + elapsedMs) % cycleDuration;
-      }
-
-      function currentPathOrigin() {
-        var pointCount = cfg.path.length;
-        var firstPoint;
-        var lastPoint;
-        var segmentDuration;
-        var movementDuration;
-        var movementElapsed;
-        var segmentIndex;
-        var segmentElapsed;
-        var progress;
-        var startPoint;
-        var endPoint;
-
-        if (pointCount === 0) {
-          return { x: cfg.x, y: cfg.y };
-        }
-
-        firstPoint = cfg.path[0];
-        lastPoint = cfg.path[pointCount - 1];
-
-        if (pointCount === 1 || pathElapsedMs < cfg.pathDelay) {
-          return {
-            x: firstPoint.x * cfg.viewportWidth,
-            y: firstPoint.y * cfg.viewportHeight
-          };
-        }
-
-        segmentDuration = cfg.pathDuration / pointCount;
-        movementDuration = segmentDuration * (pointCount - 1);
-        movementElapsed = pathElapsedMs - cfg.pathDelay;
-
-        if (movementElapsed >= movementDuration) {
-          return {
-            x: lastPoint.x * cfg.viewportWidth,
-            y: lastPoint.y * cfg.viewportHeight
-          };
-        }
-
-        segmentIndex = Math.min(pointCount - 2, Math.floor(movementElapsed / segmentDuration));
-        segmentElapsed = movementElapsed - segmentIndex * segmentDuration;
-        progress = clamp(segmentElapsed / segmentDuration, 0, 1);
-        startPoint = cfg.path[segmentIndex];
-        endPoint = cfg.path[segmentIndex + 1];
-
-        return {
-          x: lerp(startPoint.x, endPoint.x, progress) * cfg.viewportWidth,
-          y: lerp(startPoint.y, endPoint.y, progress) * cfg.viewportHeight
         };
       }
 
