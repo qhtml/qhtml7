@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML Layout Containment Test</title>
+  <script src="../dist/qhtml.js?layout-containment-test=20260723-1"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color: #172033;
+      background: #eef3f8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+    }
+
+    main {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    section {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 16px;
+      overflow: auto;
+    }
+
+    h1, h2, p {
+      margin-top: 0;
+    }
+
+    code {
+      background: #e8eef6;
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    .case-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+
+    .case {
+      min-width: 0;
+      border: 1px solid #d7dfeb;
+      border-radius: 8px;
+      padding: 12px;
+      background: #f8fafc;
+      overflow: auto;
+    }
+
+    .case h3 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+    }
+
+    [qhtml-layout] {
+      border: 2px solid #475569;
+      background: rgba(226, 232, 240, 0.55);
+    }
+
+    [qhtml-layout="q-row"] {
+      border-color: #2563eb;
+      background: rgba(219, 234, 254, 0.72);
+    }
+
+    [qhtml-layout="q-col"] {
+      border-color: #059669;
+      background: rgba(209, 250, 229, 0.72);
+    }
+
+    .layout-label {
+      display: block;
+      min-width: max-content;
+      padding: 8px;
+      color: #0f172a;
+    }
+
+    #layout-output {
+      margin: 0;
+      min-height: 280px;
+      max-height: 760px;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      padding: 12px;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #dbeafe;
+    }
+
+    button {
+      padding: 7px 10px;
+      margin: 0 6px 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>QHTML Layout Containment Test</h1>
+      <p>Page marker: <code>layout-containment-test=20260723-1</code></p>
+      <p>The console and output panel report rendered geometry, containment, and browser/WASM property synchronization.</p>
+      <button id="rerun-measurements" type="button">Rerun measurements</button>
+      <button id="apply-wasm-change" type="button">Set sync target maxWidth to 260px in WASM</button>
+    </section>
+
+    <section>
+      <div class="case-grid">
+        <div class="case">
+          <h3>Parent grows horizontally</h3>
+          <q-html id="width-growth-tree">
+q-layout {
+  id: "grow-width-parent"
+  width: "220px"
+  height: "110px"
+  maxWidth: "inherit"
+  maxHeight: "inherit"
+
+  q-row {
+    id: "grow-width-child"
+    width: "380px"
+    height: "70px"
+    maxWidth: "380px"
+
+    div.layout-label { text { 380px row; parent should grow around it } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Parent grows vertically</h3>
+          <q-html id="height-growth-tree">
+q-layout {
+  id: "grow-height-parent"
+  width: "250px"
+  height: "120px"
+  maxWidth: "inherit"
+  maxHeight: "inherit"
+
+  q-col {
+    id: "grow-height-child"
+    width: "190px"
+    height: "260px"
+    maxHeight: "260px"
+
+    div.layout-label { text { 260px column; parent should grow around it } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Parent maxWidth constrains child</h3>
+          <q-html id="width-limit-tree">
+q-layout {
+  id: "limit-width-parent"
+  width: "260px"
+  height: "120px"
+  maxWidth: "260px"
+
+  q-row {
+    id: "limit-width-child"
+    width: "460px"
+    height: "72px"
+    maxWidth: "460px"
+
+    div.layout-label { text { Child border must remain inside the 260px parent } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Parent maxHeight constrains child</h3>
+          <q-html id="height-limit-tree">
+q-layout {
+  id: "limit-height-parent"
+  width: "250px"
+  height: "190px"
+  maxHeight: "190px"
+
+  q-col {
+    id: "limit-height-child"
+    width: "190px"
+    height: "380px"
+    maxHeight: "380px"
+
+    div.layout-label { text { Child border must remain inside the 190px parent } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Row fills parent width</h3>
+          <q-html id="row-fill-tree">
+q-layout {
+  id: "row-fill-parent"
+  width: "360px"
+  height: "130px"
+
+  q-row {
+    id: "row-fill-child"
+    height: "76px"
+
+    div.layout-label { text { Row has no maxWidth and should fill inner width } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Column fills parent height</h3>
+          <q-html id="col-fill-tree">
+q-layout {
+  id: "col-fill-parent"
+  width: "260px"
+  height: "260px"
+
+  q-col {
+    id: "col-fill-child"
+    width: "180px"
+
+    div.layout-label { text { Column has no maxHeight and should fill inner height } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Existing padding greater than 6px</h3>
+          <q-html id="padding-tree">
+q-layout {
+  id: "padding-parent"
+  width: "300px"
+  height: "150px"
+  padding: "14px"
+
+  q-row {
+    id: "padding-child"
+    height: "78px"
+    div.layout-label { text { Parent padding should remain 14px } }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>Nested growth cascades upward</h3>
+          <q-html id="cascade-tree">
+q-layout {
+  id: "cascade-outer"
+  width: "220px"
+  height: "150px"
+  maxWidth: "inherit"
+
+  div {
+    q-layout {
+      id: "cascade-inner"
+      width: "250px"
+      height: "110px"
+      maxWidth: "inherit"
+
+      q-row {
+        id: "cascade-child"
+        width: "430px"
+        height: "70px"
+        maxWidth: "430px"
+        div.layout-label { text { Both containing layouts should grow } }
+      }
+    }
+  }
+}
+          </q-html>
+        </div>
+
+        <div class="case">
+          <h3>WASM to browser synchronization</h3>
+          <q-html id="wasm-sync-tree">
+q-layout {
+  id: "wasm-sync-layout"
+  width: "360px"
+  height: "100px"
+  maxWidth: "inherit"
+  div.layout-label { text { Press the button above to set maxWidth in WASM } }
+}
+          </q-html>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Console mirror</h2>
+      <pre id="layout-output">waiting for QHTMLContentLoaded...</pre>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const PAGE_MARKER = "layout-containment-test=20260723-1";
+      const output = document.getElementById("layout-output");
+      const lines = [];
+
+      function wait(milliseconds) {
+        return new Promise(function (resolve) {
+          setTimeout(resolve, milliseconds);
+        });
+      }
+
+      function round(value) {
+        return Math.round(Number(value || 0) * 100) / 100;
+      }
+
+      function write(label, value) {
+        let rendered = value;
+        if (typeof value !== "string") {
+          try {
+            rendered = JSON.stringify(value);
+          } catch (error) {
+            rendered = String(value);
+          }
+        }
+        const line = label + ": " + rendered;
+        lines.push(line);
+        output.textContent = lines.join("\n");
+        console.log("[layout-containment]", label, value);
+      }
+
+      function nodeProperty(node, name) {
+        if (!node) {
+          return undefined;
+        }
+        const wanted = String(name || "").replace(/-/g, "").toLowerCase();
+        try {
+          const count = typeof node.childCount === "function" ? node.childCount() : 0;
+          for (let index = 0; index < count; index += 1) {
+            const child = node.childAt(index);
+            const childName = child && typeof child.qhtmlName === "function"
+              ? String(child.qhtmlName() || "").replace(/-/g, "").toLowerCase()
+              : "";
+            const childType = child && typeof child.qhtmlType === "function"
+              ? String(child.qhtmlType() || "")
+              : "";
+            if (childName !== wanted || (childType !== "QHTMLPropertyAssignment" && childType !== "QHTMLProperty")) {
+              continue;
+            }
+            if (typeof child.value === "function") {
+              return child.value();
+            }
+          }
+        } catch (error) {
+          return "<child scan error: " + String(error) + ">";
+        }
+        try {
+          if (typeof node.property === "function") {
+            return node.property(name);
+          }
+        } catch (error) {
+          return "<property error: " + String(error) + ">";
+        }
+        return undefined;
+      }
+
+      function geometry(id) {
+        const element = document.getElementById(id);
+        if (!element) {
+          return { missing: id };
+        }
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          id,
+          layout: element.getAttribute("qhtml-layout"),
+          left: round(rect.left),
+          top: round(rect.top),
+          width: round(rect.width),
+          height: round(rect.height),
+          right: round(rect.right),
+          bottom: round(rect.bottom),
+          paddingTop: style.paddingTop,
+          paddingRight: style.paddingRight,
+          paddingBottom: style.paddingBottom,
+          paddingLeft: style.paddingLeft,
+          minWidth: style.minWidth,
+          minHeight: style.minHeight,
+          maxWidth: style.maxWidth,
+          maxHeight: style.maxHeight,
+          inlineWidth: element.style.width,
+          inlineHeight: element.style.height
+        };
+      }
+
+      function containment(parentId, childId) {
+        const parent = document.getElementById(parentId);
+        const child = document.getElementById(childId);
+        if (!parent || !child) {
+          return { parentId, childId, missing: true };
+        }
+        const parentRect = parent.getBoundingClientRect();
+        const childRect = child.getBoundingClientRect();
+        const parentStyle = getComputedStyle(parent);
+        const borderLeft = parseFloat(parentStyle.borderLeftWidth) || 0;
+        const borderRight = parseFloat(parentStyle.borderRightWidth) || 0;
+        const borderTop = parseFloat(parentStyle.borderTopWidth) || 0;
+        const borderBottom = parseFloat(parentStyle.borderBottomWidth) || 0;
+        const paddingLeft = parseFloat(parentStyle.paddingLeft) || 0;
+        const paddingRight = parseFloat(parentStyle.paddingRight) || 0;
+        const paddingTop = parseFloat(parentStyle.paddingTop) || 0;
+        const paddingBottom = parseFloat(parentStyle.paddingBottom) || 0;
+        const inner = {
+          left: parentRect.left + borderLeft + paddingLeft,
+          right: parentRect.right - borderRight - paddingRight,
+          top: parentRect.top + borderTop + paddingTop,
+          bottom: parentRect.bottom - borderBottom - paddingBottom
+        };
+        return {
+          parentId,
+          childId,
+          horizontalInside: childRect.left >= inner.left - 0.75 && childRect.right <= inner.right + 0.75,
+          verticalInside: childRect.top >= inner.top - 0.75 && childRect.bottom <= inner.bottom + 0.75,
+          leftGap: round(childRect.left - (parentRect.left + borderLeft)),
+          rightGap: round((parentRect.right - borderRight) - childRect.right),
+          topGap: round(childRect.top - (parentRect.top + borderTop)),
+          bottomGap: round((parentRect.bottom - borderBottom) - childRect.bottom),
+          parentInnerWidth: round(inner.right - inner.left),
+          parentInnerHeight: round(inner.bottom - inner.top),
+          childWidth: round(childRect.width),
+          childHeight: round(childRect.height)
+        };
+      }
+
+      function wasmProperties(id, names) {
+        const element = document.getElementById(id);
+        const result = {};
+        names.forEach(function (name) {
+          result[name] = element && element.qhtmlNode ? nodeProperty(element.qhtmlNode, name) : undefined;
+        });
+        return result;
+      }
+
+      async function report() {
+        await wait(420);
+        lines.length = 0;
+        write("page marker", PAGE_MARKER);
+        write("window.QHTML_VERSION", window.QHTML_VERSION);
+
+        Array.from(document.scripts).forEach(function (script, index) {
+          if (/qhtml/i.test(script.src || "")) {
+            write("script[" + index + "]", script.src);
+          }
+        });
+        performance.getEntriesByType("resource").forEach(function (entry) {
+          if (/qhtml|\.wasm/i.test(entry.name || "")) {
+            write("resource", entry.name);
+          }
+        });
+
+        [
+          "grow-width-parent", "grow-width-child",
+          "grow-height-parent", "grow-height-child",
+          "limit-width-parent", "limit-width-child",
+          "limit-height-parent", "limit-height-child",
+          "row-fill-parent", "row-fill-child",
+          "col-fill-parent", "col-fill-child",
+          "padding-parent", "padding-child",
+          "cascade-outer", "cascade-inner", "cascade-child",
+          "wasm-sync-layout"
+        ].forEach(function (id) {
+          write("geometry " + id, geometry(id));
+        });
+
+        [
+          ["grow-width-parent", "grow-width-child"],
+          ["grow-height-parent", "grow-height-child"],
+          ["limit-width-parent", "limit-width-child"],
+          ["limit-height-parent", "limit-height-child"],
+          ["row-fill-parent", "row-fill-child"],
+          ["col-fill-parent", "col-fill-child"],
+          ["padding-parent", "padding-child"],
+          ["cascade-outer", "cascade-inner"],
+          ["cascade-inner", "cascade-child"]
+        ].forEach(function (pair) {
+          write("containment " + pair[0] + " -> " + pair[1], containment(pair[0], pair[1]));
+        });
+
+        write("WASM grow-width-parent", wasmProperties("grow-width-parent", ["minWidth", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]));
+        write("WASM grow-height-parent", wasmProperties("grow-height-parent", ["minHeight", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]));
+        write("WASM limit-width-child", wasmProperties("limit-width-child", ["width", "maxWidth"]));
+        write("WASM limit-height-child", wasmProperties("limit-height-child", ["height", "maxHeight"]));
+        write("WASM row-fill-child", wasmProperties("row-fill-child", ["width", "maxWidth"]));
+        write("WASM col-fill-child", wasmProperties("col-fill-child", ["height", "maxHeight"]));
+        write("WASM sync target", wasmProperties("wasm-sync-layout", ["width", "maxWidth"]));
+      }
+
+      async function applyWasmChange() {
+        const element = document.getElementById("wasm-sync-layout");
+        if (!element || !element.qhtmlNode || typeof element.qhtmlNode.setPropertyText !== "function") {
+          write("WASM sync operation", "target or setPropertyText missing");
+          return;
+        }
+        element.qhtmlNode.setPropertyText("maxWidth", "260px");
+        write("WASM sync operation", "setPropertyText(maxWidth, 260px)");
+        await wait(420);
+        write("WASM sync geometry after change", geometry("wasm-sync-layout"));
+        write("WASM sync node after change", wasmProperties("wasm-sync-layout", ["maxWidth"]));
+      }
+
+      document.getElementById("rerun-measurements").addEventListener("click", function () {
+        report().catch(function (error) {
+          console.error("[layout-containment] report failed", error);
+        });
+      });
+
+      document.getElementById("apply-wasm-change").addEventListener("click", function () {
+        applyWasmChange().catch(function (error) {
+          console.error("[layout-containment] WASM change failed", error);
+        });
+      });
+
+      document.addEventListener("QHTMLContentLoaded", function () {
+        report().catch(function (error) {
+          console.error("[layout-containment] initial report failed", error);
+          write("initial report error", error && error.stack ? error.stack : String(error));
+        });
+      }, { once: true });
+    })();
+  </script>
+</body>
+</html>

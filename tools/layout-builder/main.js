@@ -158,31 +158,6 @@
       grid-template-columns: minmax(0, 1fr) 12px !important;
     }
 
-    /*
-     * The runtime emits the QHTML layout nodes as flex boxes.  Keep the
-     * alternating row/column cross axis fluid while the main axis is governed
-     * by the builder's min/max constraints.
-     */
-    .lb-preview-host [qhtml-layout="q-row"] {
-      align-items: stretch !important;
-    }
-
-    .lb-preview-host [qhtml-layout="q-row"] > [qhtml-layout="q-col"],
-    .lb-preview-host [qhtml-layout="q-row"] > [qhtml-layout="q-layout"] {
-      height: auto !important;
-      align-self: stretch !important;
-    }
-
-    .lb-preview-host [qhtml-layout="q-col"],
-    .lb-preview-host [qhtml-layout="q-layout"] {
-      align-items: stretch !important;
-    }
-
-    .lb-preview-host [qhtml-layout="q-col"] > [qhtml-layout="q-row"],
-    .lb-preview-host [qhtml-layout="q-layout"] > [qhtml-layout="q-row"] {
-      width: 100% !important;
-      align-self: stretch !important;
-    }
   </style>
 
   <input id="lbOpenFile" type="file" accept=".qhtml,.txt,text/plain" hidden>
@@ -721,48 +696,17 @@
     return parent.type === "q-row" ? "horizontal" : "vertical";
   }
 
-  function normalizeLayoutFillTree(node, parent) {
+  function normalizeTree(node) {
     if (!node) {
       return null;
     }
     if (node.type !== "qhtml") {
       node.props = normalizedPropsFor(node.type, node.props);
-      if (parent && layoutFlowAxis(parent) === "horizontal") {
-        node.props.height = DEFAULT_LAYOUT_VALUE;
-      }
-      if (parent && layoutFlowAxis(parent) === "vertical") {
-        node.props.width = DEFAULT_LAYOUT_VALUE;
-      }
     }
     node.children = (node.children || [])
-      .map((child) => normalizeLayoutFillTree(child, node))
+      .map((child) => normalizeTree(child))
       .filter(Boolean);
     return node;
-  }
-
-  function normalizeTree(node) {
-    return normalizeLayoutFillTree(node, null);
-  }
-
-  function enforceRenderedFill(node, parent) {
-    if (!node) {
-      return;
-    }
-    if (node.type !== "qhtml") {
-      const element = layoutElementById(node.id);
-      if (element) {
-        element.style.alignItems = "stretch";
-        if (parent && layoutFlowAxis(parent) === "horizontal") {
-          element.style.height = "auto";
-          element.style.alignSelf = "stretch";
-        }
-        if (parent && layoutFlowAxis(parent) === "vertical") {
-          element.style.width = "100%";
-          element.style.alignSelf = "stretch";
-        }
-      }
-    }
-    (node.children || []).forEach((child) => enforceRenderedFill(child, node));
   }
 
   function buildDefaultUserTree() {
@@ -1189,7 +1133,7 @@
   }
 
   function previewSource() {
-    normalizeLayoutFillTree(root, null);
+    normalizeTree(root);
     return modelToQHTML(root, 0);
   }
 
@@ -1219,7 +1163,9 @@
       previewHost.textContent = source;
     }
     window.setTimeout(() => {
-      enforceRenderedFill(root, null);
+      if (window.QHTML7 && typeof window.QHTML7.refreshLayouts === "function") {
+        window.QHTML7.refreshLayouts(previewHost);
+      }
       refreshOutlines();
     }, 0);
   }
@@ -2736,7 +2682,9 @@
       residual = 0;
     }
 
-    enforceRenderedFill(root, null);
+    if (window.QHTML7 && typeof window.QHTML7.refreshLayouts === "function") {
+      window.QHTML7.refreshLayouts(previewHost);
+    }
   }
 
   function updateResize(event) {

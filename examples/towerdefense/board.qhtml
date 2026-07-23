@@ -39,18 +39,18 @@ q-component td-board {
 
   td-pathfinder pathfinder { }
 
-  q-timer initTimer {
-    interval: 100
-    running: true
-    repeat: false
-    ontimeout() { this.initBoard(); }
-  }
-
   q-timer loopTimer {
     interval: 100
-    running: true
+    running: false
     repeat: true
     ontimeout() { this.gameTick(); }
+  }
+
+  onready {
+    var board = this;
+    document.addEventListener("QHTMLContentLoaded", function() {
+      board.startGame();
+    }, { once: true });
   }
 
   function index(row, col) {
@@ -72,8 +72,12 @@ q-component td-board {
     this.refreshView();
   }
 
+  function startGame() {
+    this.initBoard();
+    this.loopTimer.start();
+  }
+
   function refreshView() {
-    this.game.update();
     this.boardRenderer.sync(this);
   }
 

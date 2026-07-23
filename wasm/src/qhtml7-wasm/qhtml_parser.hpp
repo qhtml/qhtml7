@@ -2215,45 +2215,7 @@ inline void QHTMLDomTree::instantiateComponentsFor(QHTMLNode *scope)
 
 namespace qhtml7_reference_detail {
 
-struct ReferenceFrame
-{
-    QHash<QString, QHTMLReference *> byUUID;
-    QHash<QString, QString> byName;
 
-    void bind(const QString &visibleName, QHTMLReference *reference, bool overwriteName = true)
-    {
-        if (!reference) {
-            return;
-        }
-        const QString uuid = reference->qhtmlUUID().trimmed();
-        if (uuid.isEmpty()) {
-            return;
-        }
-        if (!byUUID.contains(uuid)) {
-            byUUID.insert(uuid, reference);
-        }
-        const QString name = visibleName.trimmed();
-        if (!name.isEmpty() && (overwriteName || !byName.contains(name))) {
-            byName.insert(name, uuid);
-        }
-    }
-
-    void removeUUID(const QString &uuidValue)
-    {
-        const QString uuid = uuidValue.trimmed();
-        if (uuid.isEmpty()) {
-            return;
-        }
-        byUUID.remove(uuid);
-        for (auto it = byName.begin(); it != byName.end();) {
-            if (it.value() == uuid) {
-                it = byName.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-};
 
 inline bool isScopeOwner(QHTMLNode *node)
 {
@@ -2534,243 +2496,177 @@ inline QVector<QHTMLNode *> additionalDefinitionReferenceMembers(QHTMLComponentD
     return out;
 }
 
-inline void seedFrameFromContext(QHTMLNode *scope, ReferenceFrame &frame)
+inline bool isReducedScopeProperty(QHTMLNode *node)
 {
-    if (!scope || !scope->qhtmlContext) {
-        return;
-    }
-    const QStringList keys = scope->qhtmlContext->keys();
-    for (const QString &key : keys) {
-        if (frame.byName.contains(key)) {
-            continue;
-        }
-        QHTMLReference *reference = scope->qhtmlContext->resolve(key);
-        QHTMLNode *referenceNode = dynamic_cast<QHTMLNode *>(reference);
-        if (!referenceNode || !isReferenceDeclaration(referenceNode)) {
-            continue;
-        }
-        if (referenceNode->qhtmlUUID() == scope->qhtmlUUID()) {
-            continue;
-        }
-        frame.bind(key, referenceNode, false);
-    }
+    return node &&
+           !node->qhtmlName().trimmed().isEmpty() &&
+           dynamic_cast<QHTMLProperty *>(node);
 }
 
-inline QVector<QHTMLNode *> scopeOwnedStarts(QHTMLNode *scope)
+inline bool isReducedScopeComponent(QHTMLNode *node)
 {
-    QVector<QHTMLNode *> starts;
+    return node &&
+           !node->qhtmlName().trimmed().isEmpty() &&
+           dynamic_cast<QHTMLComponentInstance *>(node);
+}
+
+inline void collectReducedLocalReferences(QHTMLNode *scope,
+                                          QVector<QHTMLReference *> &references)
+{
     if (!scope) {
-        return starts;
+        return;
     }
-    // Reference scopes follow the real QHTML ownership tree only.  The
-    // non-rendering reference-member collection must never become a second
-    // traversal graph: it can contain cloned component instances and can
-    // therefore form recursive definition chains independent of qhtmlChildren.
-    starts.reserve(scope->childCount());
-    for (int i = 0; i < scope->childCount(); ++i) {
+
+    QVector<QHTMLNode *> pending;
+    for (int i = scope->childCount() - 1; i >= 0; --i) {
         if (QHTMLNode *child = scope->childAt(i)) {
-            starts.append(child);
-        }
-    }
-    return starts;
-}
-
-inline QVector<QHTMLNode *> collectLocalDeclarations(QHTMLNode *scope, ReferenceFrame &frame)
-{
-    QVector<QHTMLNode *> nestedScopes;
-
-    // Slots are stable, instance-owned reference proxies, but they are not
-    // structural children and must not be traversed as an ownership graph.
-    if (QHTMLComponentInstance *instance = dynamic_cast<QHTMLComponentInstance *>(scope)) {
-        for (int i = 0; i < instance->slotCount(); ++i) {
-            if (QHTMLComponentInstanceSlot *slot = instance->slotViewAt(i)) {
-                frame.bind(slot->qhtmlName(), slot, true);
-            }
+            pending.append(child);
         }
     }
 
-    QVector<QHTMLNode *> starts = scopeOwnedStarts(scope);
-    QVector<QHTMLNode *> pending;
-    for (int i = starts.size() - 1; i >= 0; --i) {
-        pending.append(starts.at(i));
-    }
-
-    QSet<QString> visited;
     QSet<const QHTMLNode *> visitedPointers;
-    QSet<QString> nestedUUIDs;
+    QSet<QString> visitedUUIDs;
     while (!pending.isEmpty()) {
         QHTMLNode *node = pending.takeLast();
         if (!node || visitedPointers.contains(node)) {
             continue;
         }
         visitedPointers.insert(node);
-        const QString uuid = node->qhtmlUUID();
-        if (!uuid.isEmpty() && visited.contains(uuid)) {
+
+        const QString uuid = node->qhtmlUUID().trimmed();
+        if (!uuid.isEmpty() && visitedUUIDs.contains(uuid)) {
             continue;
         }
         if (!uuid.isEmpty()) {
-            visited.insert(uuid);
+            visitedUUIDs.insert(uuid);
         }
 
-        if (isScopeOwner(node)) {
-            if (isReferenceDeclaration(node)) {
-                frame.bind(node->qhtmlName(), node, true);
-            }
-            if (!uuid.isEmpty() && !nestedUUIDs.contains(uuid)) {
-                nestedUUIDs.insert(uuid);
-                nestedScopes.append(node);
-            }
+        // A component definition is a separate template scope.  Nothing
+        // declared inside it belongs to the surrounding lexical scope.
+        if (dynamic_cast<QHTMLComponentDefinition *>(node)) {
             continue;
         }
 
-        if (isReferenceDeclaration(node)) {
-            frame.bind(node->qhtmlName(), node, true);
+        // Named component instances are one-level sibling references.  Add
+        // the object itself, then stop: references inside that component are
+        // never hoisted into the current scope.
+        if (isReducedScopeComponent(node)) {
+            references.append(node);
+            continue;
         }
 
+        // Properties are the only declaration type inherited by scripts in
+        // descendants of the owning component scope.
+        if (isReducedScopeProperty(node)) {
+            references.append(node);
+            continue;
+        }
+
+        // Ordinary DOM/typed wrappers are transparent for lexical ownership.
         for (int i = node->childCount() - 1; i >= 0; --i) {
             if (QHTMLNode *child = node->childAt(i)) {
                 pending.append(child);
             }
         }
     }
-    return nestedScopes;
 }
 
-inline void materializeFrame(QHTMLNode *node, const ReferenceFrame &frame)
+inline void rebuildReducedLocalScope(QHTMLNode *scope)
 {
-    if (!node) {
+    if (!scope || !isScopeOwner(scope)) {
         return;
     }
-    node->clearQHTMLReferences();
-    for (auto it = frame.byUUID.constBegin(); it != frame.byUUID.constEnd(); ++it) {
-        node->addQHTMLReference(QString(), it.value());
-    }
-    for (auto it = frame.byName.constBegin(); it != frame.byName.constEnd(); ++it) {
-        QHTMLReference *reference = frame.byUUID.value(it.value(), nullptr);
-        node->addQHTMLReference(it.key(), reference);
-    }
-}
 
-inline QVector<QHTMLNode *> propagateFrameThroughScope(QHTMLNode *scope, const ReferenceFrame &frame)
-{
-    QVector<QHTMLNode *> nestedScopes;
-    if (!scope) {
-        return nestedScopes;
-    }
+    scope->clearQHTMLReferences();
 
-    materializeFrame(scope, frame);
+    QVector<QHTMLReference *> references;
+    collectReducedLocalReferences(scope, references);
 
-    QVector<QHTMLNode *> starts = scopeOwnedStarts(scope);
-    QVector<QHTMLNode *> pending;
-    for (int i = starts.size() - 1; i >= 0; --i) {
-        pending.append(starts.at(i));
-    }
-
-    QSet<QString> visited;
-    QSet<const QHTMLNode *> visitedPointers;
-    QSet<QString> nestedUUIDs;
-    while (!pending.isEmpty()) {
-        QHTMLNode *node = pending.takeLast();
-        if (!node || visitedPointers.contains(node)) {
-            continue;
-        }
-        visitedPointers.insert(node);
-        const QString uuid = node->qhtmlUUID();
-        if (!uuid.isEmpty() && visited.contains(uuid)) {
-            continue;
-        }
-        if (!uuid.isEmpty()) {
-            visited.insert(uuid);
-        }
-
-        if (isScopeOwner(node)) {
-            if (!uuid.isEmpty() && !nestedUUIDs.contains(uuid)) {
-                nestedUUIDs.insert(uuid);
-                nestedScopes.append(node);
-            }
-            continue;
-        }
-
-        materializeFrame(node, frame);
-        for (int i = node->childCount() - 1; i >= 0; --i) {
-            if (QHTMLNode *child = node->childAt(i)) {
-                pending.append(child);
+    // Component instances own cloned properties and other executable members,
+    // but their rendered named component children remain in the definition
+    // template. Include those one-level component references in the instance
+    // scope without inheriting the rest of the definition tree.
+    if (QHTMLComponentInstance *instance =
+            dynamic_cast<QHTMLComponentInstance *>(scope)) {
+        if (QHTMLComponentDefinition *definition = instance->definition()) {
+            QVector<QHTMLReference *> definitionReferences;
+            collectReducedLocalReferences(definition, definitionReferences);
+            for (QHTMLReference *reference : definitionReferences) {
+                QHTMLNode *referenceNode = dynamic_cast<QHTMLNode *>(reference);
+                if (isReducedScopeComponent(referenceNode)) {
+                    references.append(reference);
+                }
             }
         }
     }
-    return nestedScopes;
+
+    QSet<QString> addedNames;
+    QSet<QString> addedUUIDs;
+    for (QHTMLReference *reference : references) {
+        if (!reference) {
+            continue;
+        }
+        const QString name = reference->qhtmlName().trimmed();
+        const QString uuid = reference->qhtmlUUID().trimmed();
+        if (name.isEmpty() ||
+            addedNames.contains(name) ||
+            (!uuid.isEmpty() && addedUUIDs.contains(uuid))) {
+            continue;
+        }
+        if (scope->addQHTMLReference(name, reference)) {
+            addedNames.insert(name);
+            if (!uuid.isEmpty()) {
+                addedUUIDs.insert(uuid);
+            }
+        }
+    }
 }
 
-inline void buildEffectiveReferenceScopes(QHTMLNode *root)
+inline void buildReducedReferenceScopes(QHTMLNode *root)
 {
     if (!root) {
         return;
     }
 
-    struct ScopeWorkItem
-    {
-        QHTMLNode *scope = nullptr;
-        ReferenceFrame inherited;
-    };
-
-    QVector<ScopeWorkItem> pending;
-    ScopeWorkItem rootWork;
-    rootWork.scope = root;
-    pending.append(rootWork);
-    QSet<QString> processedScopes;
-    QSet<const QHTMLNode *> processedScopePointers;
+    // One iterative ownership-tree pass clears all previously materialized
+    // inherited maps.  Only real qhtmlChildren edges are traversed.
+    QVector<QHTMLNode *> pending;
+    pending.append(root);
+    QVector<QHTMLNode *> scopeOwners;
+    QSet<const QHTMLNode *> visitedPointers;
+    QSet<QString> visitedUUIDs;
 
     while (!pending.isEmpty()) {
-        ScopeWorkItem work = pending.takeLast();
-        QHTMLNode *scope = work.scope;
-        if (!scope || processedScopePointers.contains(scope)) {
+        QHTMLNode *node = pending.takeLast();
+        if (!node || visitedPointers.contains(node)) {
             continue;
         }
-        processedScopePointers.insert(scope);
-        const QString scopeUUID = scope->qhtmlUUID();
-        if (!scopeUUID.isEmpty() && processedScopes.contains(scopeUUID)) {
+        visitedPointers.insert(node);
+
+        const QString uuid = node->qhtmlUUID().trimmed();
+        if (!uuid.isEmpty() && visitedUUIDs.contains(uuid)) {
             continue;
         }
-        if (!scopeUUID.isEmpty()) {
-            processedScopes.insert(scopeUUID);
+        if (!uuid.isEmpty()) {
+            visitedUUIDs.insert(uuid);
         }
 
-        ReferenceFrame frame = work.inherited;
-        seedFrameFromContext(scope, frame);
-        const QVector<QHTMLNode *> collectedScopes = collectLocalDeclarations(scope, frame);
-        const QVector<QHTMLNode *> propagatedScopes = propagateFrameThroughScope(scope, frame);
-
-        QVector<QHTMLNode *> nestedScopes = collectedScopes;
-        QSet<QString> nestedUUIDs;
-        for (QHTMLNode *nested : nestedScopes) {
-            if (nested && !nested->qhtmlUUID().isEmpty()) {
-                nestedUUIDs.insert(nested->qhtmlUUID());
-            }
-        }
-        for (QHTMLNode *nested : propagatedScopes) {
-            if (!nested) {
-                continue;
-            }
-            const QString uuid = nested->qhtmlUUID();
-            if (!uuid.isEmpty() && nestedUUIDs.contains(uuid)) {
-                continue;
-            }
-            if (!uuid.isEmpty()) {
-                nestedUUIDs.insert(uuid);
-            }
-            nestedScopes.append(nested);
+        node->clearQHTMLReferences();
+        if (isScopeOwner(node)) {
+            scopeOwners.append(node);
         }
 
-        for (int i = nestedScopes.size() - 1; i >= 0; --i) {
-            QHTMLNode *nested = nestedScopes.at(i);
-            if (nested) {
-                ScopeWorkItem nestedWork;
-                nestedWork.scope = nested;
-                nestedWork.inherited = frame;
-                nestedWork.inherited.removeUUID(nested->qhtmlUUID());
-                pending.append(nestedWork);
+        for (int i = node->childCount() - 1; i >= 0; --i) {
+            if (QHTMLNode *child = node->childAt(i)) {
+                pending.append(child);
             }
         }
+    }
+
+    // Maps are local and small: own properties plus direct named component
+    // children.  No frame is copied into anonymous descendants.
+    for (QHTMLNode *scope : scopeOwners) {
+        rebuildReducedLocalScope(scope);
     }
 }
 
@@ -2779,7 +2675,7 @@ inline void buildEffectiveReferenceScopes(QHTMLNode *root)
 inline void QHTMLDomTree::bindComponentMembers()
 {
     bindComponentMembersFor(this);
-    qhtml7_reference_detail::buildEffectiveReferenceScopes(this);
+    qhtml7_reference_detail::buildReducedReferenceScopes(this);
 }
 
 inline void QHTMLDomTree::bindComponentMembersFor(QHTMLNode *scope)
