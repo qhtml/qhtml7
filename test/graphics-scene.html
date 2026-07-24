@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML7 Graphics Scene Stress Test</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, system-ui, sans-serif;
+      background: #071018;
+      color: #dceeff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      background:
+        radial-gradient(circle at 20% 10%, rgb(23 88 120 / 28%), transparent 38%),
+        linear-gradient(145deg, #071018, #0b1622 60%, #091018);
+    }
+
+    .test-shell {
+      width: min(1400px, 100%);
+      margin: 0 auto;
+    }
+
+    .test-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      color: #f4fbff;
+      font-size: clamp(1.35rem, 3vw, 2rem);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: #83a6bd;
+      font-size: 0.9rem;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(90px, 1fr));
+      gap: 8px;
+      min-width: min(100%, 430px);
+    }
+
+    .metric {
+      padding: 8px 12px;
+      border: 1px solid #21425a;
+      border-radius: 7px;
+      background: rgb(7 21 32 / 78%);
+    }
+
+    .metric-label {
+      display: block;
+      color: #6f9ab6;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      display: block;
+      margin-top: 2px;
+      color: #5ee7ff;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.05rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 9px 12px;
+      border: 1px solid #1c3a50;
+      border-bottom: 0;
+      border-radius: 9px 9px 0 0;
+      background: #0b1a26;
+    }
+
+    button {
+      min-width: 90px;
+      padding: 7px 12px;
+      border: 1px solid #2e617d;
+      border-radius: 5px;
+      background: #123047;
+      color: #dcf7ff;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    button:hover {
+      background: #19405c;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #a6c3d5;
+      font-size: 0.85rem;
+    }
+
+    input[type="range"] {
+      width: min(240px, 35vw);
+      accent-color: #3bcce7;
+    }
+
+    #item-count-output {
+      min-width: 3.5em;
+      color: #5ee7ff;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      text-align: right;
+    }
+
+    graphics-scene {
+      position: relative;
+      width: 100%;
+      height: clamp(430px, 70vh, 760px);
+      overflow: hidden;
+      border: 1px solid #28516b;
+      border-radius: 0 0 9px 9px;
+      background:
+        linear-gradient(rgb(49 103 130 / 12%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(49 103 130 / 12%) 1px, transparent 1px),
+        radial-gradient(circle at center, #102637, #07131e 72%);
+      background-size: 32px 32px, 32px 32px, auto;
+      box-shadow: 0 18px 60px rgb(0 0 0 / 36%);
+    }
+
+    graphics-scene canvas {
+      position: absolute;
+      inset: 0;
+    }
+
+    .test-note {
+      margin: 10px 2px 0;
+      color: #668ca4;
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="test-shell">
+    <header class="test-header">
+      <div>
+        <h1>QHTML7 Graphics Scene Stress Test</h1>
+        <p class="subtitle">One canvas, independent logical items, continuously changing transforms.</p>
+      </div>
+
+      <section class="metrics" aria-label="Graphics scene metrics">
+        <div class="metric">
+          <span class="metric-label">Frame rate</span>
+          <span class="metric-value" id="fps-output">0.0 FPS</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Items</span>
+          <span class="metric-value" id="items-output">0</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Paints/sec</span>
+          <span class="metric-value" id="paints-output">0</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Adds/removes</span>
+          <span class="metric-value" id="mutations-output">0/sec</span>
+        </div>
+      </section>
+    </header>
+
+    <section class="toolbar" aria-label="Stress test controls">
+      <button id="pause-button" type="button">Pause</button>
+      <button id="reseed-button" type="button">Reseed</button>
+      <label>
+        Target load
+        <input id="item-count-input" type="range" min="25" max="1000" step="25" value="300">
+        <output id="item-count-output" for="item-count-input">300</output>
+      </label>
+    </section>
+
+    <graphics-scene id="test-scene" aria-label="Animated graphics scene"></graphics-scene>
+    <p class="test-note">
+      The population continuously adds and removes randomly selected items around the target load. All changes are
+      coalesced into the scene's next animation frame.
+    </p>
+  </main>
+
+  <script src="../js/qhtml-graphics-scene.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      class GraphicsSceneRandom {
+        constructor(seed) {
+          this._state = seed >>> 0;
+        }
+
+        next() {
+          this._state += 0x6d2b79f5;
+          let value = this._state;
+          value = Math.imul(value ^ value >>> 15, value | 1);
+          value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+          return ((value ^ value >>> 14) >>> 0) / 4294967296;
+        }
+
+        range(minimum, maximum) {
+          return minimum + (maximum - minimum) * this.next();
+        }
+
+        integer(minimum, maximum) {
+          return Math.floor(this.range(minimum, maximum + 1));
+        }
+      }
+
+      class StressGraphicsItem extends QHTMLGraphicsItem {
+        constructor(configuration) {
+          super({
+            width: configuration.baseWidth,
+            height: configuration.baseHeight,
+            painter: StressGraphicsItem.paintItem
+          });
+          this.baseWidth = configuration.baseWidth;
+          this.baseHeight = configuration.baseHeight;
+          this.baseScale = configuration.baseScale;
+          this.orbitX = configuration.orbitX;
+          this.orbitY = configuration.orbitY;
+          this.phase = configuration.phase;
+          this.velocity = configuration.velocity;
+          this.rotationVelocity = configuration.rotationVelocity;
+          this.pulseVelocity = configuration.pulseVelocity;
+          this.hue = configuration.hue;
+          this.shape = configuration.shape;
+          this.paintCount = 0;
+        }
+
+        static paintItem(context2d) {
+          StressGraphicsItem._totalPaintCount += 1;
+          this.paintCount += 1;
+          const width = this.width;
+          const height = this.height;
+          const halfWidth = width * 0.5;
+          const halfHeight = height * 0.5;
+
+          context2d.fillStyle = `hsl(${this.hue} 82% 58%)`;
+          context2d.strokeStyle = `hsl(${this.hue} 92% 82%)`;
+          context2d.lineWidth = Math.max(1, Math.min(width, height) * 0.055);
+          context2d.shadowColor = `hsl(${this.hue} 90% 55% / 0.72)`;
+          context2d.shadowBlur = Math.min(width, height) * 0.28;
+
+          context2d.beginPath();
+          if (this.shape === 0) {
+            context2d.roundRect(0, 0, width, height, Math.min(width, height) * 0.22);
+          } else if (this.shape === 1) {
+            context2d.ellipse(halfWidth, halfHeight, halfWidth, halfHeight, 0, 0, Math.PI * 2);
+          } else {
+            context2d.moveTo(halfWidth, 0);
+            context2d.lineTo(width, height);
+            context2d.lineTo(0, height);
+            context2d.closePath();
+          }
+          context2d.fill();
+          context2d.stroke();
+
+          context2d.shadowBlur = 0;
+          context2d.fillStyle = "rgb(235 252 255 / 0.72)";
+          context2d.beginPath();
+          context2d.arc(halfWidth, halfHeight, Math.max(1.5, Math.min(width, height) * 0.09), 0, Math.PI * 2);
+          context2d.fill();
+        }
+
+        animate(elapsedSeconds, sceneWidth, sceneHeight) {
+          const orbitAngle = elapsedSeconds * this.velocity + this.phase;
+          const pulseAngle = elapsedSeconds * this.pulseVelocity + this.phase;
+          const widthPulse = 0.78 + Math.sin(pulseAngle) * 0.22;
+          const heightPulse = 0.78 + Math.cos(pulseAngle * 1.17) * 0.22;
+          const nextWidth = this.baseWidth * widthPulse;
+          const nextHeight = this.baseHeight * heightPulse;
+          const centerX = sceneWidth * 0.5 + Math.cos(orbitAngle) * this.orbitX * sceneWidth;
+          const centerY = sceneHeight * 0.5 + Math.sin(orbitAngle * 1.13) * this.orbitY * sceneHeight;
+          const scalePulse = this.baseScale * (0.82 + Math.sin(pulseAngle * 0.71) * 0.18);
+
+          this
+            .setSize(nextWidth, nextHeight)
+            .setTransformOrigin(nextWidth * 0.5, nextHeight * 0.5)
+            .setPosition(centerX - nextWidth * 0.5, centerY - nextHeight * 0.5)
+            .setRotation(elapsedSeconds * this.rotationVelocity + this.phase * 180 / Math.PI)
+            .setScale(scalePulse)
+            .setOpacity(0.28 + (Math.sin(pulseAngle) + 1) * 0.34);
+        }
+
+        static totalPaintCount() {
+          return StressGraphicsItem._totalPaintCount;
+        }
+      }
+
+      StressGraphicsItem._totalPaintCount = 0;
+
+      class GraphicsSceneItemFactory {
+        constructor(seed) {
+          this._random = new GraphicsSceneRandom(seed);
+        }
+
+        create() {
+          return new StressGraphicsItem({
+            baseWidth: this._random.range(10, 34),
+            baseHeight: this._random.range(10, 34),
+            baseScale: this._random.range(0.7, 1.35),
+            orbitX: this._random.range(0.04, 0.48),
+            orbitY: this._random.range(0.04, 0.46),
+            phase: this._random.range(0, Math.PI * 2),
+            velocity: this._random.range(0.08, 0.72),
+            rotationVelocity: this._random.range(-160, 160),
+            pulseVelocity: this._random.range(0.65, 2.2),
+            hue: this._random.integer(175, 330),
+            shape: this._random.integer(0, 2)
+          });
+        }
+
+        randomRange(minimum, maximum) {
+          return this._random.range(minimum, maximum);
+        }
+
+        randomInteger(minimum, maximum) {
+          return this._random.integer(minimum, maximum);
+        }
+      }
+
+      class GraphicsSceneMetrics {
+        constructor(elements) {
+          this._fpsOutput = elements.fpsOutput;
+          this._itemsOutput = elements.itemsOutput;
+          this._paintsOutput = elements.paintsOutput;
+          this._mutationsOutput = elements.mutationsOutput;
+          this._windowStart = performance.now();
+          this._frameCount = 0;
+          this._lastPaintCount = 0;
+          this._lastMutationCount = 0;
+        }
+
+        update(timestamp, items, totalPaintCount, totalMutationCount) {
+          this._frameCount += 1;
+          const windowDuration = timestamp - this._windowStart;
+          if (windowDuration < 500) {
+            return;
+          }
+
+          const framesPerSecond = this._frameCount * 1000 / windowDuration;
+          const paintsPerSecond = (totalPaintCount - this._lastPaintCount) * 1000 / windowDuration;
+          const mutationsPerSecond = (
+            (totalMutationCount - this._lastMutationCount) * 1000 / windowDuration
+          );
+
+          this._fpsOutput.textContent = `${framesPerSecond.toFixed(1)} FPS`;
+          this._itemsOutput.textContent = String(items.length);
+          this._paintsOutput.textContent = Math.round(paintsPerSecond).toLocaleString();
+          this._mutationsOutput.textContent = `${mutationsPerSecond.toFixed(1)}/sec`;
+          this._windowStart = timestamp;
+          this._frameCount = 0;
+          this._lastPaintCount = totalPaintCount;
+          this._lastMutationCount = totalMutationCount;
+        }
+
+        reset(items, totalPaintCount, totalMutationCount) {
+          this._windowStart = performance.now();
+          this._frameCount = 0;
+          this._lastPaintCount = totalPaintCount;
+          this._lastMutationCount = totalMutationCount;
+          this._itemsOutput.textContent = String(items.length);
+        }
+      }
+
+      class GraphicsSceneStressTest {
+        constructor(elements) {
+          this._scene = elements.scene;
+          this._pauseButton = elements.pauseButton;
+          this._reseedButton = elements.reseedButton;
+          this._itemCountInput = elements.itemCountInput;
+          this._itemCountOutput = elements.itemCountOutput;
+          this._items = [];
+          this._targetItemCount = 0;
+          this._populationMutationCount = 0;
+          this._nextPopulationMutation = 0;
+          this._factorySeed = 0x7a31c4e9;
+          this._factory = new GraphicsSceneItemFactory(this._factorySeed);
+          this._metrics = new GraphicsSceneMetrics(elements);
+          this._running = true;
+          this._startTime = performance.now();
+          this._pausedDuration = 0;
+          this._pauseStarted = 0;
+          this._frameRequest = 0;
+          this._animateFrame = this._animateFrame.bind(this);
+        }
+
+        start() {
+          this._bindControls();
+          this.setItemCount(Number(this._itemCountInput.value));
+          this._frameRequest = requestAnimationFrame(this._animateFrame);
+        }
+
+        setItemCount(itemCount) {
+          const nextCount = Math.max(0, Math.floor(itemCount));
+          this._targetItemCount = nextCount;
+          while (this._items.length < nextCount) {
+            const graphicsItem = this._factory.create();
+            this._items.push(graphicsItem);
+            this._scene.addItem(graphicsItem);
+          }
+          while (this._items.length > nextCount) {
+            this._scene.removeItem(this._items.pop());
+          }
+          this._itemCountOutput.value = String(nextCount);
+          this._metrics.reset(
+            this._items,
+            StressGraphicsItem.totalPaintCount(),
+            this._populationMutationCount
+          );
+        }
+
+        reseed() {
+          this._factorySeed = (this._factorySeed + 0x9e3779b9) >>> 0;
+          const targetItemCount = this._targetItemCount;
+          this._scene.clearItems();
+          this._items.length = 0;
+          this._factory = new GraphicsSceneItemFactory(this._factorySeed);
+          this.setItemCount(targetItemCount);
+        }
+
+        togglePaused() {
+          this._running = !this._running;
+          if (this._running) {
+            this._pausedDuration += performance.now() - this._pauseStarted;
+            this._pauseButton.textContent = "Pause";
+          } else {
+            this._pauseStarted = performance.now();
+            this._pauseButton.textContent = "Resume";
+          }
+        }
+
+        _bindControls() {
+          this._pauseButton.addEventListener("click", () => {
+            this.togglePaused();
+          });
+          this._reseedButton.addEventListener("click", () => {
+            this.reseed();
+          });
+          this._itemCountInput.addEventListener("input", () => {
+            this.setItemCount(Number(this._itemCountInput.value));
+          });
+        }
+
+        _animateFrame(timestamp) {
+          if (this._running) {
+            this._mutatePopulation(timestamp);
+            const elapsedSeconds = (timestamp - this._startTime - this._pausedDuration) / 1000;
+            const bounds = this._scene.getBoundingClientRect();
+            this._items.forEach((graphicsItem) => {
+              graphicsItem.animate(elapsedSeconds, bounds.width, bounds.height);
+            });
+            this._metrics.update(
+              timestamp,
+              this._items,
+              StressGraphicsItem.totalPaintCount(),
+              this._populationMutationCount
+            );
+          }
+          this._frameRequest = requestAnimationFrame(this._animateFrame);
+        }
+
+        _mutatePopulation(timestamp) {
+          if (timestamp < this._nextPopulationMutation || this._targetItemCount === 0) {
+            return;
+          }
+
+          this._nextPopulationMutation = timestamp + this._factory.randomRange(70, 160);
+          const populationVariance = Math.max(4, Math.ceil(this._targetItemCount * 0.12));
+          const lowerBound = Math.max(1, this._targetItemCount - populationVariance);
+          const upperBound = this._targetItemCount + populationVariance;
+          const batchSize = this._factory.randomInteger(
+            1,
+            Math.max(1, Math.ceil(this._targetItemCount / 250))
+          );
+
+          for (let mutationIndex = 0; mutationIndex < batchSize; mutationIndex += 1) {
+            const mustAdd = this._items.length <= lowerBound;
+            const mustRemove = this._items.length >= upperBound;
+            const randomlyAdd = this._factory.randomInteger(0, 1) === 1;
+
+            if (mustAdd || (!mustRemove && randomlyAdd)) {
+              const graphicsItem = this._factory.create();
+              this._items.push(graphicsItem);
+              this._scene.addItem(graphicsItem);
+            } else {
+              const removalIndex = this._factory.randomInteger(0, this._items.length - 1);
+              const removedItem = this._items.splice(removalIndex, 1)[0];
+              this._scene.removeItem(removedItem);
+            }
+            this._populationMutationCount += 1;
+          }
+        }
+      }
+
+      class GraphicsSceneTestApplication {
+        constructor(documentRoot) {
+          this._document = documentRoot;
+        }
+
+        run() {
+          const stressTest = new GraphicsSceneStressTest({
+            scene: this._document.getElementById("test-scene"),
+            pauseButton: this._document.getElementById("pause-button"),
+            reseedButton: this._document.getElementById("reseed-button"),
+            itemCountInput: this._document.getElementById("item-count-input"),
+            itemCountOutput: this._document.getElementById("item-count-output"),
+            fpsOutput: this._document.getElementById("fps-output"),
+            itemsOutput: this._document.getElementById("items-output"),
+            paintsOutput: this._document.getElementById("paints-output"),
+            mutationsOutput: this._document.getElementById("mutations-output")
+          });
+          stressTest.start();
+        }
+      }
+
+      new GraphicsSceneTestApplication(document).run();
+    })();
+  </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 (function (globalScope) {
-  const QHTML_VERSION = "7.3.24";
+  const QHTML_VERSION = "7.4.0";
   globalScope.QHTML_VERSION = QHTML_VERSION;
 })(typeof globalThis !== "undefined" ? globalThis : window);
 
@@ -2047,27 +2047,170 @@
     return { names, values };
   }
 
-  function executeScriptBody(domElement, parameters, args, body, registry) {
-    const invocation = normalizeScriptInvocation(domElement, registry, parameters, args);
-    const context = executionContextFor(domElement, registry, invocation.names);
-    try {
-      if (shouldUseQHTML6ForLegacySource(body) &&
-          reportQHTMLRuntimeError(domElement, new Error("QHTML6 legacy script syntax requested"), registry)) {
-        return undefined;
+  class QHTMLScriptRegistry {
+    constructor(registry) {
+      this.registry = registry;
+      this.callers = new Map();
+      this.syntheticScriptCounter = 0;
+      this.compilationCount = 0;
+      this.invocationCount = 0;
+    }
+
+    callerUUID(caller) {
+      const node = caller && caller.qhtmlNode ? caller.qhtmlNode : caller;
+      const uuid = qhtmlNodeUuid(node);
+      if (uuid) {
+        return uuid;
       }
-      const callable = new Function(...invocation.names, ...context.names, expandQHTMLInlineScriptExpressions(body));
-      return callable.apply(domElement, [...invocation.values, ...context.values]);
+      if (!caller.__qhtmlScriptCallerUUID) {
+        this.syntheticScriptCounter += 1;
+        Object.defineProperty(caller, "__qhtmlScriptCallerUUID", {
+          configurable: true,
+          enumerable: false,
+          value: `qhtml-script-caller-${this.syntheticScriptCounter}`
+        });
+      }
+      return caller.__qhtmlScriptCallerUUID;
+    }
+
+    scriptUUID(scriptNode, keyHint) {
+      const uuid = qhtmlNodeUuid(scriptNode);
+      if (uuid) {
+        return uuid;
+      }
+      return String(keyHint || "qhtml-inline-script");
+    }
+
+    signature(parameterNames, contextNames, expandedBody) {
+      return JSON.stringify([parameterNames, contextNames, expandedBody]);
+    }
+
+    register(caller, scriptNode, parameterNames, body, keyHint) {
+      const callerUUID = this.callerUUID(caller);
+      const scriptUUID = this.scriptUUID(scriptNode, keyHint);
+      const parameters = Array.isArray(parameterNames)
+        ? parameterNames.slice()
+        : splitList(parameterNames);
+      const context = executionContextFor(caller, this.registry, parameters);
+      const expandedBody = expandQHTMLInlineScriptExpressions(body);
+      const signature = this.signature(parameters, context.names, expandedBody);
+
+      let callerScripts = this.callers.get(callerUUID);
+      if (!callerScripts) {
+        callerScripts = new Map();
+        this.callers.set(callerUUID, callerScripts);
+      }
+      let scriptEntries = callerScripts.get(scriptUUID);
+      if (!scriptEntries) {
+        scriptEntries = new Map();
+        callerScripts.set(scriptUUID, scriptEntries);
+      }
+      if (!scriptEntries.has(signature)) {
+        this.compilationCount += 1;
+        scriptEntries.set(signature, {
+          caller,
+          callerUUID,
+          scriptNode,
+          scriptUUID,
+          signature,
+          parameterNames: parameters,
+          contextNames: context.names,
+          contextValues: context.values,
+          callable: new Function(...parameters, ...context.names, expandedBody)
+        });
+      }
+      return scriptEntries.get(signature);
+    }
+
+    invoke(callerUUID, scriptUUID, signature, parameterValues) {
+      this.invocationCount += 1;
+      const callerScripts = this.callers.get(callerUUID);
+      const scriptEntries = callerScripts && callerScripts.get(scriptUUID);
+      const entry = scriptEntries && scriptEntries.get(signature);
+      const invocation = normalizeScriptInvocation(
+        entry.caller,
+        this.registry,
+        entry.parameterNames,
+        parameterValues
+      );
+      return entry.callable.apply(
+        entry.caller,
+        [...invocation.values, ...entry.contextValues]
+      );
+    }
+
+    removeCaller(callerUUID) {
+      this.callers.delete(String(callerUUID || ""));
+    }
+
+    clear() {
+      this.callers.clear();
+    }
+
+    stats() {
+      let scripts = 0;
+      let signatures = 0;
+      this.callers.forEach((callerScripts) => {
+        scripts += callerScripts.size;
+        callerScripts.forEach((scriptEntries) => {
+          signatures += scriptEntries.size;
+        });
+      });
+      return {
+        callers: this.callers.size,
+        scripts,
+        signatures,
+        compilations: this.compilationCount,
+        invocations: this.invocationCount
+      };
+    }
+  }
+
+  function registerQHTMLScript(domElement, parameters, body, registry, scriptNode, keyHint) {
+    return registry.scriptRegistry.register(
+      domElement,
+      scriptNode,
+      parameters,
+      String(body || ""),
+      keyHint
+    );
+  }
+
+  function doScript(registry, binding, args) {
+    try {
+      return registry.scriptRegistry.invoke(
+        binding.callerUUID,
+        binding.scriptUUID,
+        binding.signature,
+        args || []
+      );
     } catch (error) {
-      if (reportQHTMLRuntimeError(domElement, error, registry)) {
+      if (reportQHTMLRuntimeError(binding.caller, error, registry)) {
         return undefined;
       }
       throw error;
     }
   }
 
+  function executeScriptBody(domElement, parameters, args, body, registry, scriptNode, keyHint) {
+    if (shouldUseQHTML6ForLegacySource(body) &&
+        reportQHTMLRuntimeError(domElement, new Error("QHTML6 legacy script syntax requested"), registry)) {
+      return undefined;
+    }
+    const binding = registerQHTMLScript(
+      domElement,
+      parameters,
+      body,
+      registry,
+      scriptNode,
+      keyHint || String(body || "")
+    );
+    return doScript(registry, binding, args);
+  }
+
   function executeFunctionBody(domElement, functionNode, args, body, signalContext, registry) {
     const parameters = splitList(typeof functionNode.parameters === "function" ? functionNode.parameters() : "");
-    return executeScriptBody(domElement, parameters, args || [], body, registry);
+    return executeScriptBody(domElement, parameters, args || [], body, registry, functionNode);
   }
 
   function stripMatchingQuotes(value) {
@@ -3353,8 +3496,17 @@
 
     const parameters = splitList(typeof functionNode.parameters === "function" ? functionNode.parameters() : "");
     const body = String(typeof functionNode.body === "function" ? functionNode.body() : "");
+    const registry = domElement.__qhtmlRegistry;
+    const binding = registerQHTMLScript(
+      domElement,
+      parameters,
+      body,
+      registry,
+      functionNode,
+      `function:${functionName}`
+    );
     const boundFunction = function (...args) {
-      return executeScriptBody(domElement, parameters, args || [], body, domElement.__qhtmlRegistry);
+      return doScript(registry, binding, args);
     };
 
     boundFunction.__qhtmlElement = domElement;
@@ -3362,7 +3514,7 @@
     boundFunction.__qhtmlFunctionBody = body;
     boundFunction.__qhtmlFunctionParameters = parameters.slice();
     boundFunction.__qhtmlInvokeFromSignal = function (args, signalContext) {
-      return executeScriptBody(domElement, parameters, args || [], body, domElement.__qhtmlRegistry);
+      return doScript(registry, binding, args);
     };
 
     domElement[functionName] = boundFunction;
@@ -3500,9 +3652,19 @@
     }
     const parameters = splitList(typeof handlerNode.parameters === "function" ? handlerNode.parameters() : "");
     const body = typeof handlerNode.body === "function" ? handlerNode.body() : "";
+    const registry = domElement.__qhtmlRegistry;
+    const executionParameters = eventHandlerExecution(parameters, []).names;
+    const binding = registerQHTMLScript(
+      domElement,
+      executionParameters,
+      body,
+      registry,
+      handlerNode,
+      `event:${eventName}`
+    );
     const invoke = function (...args) {
       const invocation = eventHandlerExecution(parameters, args || []);
-      return executeScriptBody(domElement, invocation.names, invocation.values, body, domElement.__qhtmlRegistry);
+      return doScript(registry, binding, invocation.values);
     };
     invoke.__qhtmlElement = domElement;
     invoke.__qhtmlEventHandlerNode = handlerNode;
@@ -4715,7 +4877,21 @@
       __qhtmlRunning: false,
       __qhtmlInterval: timerNumber(timerAssignmentValue(timerNode, "interval", ownerElement, registry, 0), 0),
       __qhtmlRepeat: timerBool(timerAssignmentValue(timerNode, "repeat", ownerElement, registry, true), true),
-      __qhtmlHandlers: timerHandlers(timerNode)
+      __qhtmlHandlers: timerHandlers(timerNode).map((handlerNode) => {
+        const parameters = splitList(typeof handlerNode.parameters === "function" ? handlerNode.parameters() : "");
+        const body = typeof handlerNode.body === "function" ? handlerNode.body() : "";
+        return {
+          node: handlerNode,
+          binding: registerQHTMLScript(
+            ownerElement,
+            parameters,
+            body,
+            registry,
+            handlerNode,
+            `timer:${timerName}:timeout`
+          )
+        };
+      })
     };
 
     liveTimer.timeout = createTimerSignal(liveTimer, timerSignalNode(timerNode), ownerElement);
@@ -4769,10 +4945,8 @@
 
     liveTimer.tick = function () {
       liveTimer.timeout();
-      liveTimer.__qhtmlHandlers.forEach((handlerNode) => {
-        const parameters = splitList(typeof handlerNode.parameters === "function" ? handlerNode.parameters() : "");
-        const body = typeof handlerNode.body === "function" ? handlerNode.body() : "";
-        executeScriptBody(ownerElement, parameters, [], body, registry);
+      liveTimer.__qhtmlHandlers.forEach((handler) => {
+        doScript(registry, handler.binding, []);
       });
       if (!liveTimer.repeat) {
         liveTimer.stop();
@@ -5198,10 +5372,19 @@
     actionObject.component = actionObject;
     actionObject.started = createObjectSignal(actionObject, animationSignalNode(actionNode, "started"), "started");
     actionObject.finished = createObjectSignal(actionObject, animationSignalNode(actionNode, "finished"), "finished");
+    const actionBody = typeof actionNode.body === "function" ? actionNode.body() : "";
+    const actionBinding = registerQHTMLScript(
+      ownerElement,
+      [],
+      actionBody,
+      registry,
+      actionNode,
+      `script-action:${actionName}`
+    );
     actionObject.run = function () {
       actionObject.__qhtmlRunning = true;
       actionObject.started();
-      executeScriptBody(ownerElement, [], [], typeof actionNode.body === "function" ? actionNode.body() : "", registry);
+      doScript(registry, actionBinding, []);
       actionObject.__qhtmlRunning = false;
       actionObject.finished();
       return actionObject;
@@ -7258,8 +7441,16 @@
     }
     const parameters = splitList(qhtmlNodeAttribute(callbackNode, "parameters"));
     const body = qhtmlNodeChildrenText(callbackNode);
+    const binding = registerQHTMLScript(
+      domElement,
+      parameters,
+      body,
+      registry,
+      callbackNode,
+      `callback:${callbackName}`
+    );
     const callback = globalScope.QCallback(function qhtmlDeclarativeCallback(...args) {
-      return executeScriptBody(domElement, parameters, args, body, registry);
+      return doScript(registry, binding, args);
     }, { creator: domElement });
     callback.__qhtmlCallbackNode = callbackNode;
     callback.__qhtmlCallbackBody = body;
@@ -8438,7 +8629,7 @@
       if (!String(body || "").trim()) {
         return;
       }
-      executeScriptBody(ownerObject, [], [], body, registry);
+      executeScriptBody(ownerObject, [], [], body, registry, node, `script:${scriptUuid}`);
       if (scriptUuid) {
         registry.boundScriptNodes.add(scriptUuid);
       }
@@ -8741,6 +8932,7 @@
       tree,
       globals: globalScope
     };
+    registry.scriptRegistry = new QHTMLScriptRegistry(registry);
     nodesByUuid.forEach((node) => {
       const nodeType = node && typeof node.qhtmlType === "function" ? node.qhtmlType() : "";
       const nodeName = node && typeof node.qhtmlName === "function" ? node.qhtmlName() : "";
@@ -8812,6 +9004,7 @@
         registry.layoutController.dispose();
         registry.layoutController = null;
       }
+      registry.scriptRegistry.clear();
       registry.timersByUuid.forEach((timer) => {
         if (timer && typeof timer.stop === "function") {
           timer.stop();
@@ -9015,6 +9208,7 @@
     rootElement.qhtmlWorkers = registry.workers;
     rootElement.qhtmlClasses = registry.qhtmlClasses;
     rootElement.qhtmlClassInstances = registry.qhtmlClassInstances;
+    rootElement.qhtmlScriptRegistry = registry.scriptRegistry;
 
     emitReadySignals(rootElement, registry);
   }

@@ -1457,6 +1457,708 @@ It prints results to the page and browser console instead of using an assertion 
 
 Any missing reference, stale resource, JavaScript exception, WASM memory error, or stack overflow remains visible in the browser console.
 
+30. JavaScript-owned raster graphics scene
+
+The raster graphics API provides a retained collection of logical JavaScript graphics items rendered into one
+browser-owned 2D canvas. It is implemented in:
+
+```
+js/qhtml-graphics-scene.js
+```
+
+The current implementation is intentionally JavaScript-owned. Graphics items are not DOM elements and are not
+persistent WASM objects. The only DOM element in the graphics API is the `<graphics-scene>` host, which owns one
+light-DOM `<canvas>`. There is no shadow DOM.
+
+The module currently has to be loaded explicitly:
+
+```html
+<script src="../js/qhtml-graphics-scene.js"></script>
+```
+
+Loading the module registers the `<graphics-scene>` custom element and exports:
+
+```javascript
+window.QHTMLGraphicsScene
+window.QHTMLGraphicsItem
+window.QHTMLGraphicsTransform
+
+window.QHTMLGraphics.QHTMLGraphicsScene
+window.QHTMLGraphics.QHTMLGraphicsItem
+window.QHTMLGraphics.QHTMLGraphicsTransform
+```
+
+The direct globals and the `QHTMLGraphics` namespace refer to the same constructors.
+
+30a. `<graphics-scene>` and QHTMLGraphicsScene
+
+The recommended way to construct a scene is:
+
+```html
+<graphics-scene id="scene"></graphics-scene>
+```
+
+```javascript
+const scene = document.getElementById("scene");
+```
+
+`QHTMLGraphicsScene` extends `HTMLElement`. When connected, it prepends one canvas with:
+
+```html
+<canvas data-qhtml-graphics-surface></canvas>
+```
+
+The canvas remains in the scene's light DOM. Reconnecting the scene does not create duplicate canvases. Disconnecting
+the scene cancels its pending animation-frame request but does not destroy its logical items, so reconnecting the same
+scene preserves its contents.
+
+Scene construction throws an error if the browser cannot provide a 2D canvas rendering context.
+
+The default logical surface size is 300 by 150 when the host and canvas have no measurable dimensions. Normally the
+scene uses its current bounding rectangle. Its backing resolution is:
+
+```
+ceil(logical width  * devicePixelRatio)
+ceil(logical height * devicePixelRatio)
+```
+
+The scene resets the canvas transform to the current device-pixel ratio before clearing and drawing. A ResizeObserver
+requests a repaint when the host size changes.
+
+Recommended host sizing:
+
+```css
+graphics-scene {
+  display: block;
+  width: 100%;
+  height: 600px;
+}
+```
+
+30b. QHTMLGraphicsScene properties
+
+`scene.canvas`
+
+- Returns the scene's light-DOM canvas.
+- Read-only.
+
+`scene.context`
+
+- Returns the canvas's `CanvasRenderingContext2D`.
+- This is the same object assigned to each attached item's `context` and `context2d` properties.
+- Read-only.
+
+`scene.itemCount`
+
+- Returns the current number of attached logical graphics items.
+- Read-only.
+
+30c. QHTMLGraphicsScene item operations
+
+`scene.createItem(options)`
+
+Creates a `QHTMLGraphicsItem`, adds it to the scene, and returns it:
+
+```javascript
+const item = scene.createItem({
+  x: 20,
+  y: 30,
+  width: 80,
+  height: 50,
+  opacity: 0.8,
+  rotation: 15,
+  scaleX: 1,
+  scaleY: 1,
+  transformOriginX: 40,
+  transformOriginY: 25,
+  visible: true,
+  painter(context2d, ownerScene) {
+    context2d.fillStyle = "#47d7ff";
+    context2d.fillRect(0, 0, this.width, this.height);
+  }
+});
+```
+
+`scene.addItem(graphicsItem)`
+
+Adds an existing `QHTMLGraphicsItem` and returns that same item:
+
+```javascript
+const item = new QHTMLGraphicsItem();
+scene.addItem(item);
+```
+
+Adding an item performs the following ownership operation:
+
+```
+item.scene     = scene
+item.context   = scene.context
+item.context2d = scene.context
+```
+
+The public properties are read-only; the assignments above describe the internal effect.
+
+Rules:
+
+- The argument must be a `QHTMLGraphicsItem`, otherwise `TypeError` is thrown.
+- Adding the exact same item to the same scene more than once is idempotent and does not duplicate it.
+- A different item with a UUID already present in the scene throws an error.
+- An item already owned by another scene throws an error.
+- Successful insertion requests one coalesced repaint.
+- Items paint in insertion order.
+
+`scene.removeItem(graphicsItem)`
+
+Removes an item:
+
+```javascript
+const removed = scene.removeItem(item);
+```
+
+The return value is `true` when the item was owned by the scene and removed. It is `false` when that exact item was not
+present. Successful removal clears `item.scene`, `item.context`, and `item.context2d`, then requests a repaint.
+
+The argument must be a `QHTMLGraphicsItem`, otherwise `TypeError` is thrown.
+
+`scene.listItems()`
+
+Returns an insertion-ordered snapshot array:
+
+```javascript
+const items = scene.listItems();
+```
+
+Changing the returned array does not modify the scene. The item objects in the snapshot are the live item instances.
+
+`scene.itemByUUID(uuid)`
+
+Returns the item matching the UUID or `undefined`:
+
+```javascript
+const item = scene.itemByUUID("player-marker");
+```
+
+`scene.clearItems()`
+
+Detaches every item and returns an array containing the removed items:
+
+```javascript
+const removedItems = scene.clearItems();
+```
+
+All returned items have null `scene`, `context`, and `context2d` references. The current implementation requests one
+repaint but does not emit one `graphicsitemremoved` event per item during `clearItems()`.
+
+30d. QHTMLGraphicsScene repaint operations
+
+`scene.requestRepaint()`
+
+Schedules a repaint through `requestAnimationFrame()`. Repeated calls made before the pending frame executes are
+coalesced into one frame request. This allows hundreds of item property assignments to produce one scene repaint:
+
+```javascript
+items.forEach((item, index) => {
+  item.setX(index * 4);
+  item.setRotation(index * 2);
+  item.setOpacity(0.75);
+});
+```
+
+`scene.repaint()`
+
+Immediately performs a complete scene repaint:
+
+1. Measure and resize the backing surface if required.
+2. Set the device-pixel-ratio transform.
+3. Clear the logical canvas rectangle.
+4. Visit all items in insertion order.
+5. Call `item.paint()` for every visible item.
+
+The current implementation repaints the complete scene. It does not perform dirty-rectangle rendering and does not
+cache individual item rasters.
+
+30e. QHTMLGraphicsScene events
+
+Successful `addItem()` calls dispatch:
+
+```text
+graphicsitemadded
+```
+
+Successful `removeItem()` calls dispatch:
+
+```text
+graphicsitemremoved
+```
+
+Both are non-bubbling `CustomEvent` objects with:
+
+```javascript
+event.detail.scene
+event.detail.item
+event.detail.uuid
+```
+
+Example:
+
+```javascript
+scene.addEventListener("graphicsitemadded", (event) => {
+  console.log("added", event.detail.uuid, event.detail.item);
+});
+
+scene.addEventListener("graphicsitemremoved", (event) => {
+  console.log("removed", event.detail.uuid, event.detail.item);
+});
+```
+
+30f. QHTMLGraphicsItem construction and identity
+
+`QHTMLGraphicsItem` is a logical retained graphics object. It does not inherit from `HTMLElement`, does not create a DOM
+node, and does not become a canvas child.
+
+Constructor:
+
+```javascript
+const item = new QHTMLGraphicsItem(options);
+```
+
+Supported options:
+
+```javascript
+{
+  uuid,
+  painter,
+  visible,
+  x,
+  y,
+  width,
+  height,
+  opacity,
+  rotation,
+  scaleX,
+  scaleY,
+  transformOriginX,
+  transformOriginY
+}
+```
+
+`item.uuid`
+
+- Stable string identity generated at construction unless `options.uuid` was supplied.
+- Read-only.
+- UUID uniqueness is enforced within each scene.
+
+`item.scene`
+
+- The owning `QHTMLGraphicsScene`, or `null` while detached.
+- Read-only.
+
+`item.context` and `item.context2d`
+
+- Aliases for the owning scene's exact `CanvasRenderingContext2D`.
+- Both are `null` while detached.
+- Read-only.
+
+`item.painter`
+
+- The currently stored painter function reference.
+- Read-only; replace it through `setPainter()`.
+
+`item.transform`
+
+- The item's live `QHTMLGraphicsTransform`.
+- Read-only as a reference, although its public properties may be changed.
+
+30g. Painter functions
+
+`item.setPainter(painterFunction)`
+
+Stores a function reference without executing it:
+
+```javascript
+function drawMarker(context2d, ownerScene) {
+  context2d.fillStyle = "#ffcf4a";
+  context2d.fillRect(0, 0, this.width, this.height);
+}
+
+item.setPainter(drawMarker);
+```
+
+The argument must be a function reference. Passing an executed function result, string, object, or other non-function
+value throws `TypeError`.
+
+Calling `setPainter()` on an attached item requests a scene repaint and returns the item for method chaining.
+
+`item.paint()`
+
+`paint()` does nothing while the item is detached because no scene context is assigned. When attached, it executes:
+
+```
+context2d.save()
+apply item opacity and affine transform
+painter.call(item, context2d, scene)
+context2d.restore()
+```
+
+The painter callback contract is:
+
+```javascript
+function painter(context2d, ownerScene) {
+  // this === the QHTMLGraphicsItem being painted
+}
+```
+
+The context is restored through a `finally` path. Painter exceptions remain visible to the caller, but the failed
+painter cannot leak its canvas state into subsequent items.
+
+While attached, `paint()` returns the painter function's return value. It returns `undefined` without calling the
+painter while detached.
+
+Items begin with one shared no-op painter function, so an item without a custom painter is valid.
+
+Painters operate in item-local coordinates. A conventional painter draws between `(0, 0)` and
+`(item.width, item.height)`:
+
+```javascript
+item.setPainter(function (context2d) {
+  context2d.fillStyle = "tomato";
+  context2d.fillRect(0, 0, this.width, this.height);
+});
+```
+
+Painter functions should not manually apply the item's scene position, rotation, scale, transform origin, or opacity.
+Those are applied by `QHTMLGraphicsTransform` before the painter runs.
+
+30h. QHTMLGraphicsItem transformation properties
+
+All transformation values must be convertible to finite JavaScript numbers. Assigning `NaN`, positive infinity,
+negative infinity, or another value that cannot be converted to a finite number throws `TypeError`.
+
+`item.x`, `item.y`
+
+- Scene-space translation in logical CSS pixels.
+- Defaults to `0, 0`.
+
+`item.width`, `item.height`
+
+- Item-local logical dimensions.
+- Default to `0, 0`.
+- Negative values are clamped to zero.
+- They do not automatically scale arbitrary painter output. The painter normally reads these properties when producing
+  its geometry.
+
+`item.opacity`
+
+- Multiplies the context's current `globalAlpha`.
+- Defaults to `1`.
+- Values are clamped into the inclusive range `0` through `1`.
+
+`item.rotation`
+
+- Clockwise canvas rotation expressed in degrees.
+- Defaults to `0`.
+- Values are not normalized; values such as `450` are valid.
+- Conversion to radians occurs internally when the affine matrix is rebuilt.
+
+`item.scaleX`, `item.scaleY`
+
+- Local horizontal and vertical scale.
+- Both default to `1`.
+- Negative scale values are allowed and mirror the item.
+- A zero scale collapses the item on that axis.
+
+`item.transformOriginX`, `item.transformOriginY`
+
+- Local pixel coordinates around which scale and rotation are applied.
+- Defaults to `0, 0`.
+- To rotate around the current center:
+
+```javascript
+item.setTransformOrigin(item.width * 0.5, item.height * 0.5);
+```
+
+`item.visible`
+
+- Boolean visibility.
+- Defaults to `true`.
+- Passing the exact boolean value `false` to the constructor starts the item hidden.
+- Invisible items remain owned by the scene but are skipped during repaint.
+
+Direct assignment is supported:
+
+```javascript
+item.x = 120;
+item.y = 80;
+item.width = 64;
+item.height = 32;
+item.opacity = 0.65;
+item.rotation = 30;
+item.scaleX = 1.5;
+item.scaleY = 0.8;
+item.transformOriginX = 32;
+item.transformOriginY = 16;
+item.visible = true;
+```
+
+Changing a property to a different value requests a repaint when the item is attached. Assigning the same value does
+not request another repaint.
+
+30i. QHTMLGraphicsItem chainable transformation methods
+
+Every public setter below returns the item:
+
+```javascript
+item.setX(x)
+item.setY(y)
+item.setPosition(x, y)
+
+item.setWidth(width)
+item.setHeight(height)
+item.setSize(width, height)
+
+item.setOpacity(opacity)
+item.setRotation(rotationDegrees)
+
+item.setScale(scaleX)
+item.setScale(scaleX, scaleY)
+
+item.setTransformOrigin(originX, originY)
+item.setVisible(visible)
+```
+
+When `setScale()` receives one value, that value is applied to both axes:
+
+```javascript
+item.setScale(1.5);
+```
+
+Method chaining:
+
+```javascript
+item
+  .setPosition(100, 80)
+  .setSize(64, 64)
+  .setTransformOrigin(32, 32)
+  .setRotation(45)
+  .setScale(1.25)
+  .setOpacity(0.8);
+```
+
+30j. QHTMLGraphicsTransform
+
+Each item owns one `QHTMLGraphicsTransform`, available through:
+
+```javascript
+const transform = item.transform;
+```
+
+Public transform properties:
+
+```javascript
+transform.x
+transform.y
+transform.width
+transform.height
+transform.opacity
+transform.rotation
+transform.scaleX
+transform.scaleY
+transform.originX
+transform.originY
+```
+
+The transform object uses `originX` and `originY`; the item exposes the same values as `transformOriginX` and
+`transformOriginY`.
+
+Public transform methods:
+
+```javascript
+transform.setPosition(x, y)
+transform.setSize(width, height)
+transform.setScale(scaleX, scaleY)
+transform.setOrigin(originX, originY)
+transform.applyTo(context2d)
+```
+
+The set methods return the transform object. Item-level setters are preferred because they provide the stable
+high-level API intended for the future bridge.
+
+`QHTMLGraphicsTransform` is exported for inspection and extension, but direct construction is not currently a stable
+public operation because its constructor requires an owning item capable of receiving transformation-change
+notifications.
+
+30k. Cached affine transform
+
+The transform caches one six-value affine matrix. It is recomputed only when position, rotation, scale, or transform
+origin changes. Width, height, and opacity changes request repaint but do not unnecessarily rebuild the matrix.
+
+For:
+
+```text
+angle = rotation * PI / 180
+```
+
+the cached matrix is:
+
+```text
+a = cos(angle) * scaleX
+b = sin(angle) * scaleX
+c = -sin(angle) * scaleY
+d = cos(angle) * scaleY
+
+e = x + originX - a * originX - c * originY
+f = y + originY - b * originX - d * originY
+```
+
+and maps local coordinates using:
+
+```text
+sceneX = a * localX + c * localY + e
+sceneY = b * localX + d * localY + f
+```
+
+At paint time the scene performs at most one native canvas call:
+
+```javascript
+context2d.transform(a, b, c, d, e, f);
+```
+
+An identity matrix skips that call. Opacity is applied separately by multiplying `globalAlpha`.
+
+30l. Continuous animation
+
+The scene does not own an animation loop. Application code changes item properties and those changes request the next
+coalesced scene repaint:
+
+```javascript
+class OrbitingItem extends QHTMLGraphicsItem {
+  constructor() {
+    super({
+      width: 24,
+      height: 24,
+      painter(context2d) {
+        context2d.fillStyle = "#5ee7ff";
+        context2d.beginPath();
+        context2d.arc(12, 12, 12, 0, Math.PI * 2);
+        context2d.fill();
+      }
+    });
+  }
+
+  update(elapsedSeconds, centerX, centerY) {
+    const angle = elapsedSeconds;
+    this
+      .setPosition(
+        centerX + Math.cos(angle) * 120,
+        centerY + Math.sin(angle) * 80
+      )
+      .setTransformOrigin(12, 12)
+      .setRotation(elapsedSeconds * 90)
+      .setOpacity(0.5 + Math.sin(angle) * 0.25);
+  }
+}
+
+const item = scene.addItem(new OrbitingItem());
+const startTime = performance.now();
+
+function animate(timestamp) {
+  item.update((timestamp - startTime) / 1000, 300, 200);
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+```
+
+The animation loop above is ordinary browser JavaScript. Future graphics animation facade objects may drive the same
+item setter methods without changing scene ownership.
+
+30m. Dynamic addition and removal
+
+Items may be added and removed while the scene is actively repainting:
+
+```javascript
+const items = [];
+
+function addGraphicsItem() {
+  const item = scene.createItem({
+    width: 20,
+    height: 20,
+    painter(context2d) {
+      context2d.fillStyle = "gold";
+      context2d.fillRect(0, 0, this.width, this.height);
+    }
+  });
+  items.push(item);
+  return item;
+}
+
+function removeGraphicsItem(index) {
+  const item = items.splice(index, 1)[0];
+  return scene.removeItem(item);
+}
+```
+
+All item mutations, additions, and removals occurring before the pending animation frame are represented by one
+coalesced repaint request.
+
+30n. Current performance behavior
+
+The current scene is retained at the object level and immediate-mode at the pixel level:
+
+- Item objects, painter references, transforms, and insertion order persist.
+- The canvas is cleared and every visible item painter runs on every scene repaint.
+- Item affine matrices persist and are rebuilt only when matrix-affecting values change.
+- No per-item DOM nodes are created.
+- No offscreen canvas, ImageBitmap, ImageData, item raster cache, or texture atlas is used.
+- No broad QHTML reference resolution occurs during painting.
+
+Simple painters are often faster when executed directly. A future optional cache may avoid re-executing expensive,
+unchanged painters, but it must not replace direct painting for inexpensive or continuously changing items.
+
+30o. Current API boundary
+
+This section documents the currently implemented browser API. The following planned features are not yet part of this
+API:
+
+- QHTML7 WASM facade nodes for graphics scenes or graphics items;
+- declarative graphics-item parser syntax;
+- generic WASM-to-JavaScript graphics command forwarding;
+- QPainter facade objects;
+- graphics animation objects and `setAnimation()`;
+- `startAnimation()` and `stopAnimation()`;
+- item raster caching;
+- hit testing, pointer routing, selection, or focus;
+- z-value sorting or explicit stacking operations;
+- parent/child graphics-item transforms;
+- clipping, masks, collision detection, or spatial indexing.
+
+Until the facade and parser work is implemented, QHTML may render a `<graphics-scene>` host as browser content, but
+logical item construction and manipulation use the JavaScript API documented here.
+
+30p. Graphics scene stress test
+
+The browser test page is:
+
+```text
+test/graphics-scene.html
+```
+
+It exercises:
+
+- one light-DOM canvas;
+- hundreds of independent logical graphics items;
+- rectangle, ellipse, and triangle painters;
+- position, size, opacity, rotation, scale, and transform-origin updates;
+- coalesced repaint scheduling;
+- continuously randomized item creation and removal;
+- scene attachment and detachment through normal add/remove API calls;
+- live frame-rate, item-count, paints-per-second, and add/remove metrics;
+- adjustable target populations from 25 through 1,000 items;
+- pause, resume, and deterministic reseeding.
+
+The population intentionally varies within a bounded range around the selected target. This tests item ownership and
+removal while the scene and item transformations remain active.
+
 
 ---------
 
