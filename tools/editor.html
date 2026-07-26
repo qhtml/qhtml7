@@ -161,15 +161,15 @@
     <q-editor>
 q-import { ../dist/q-components.qhtml }
 
-q-style container-style { 
-  q-style-class { 
+q-style container-style {
+  q-style-class {
     w3-card w3-round-large w3-padding
   }
 }
 q-style button-style  {
   q-style-class { w3-button w3-blue w3-round }
 }
-q-theme my-theme { 
+q-theme my-theme {
   div.containerDiv { container-style }
   button { button-style }
 }
@@ -177,9 +177,9 @@ q-component editor-counter {
   q-property count: 0
 
   function increment() {
-    var host = this.closest("editor-counter");
-    host.count = Number(host.count) + 1;
-    host.update(host.qdom().UUID);
+    var host = this
+    this.count = Number(host.count) + 1;
+    this.update(host.UUID);
   }
 
   my-theme,div.containerDiv {
@@ -187,7 +187,7 @@ q-component editor-counter {
     p { text { Click to increment. Each instance keeps its own count. } }
     button {
       type: "button"
-      onclick { this.closest("editor-counter").increment(); }
+      onclick { this.increment(); }
       text { Count: ${this.count} }
     }
   }
@@ -196,73 +196,9 @@ q-component editor-counter {
 div.w3-container.w3-padding {
   h2 { text { Live QHTML Playground } }
   p { text { Edit this source and switch to Preview or HTML tabs. } }
-  editor-counter { }
-  editor-counter { }
+  editor-counter obj1 { }
+  editor-counter obj2 { }
 }
-
-q-style demo-card {
-  q-style-class { w3-card w3-round-large w3-padding }
-  backgroundColor: #f8fbff
-  border: 1px solid #d5e1f3
-}
-
-q-style add-button {
-  q-style-class { w3-button w3-round w3-margin-bottom }
-  backgroundColor: #1d4ed8
-  color: #ffffff
-}
-
-q-theme tabs-demo-theme {
-  .tabs-demo-card { demo-card }
-  .tabs-demo-add-btn { add-button }
-}
-
-q-component dynamicTabWidget {
-  q-var tabItems { ([
-    { name: "Tab 1", content: "Initial tab one content." },
-    { name: "Tab 2", content: "Initial tab two content." }
-  ]) }
-
-  function addTab() {
-    var list = tabItems;
-    var index = list.length + 1;
-    list.push({
-      name: "Tab " + String(index),
-      content: "Here's dynamic tab " + String(index) + "."
-    });
-    this.invalidate({ forceBindings: true });
-
-    var liveTabs = this.querySelector("#demoTabs");
-    if (liveTabs && typeof liveTabs.refreshTabs === "function") {
-      var refreshed = liveTabs.refreshTabs();
-      liveTabs.showTab(Math.max(0, refreshed.length - 1));
-    }
-  }
-
-  tabs-demo-theme {
-    div.tabs-demo-card {
-      h2 { text { q-tabs q-var + for loop demo } }
-      p { text { Click Add Tab to push into a q-var array and invalidate the component. } }
-
-      button.tabs-demo-add-btn {
-        type: "button"
-        onclick { this.closest("dynamicTabWidget").addTab(); }
-        text { Add Tab }
-      }
-
-    q-tabs#demoTabs {
-        for (tab in tabItems) {
-          q-tab {
-            name { div { text { ${tab.name} } } }
-            content { div.w3-padding { text { ${tab.content} } } }
-          }
-        }
-      }
-    }
-  }
-}
-
-dynamicTabWidget { }
     </q-editor>
   </main>
 </body>
