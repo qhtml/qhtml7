@@ -17,6 +17,7 @@ q-import { particle-tank-muzzle-blast.qhtml }
 q-import { particle-machine-gun.qhtml }
 q-import { flame-blast.qhtml }
 q-import { particle-fireball.qhtml }
+q-import { particle-layer.qhtml }
 q-import { map.qhtml }
 q-import { board.qhtml }
 q-import { game.qhtml }

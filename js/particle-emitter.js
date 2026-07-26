@@ -1,15 +1,14 @@
+(function (globalScope) {
+  const QHTML_VERSION = "7.4.0";
+  globalScope.QHTML_VERSION = QHTML_VERSION;
+})(typeof globalThis !== "undefined" ? globalThis : window);
+
 (function installParticleEmitter(global) {
   if (!global || !global.customElements) {
     return;
   }
 
   const existingParticleEmitter = global.customElements.get("particle-emitter");
-
-  if (existingParticleEmitter) {
-    installParticleEmitterControls(existingParticleEmitter.prototype);
-    global.ParticleEmitterElement = existingParticleEmitter;
-    return;
-  }
 
   const ATTRS = [
     "emitrate",
@@ -56,7 +55,206 @@
     "emittermask",
     "seed",
     "zindex",
+    "render-target",
+    "rendertarget",
   ];
+
+
+  class ParticleCanvasLayerElement extends HTMLElement {
+    static get observedAttributes() {
+      return ["overscan", "zindex", "z-index"];
+    }
+
+    constructor() {
+      super();
+      this._canvas = document.createElement("canvas");
+      this._ctx = this._canvas.getContext("2d", { alpha: true });
+      this._emitters = new Set();
+      this._paintFrame = 0;
+      this._cssWidth = 1;
+      this._cssHeight = 1;
+      this._overscan = 0;
+      this._resizeObserver = typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => this._resize())
+        : null;
+      this._boundResize = this._resize.bind(this);
+    }
+
+    connectedCallback() {
+      this.style.position = this.style.position || "absolute";
+      this.style.inset = this.style.inset || "0";
+      this.style.display = "block";
+      this.style.pointerEvents = "none";
+      this.style.overflow = "visible";
+      this.style.zIndex = String(readNumber(this, "zIndex", 800));
+
+      this._canvas.style.position = "absolute";
+      this._canvas.style.pointerEvents = "none";
+      this._canvas.style.background = "transparent";
+      this._canvas.style.display = "block";
+
+      if (!this._canvas.parentNode) {
+        this.insertBefore(this._canvas, this.firstChild);
+      }
+
+      if (this._resizeObserver) {
+        this._resizeObserver.observe(this);
+      } else {
+        global.addEventListener("resize", this._boundResize);
+      }
+
+      this._resize();
+    }
+
+    attributeChangedCallback(name) {
+      if (!this.isConnected) {
+        return;
+      }
+      if (String(name || "").toLowerCase() === "zindex" || String(name || "").toLowerCase() === "z-index") {
+        this.style.zIndex = String(readNumber(this, "zIndex", 800));
+      }
+      this._resize();
+    }
+
+    disconnectedCallback() {
+      if (this._resizeObserver) {
+        this._resizeObserver.disconnect();
+      } else {
+        global.removeEventListener("resize", this._boundResize);
+      }
+
+      if (this._paintFrame) {
+        global.cancelAnimationFrame(this._paintFrame);
+        this._paintFrame = 0;
+      }
+    }
+
+    registerEmitter(emitter) {
+      if (!emitter) {
+        return;
+      }
+      this._emitters.add(emitter);
+      this.requestPaint();
+    }
+
+    unregisterEmitter(emitter) {
+      this._emitters.delete(emitter);
+      this.requestPaint();
+    }
+
+    emitter(key) {
+      const requested = String(key == null ? "" : key);
+      for (const emitter of this._emitters) {
+        const emitterKey = emitter.getAttribute("data-emitter-key") ||
+          emitter.getAttribute("name") ||
+          emitter.id ||
+          "";
+        if (emitterKey === requested) {
+          return emitter;
+        }
+      }
+      return null;
+    }
+
+    burst(key, x, y, count) {
+      const emitter = this.emitter(key);
+      if (!emitter || typeof emitter.burst !== "function") {
+        return 0;
+      }
+      return emitter.burst(x, y, count);
+    }
+
+    clear(key) {
+      if (key != null) {
+        const emitter = this.emitter(key);
+        if (emitter && typeof emitter.clear === "function") {
+          emitter.clear();
+        }
+        return;
+      }
+      this._emitters.forEach((emitter) => {
+        if (typeof emitter.clear === "function") {
+          emitter.clear();
+        }
+      });
+    }
+
+    requestPaint() {
+      if (this._paintFrame || !this.isConnected) {
+        return;
+      }
+      this._paintFrame = global.requestAnimationFrame(() => {
+        this._paintFrame = 0;
+        this._paint();
+      });
+    }
+
+    contentSize() {
+      return { width: this._cssWidth, height: this._cssHeight };
+    }
+
+    _resize() {
+      const rect = this.getBoundingClientRect();
+      const style = global.getComputedStyle(this);
+      const width = Math.max(1, Number(rect.width) || Number.parseFloat(style.width) || this.clientWidth || 1);
+      const height = Math.max(1, Number(rect.height) || Number.parseFloat(style.height) || this.clientHeight || 1);
+      const overscan = Math.max(0, readNumber(this, "overscan", 0));
+      const dpr = global.devicePixelRatio || 1;
+      const canvasWidth = width + (overscan * 2);
+      const canvasHeight = height + (overscan * 2);
+      const pixelWidth = Math.max(1, Math.floor(canvasWidth * dpr));
+      const pixelHeight = Math.max(1, Math.floor(canvasHeight * dpr));
+
+      this._cssWidth = width;
+      this._cssHeight = height;
+      this._overscan = overscan;
+      this._canvas.style.left = `${-overscan}px`;
+      this._canvas.style.top = `${-overscan}px`;
+      this._canvas.style.width = `${canvasWidth}px`;
+      this._canvas.style.height = `${canvasHeight}px`;
+
+      if (this._canvas.width !== pixelWidth || this._canvas.height !== pixelHeight) {
+        this._canvas.width = pixelWidth;
+        this._canvas.height = pixelHeight;
+        this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      this.requestPaint();
+    }
+
+    _paint() {
+      const ctx = this._ctx;
+      const overscan = this._overscan;
+      const canvasWidth = this._cssWidth + (overscan * 2);
+      const canvasHeight = this._cssHeight + (overscan * 2);
+      const emitters = Array.from(this._emitters).sort((left, right) => {
+        const leftZ = left._config ? left._config.zIndex : 0;
+        const rightZ = right._config ? right._config.zIndex : 0;
+        return leftZ - rightZ;
+      });
+
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      ctx.save();
+      ctx.translate(overscan, overscan);
+      emitters.forEach((emitter) => {
+        if (typeof emitter._drawToContext === "function") {
+          emitter._drawToContext(ctx, this._cssWidth, this._cssHeight, false);
+        }
+      });
+      ctx.restore();
+    }
+  }
+
+  if (!global.customElements.get("particle-canvas-layer")) {
+    global.customElements.define("particle-canvas-layer", ParticleCanvasLayerElement);
+  }
+
+  if (existingParticleEmitter) {
+    installParticleEmitterControls(existingParticleEmitter.prototype);
+    global.ParticleCanvasLayerElement = global.customElements.get("particle-canvas-layer") || ParticleCanvasLayerElement;
+    global.ParticleEmitterElement = existingParticleEmitter;
+    return;
+  }
 
   class ParticleEmitterElement extends HTMLElement {
     static get observedAttributes() {
@@ -93,15 +291,21 @@
         : null;
       this._boundResize = this._resize.bind(this);
       this._boundWorkerMessage = this._onWorkerMessage.bind(this);
+      this._sharedLayer = null;
     }
 
     connectedCallback() {
       this._capturePathFallbackPosition();
-      this._installCanvas();
+      this._sharedLayer = this._resolveSharedLayer();
+      if (this._sharedLayer) {
+        this._installSharedRenderer();
+      } else {
+        this._installCanvas();
+      }
       this._reloadConfig();
 
       if (this._resizeObserver) {
-        this._resizeObserver.observe(this.parentElement);
+        this._resizeObserver.observe(this._sharedLayer || this.parentElement);
       } else {
         global.addEventListener("resize", this._boundResize);
       }
@@ -136,6 +340,10 @@
         global.removeEventListener("resize", this._boundResize);
       }
 
+      if (this._sharedLayer) {
+        this._sharedLayer.unregisterEmitter(this);
+        this._sharedLayer = null;
+      }
       this._canvas.remove();
     }
 
@@ -232,6 +440,29 @@
       return count;
     }
 
+    _resolveSharedLayer() {
+      const target = readAttr(this, "renderTarget");
+      if (target) {
+        const selector = target.startsWith("#") ? target : `#${target}`;
+        const selected = document.querySelector(selector);
+        if (selected && selected.tagName && selected.tagName.toLowerCase() === "particle-canvas-layer") {
+          return selected;
+        }
+      }
+      return this.closest("particle-canvas-layer");
+    }
+
+    _installSharedRenderer() {
+      this.style.position = "absolute";
+      this.style.inset = "0";
+      this.style.display = "block";
+      this.style.pointerEvents = "none";
+      this.style.overflow = "visible";
+      this.style.zIndex = String(readNumber(this, "zIndex", 1));
+      this._canvas.remove();
+      this._sharedLayer.registerEmitter(this);
+    }
+
     _installCanvas() {
       const parent = this.parentElement;
 
@@ -309,8 +540,12 @@
     }
 
     _pathParentSize() {
-      const parent = this.parentElement;
+      if (this._sharedLayer && typeof this._sharedLayer.contentSize === "function") {
+        const size = this._sharedLayer.contentSize();
+        return [size.width, size.height];
+      }
 
+      const parent = this.parentElement;
       if (!parent) {
         return [0, 0];
       }
@@ -473,8 +708,15 @@
     }
 
     _resize() {
-      const parent = this.parentElement;
+      if (this._sharedLayer) {
+        if (this.running && this._readPathPoints().length > 0) {
+          this._updatePathAnimation();
+        }
+        this._sharedLayer.requestPaint();
+        return;
+      }
 
+      const parent = this.parentElement;
       if (!parent) {
         return;
       }
@@ -583,6 +825,11 @@
     }
 
     _startPainter() {
+      if (this._sharedLayer) {
+        this._sharedLayer.requestPaint();
+        return;
+      }
+
       if (this._paintTimer) {
         return;
       }
@@ -592,6 +839,11 @@
     }
 
     _stopPainter() {
+      if (this._sharedLayer) {
+        this._sharedLayer.requestPaint();
+        return;
+      }
+
       if (!this._paintTimer) {
         return;
       }
@@ -645,13 +897,20 @@
     }
 
     _render(forceAll) {
+      if (this._sharedLayer) {
+        this._sharedLayer.requestPaint();
+        return;
+      }
+
       const ctx = this._ctx;
       const width = this._canvas.clientWidth;
       const height = this._canvas.clientHeight;
-      const snapshot = this._particleSnapshot;
-
       ctx.clearRect(0, 0, width, height);
+      this._drawToContext(ctx, width, height, forceAll);
+    }
 
+    _drawToContext(ctx, width, height, forceAll) {
+      const snapshot = this._particleSnapshot;
       if (!snapshot || snapshot.length <= 0) {
         return;
       }
@@ -1587,6 +1846,7 @@
   }
 
   installParticleEmitterControls(ParticleEmitterElement.prototype);
+  global.ParticleCanvasLayerElement = global.customElements.get("particle-canvas-layer") || ParticleCanvasLayerElement;
   global.ParticleEmitterElement = ParticleEmitterElement;
   global.customElements.define("particle-emitter", ParticleEmitterElement);
 })(typeof globalThis !== "undefined" ? globalThis : window);

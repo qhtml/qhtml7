@@ -6,7 +6,9 @@ Language design, specifications, and tests created by humans; implementation by 
 
 ## What's New
 
-QHTML7 now ships as a native JavaScript runtime. The earlier WebAssembly backing system was accurate, but large QHTML scripts had too much startup and interaction lag under WASM, and the distributable package was larger than necessary. The runtime was redesigned as native JavaScript while retaining the QHTMLDomTree object model, the QHTML node classes, and the QHTML7 syntax shortcuts used by the WASM version.
+
+### No more WebAssembly -- too clunky and slow. 
+While it would have been nice to have a clean assembly based library, it was much too slow and over-complicated. So, QHTML7 now ships as a native JavaScript runtime. The earlier WebAssembly backing system was accurate, but large QHTML scripts had too much startup and interaction lag under WASM, and the distributable package was larger than necessary. The runtime was redesigned as native JavaScript while retaining the QHTMLDomTree object model, the QHTML node classes, and the QHTML7 syntax shortcuts used by the WASM version.
 
 The runtime still treats QHTML as the model. Parsed source becomes a `QHTMLDomTree`; mounted DOM elements point back to their QHTML node objects; and editing tools can continue using `.toQHTML()`, `.fromQHTML()`, `.toJSON()`, `.fromJSON()`, and `.toHTML()`.
 

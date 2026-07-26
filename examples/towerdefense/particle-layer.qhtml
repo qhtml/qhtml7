@@ -1,0 +1,12 @@
+q-component td-particle-layer {
+  particle-canvas-layer particleCanvas {
+    class: "td-particle-canvas-layer"
+    overscan: 160
+    zIndex: 800
+
+    td-particle-tank-muzzle-blast { }
+    td-particle-machine-gun { }
+    td-flame-blast { }
+    td-particle-fireball { }
+  }
+}
