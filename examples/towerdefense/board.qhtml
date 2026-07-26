@@ -9,6 +9,8 @@ q-component td-board {
   q-property entrances: []
   q-property exits: []
   q-property paths: {}
+  q-property routeNodes: {}
+  q-property routeOrder: []
   q-property guns: {}
   q-property gunsList: []
   q-property enemies: {}
@@ -37,7 +39,7 @@ q-component td-board {
   q-property inRangeCache: {}
   q-signal signal_update_xy_translation(x, y)
 
-  td-pathfinder pathfinder { }
+  td-property-sheet props { }
 
   q-timer loopTimer {
     interval: 100
@@ -87,6 +89,8 @@ q-component td-board {
     this.entrances = [];
     this.exits = [];
     this.paths = {};
+    this.routeNodes = {};
+    this.routeOrder = [];
     var exitCol = Math.round(Number(this.rows) * 0.5);
     for (var row = 0; row < Number(this.rows); row += 1) {
       for (var col = 0; col < Number(this.cols); col += 1) {
@@ -185,7 +189,7 @@ q-component td-board {
       var col = Number(tile.col) + offsets[i][1];
       if (row >= 0 && row < Number(this.rows) && col >= 0 && col < Number(this.cols)) {
         var candidate = this.findTile(row, col);
-        if (candidate.walkable === true) {
+        if (candidate !== undefined && candidate.walkable === true) {
           out.push(candidate);
         }
       }
@@ -193,9 +197,106 @@ q-component td-board {
     return out;
   }
 
+  function heuristic(a, b) {
+    return Math.abs(Number(a.row) - Number(b.row)) + Math.abs(Number(a.col) - Number(b.col));
+  }
+
+  function turnCost(cameFrom, current, next) {
+    var previous = cameFrom[this.index(current.row, current.col)];
+    if (previous === undefined) {
+      return 0;
+    }
+    var currentRowDelta = Number(current.row) - Number(previous.row);
+    var currentColDelta = Number(current.col) - Number(previous.col);
+    var nextRowDelta = Number(next.row) - Number(current.row);
+    var nextColDelta = Number(next.col) - Number(current.col);
+    if (currentRowDelta !== nextRowDelta || currentColDelta !== nextColDelta) {
+      return 0.2;
+    }
+    return 0;
+  }
+
+  function reconstructPath(cameFrom, current) {
+    var out = [current];
+    var cur = current;
+    while (cameFrom[this.index(cur.row, cur.col)] !== undefined) {
+      cur = cameFrom[this.index(cur.row, cur.col)];
+      out.unshift(cur);
+    }
+    return out;
+  }
+
+  function findPath(start, end) {
+    var open = [start];
+    var cameFrom = {};
+    var gScore = {};
+    var fScore = {};
+    var startKey = this.index(start.row, start.col);
+    gScore[startKey] = 0;
+    fScore[startKey] = this.heuristic(start, end);
+
+    while (open.length > 0) {
+      var bestIndex = 0;
+      var bestScore = fScore[this.index(open[0].row, open[0].col)];
+      for (var o = 1; o < open.length; o += 1) {
+        var score = fScore[this.index(open[o].row, open[o].col)];
+        if (score < bestScore) {
+          bestScore = score;
+          bestIndex = o;
+        }
+      }
+
+      var current = open.splice(bestIndex, 1)[0];
+      if (Number(current.row) === Number(end.row) && Number(current.col) === Number(end.col)) {
+        return this.reconstructPath(cameFrom, current);
+      }
+
+      var currentKey = this.index(current.row, current.col);
+      var neighbors = this.neighborsFor(current);
+      for (var i = 0; i < neighbors.length; i += 1) {
+        var neighbor = neighbors[i];
+        var neighborKey = this.index(neighbor.row, neighbor.col);
+        var tentative = Number(gScore[currentKey]) + 1 + this.turnCost(cameFrom, current, neighbor);
+        if (gScore[neighborKey] === undefined || tentative < Number(gScore[neighborKey])) {
+          cameFrom[neighborKey] = current;
+          gScore[neighborKey] = tentative;
+          fScore[neighborKey] = tentative + this.heuristic(neighbor, end);
+          if (open.indexOf(neighbor) < 0) {
+            open.push(neighbor);
+          }
+        }
+      }
+    }
+
+    return [start];
+  }
+
+  function addRouteNode(routeKey, pathIndex, tile) {
+    var key = this.index(tile.row, tile.col);
+    if (this.routeNodes[key] === undefined) {
+      this.routeNodes[key] = {
+        row: tile.row,
+        col: tile.col,
+        routeKey: routeKey,
+        pathIndex: pathIndex
+      };
+      this.routeOrder.push(this.routeNodes[key]);
+    }
+  }
+
   function populateEntryPaths() {
+    this.paths = {};
+    this.routeNodes = {};
+    this.routeOrder = [];
+    var exit = this.exits[0];
     for (var i = 0; i < this.entrances.length; i += 1) {
-      this.paths[this.index(this.entrances[i].row, this.entrances[i].col)] = this.pathfinder.findPath(this, this.entrances[i], this.exits[0]);
+      var entrance = this.entrances[i];
+      var routeKey = this.index(entrance.row, entrance.col);
+      var path = this.findPath(entrance, exit);
+      this.paths[routeKey] = path;
+      for (var p = 0; p < path.length; p += 1) {
+        this.addRouteNode(routeKey, p, path[p]);
+      }
     }
   }
 
@@ -246,7 +347,7 @@ q-component td-board {
   }
 
   function placeGun(row, col, type) {
-    var props = this.game.props.gunProps(type);
+    var gunProperties = props.gunProps(type);
     var cost = 250;
     if (Number(this.game.money) < cost) {
       this.placeSquare(row, col);
@@ -267,12 +368,12 @@ q-component td-board {
       type: type,
       selected: false,
       rotation: 0,
-      range: props.range,
-      rate: props.rate,
-      reload: props.reload,
-      damage: props.damage,
-      splashDistance: props.splashDistance,
-      splashDamage: props.splashDamage,
+      range: gunProperties.range,
+      rate: gunProperties.rate,
+      reload: gunProperties.reload,
+      damage: gunProperties.damage,
+      splashDistance: gunProperties.splashDistance,
+      splashDamage: gunProperties.splashDamage,
       purchasePrice: cost,
       upgradeSpend: 0,
       rangeUpgrades: 0,
@@ -329,10 +430,69 @@ q-component td-board {
     var keys = Object.keys(this.enemies);
     for (var i = 0; i < keys.length; i += 1) {
       var enemy = this.enemies[keys[i]];
-      var start = this.findTile(enemy.row, enemy.col);
-      enemy.path = this.pathfinder.findPath(this, start, this.exits[0]);
-      enemy.pathIndex = 0;
+      this.routeEnemy(enemy);
     }
+  }
+
+  function routeSuffix(routeNode) {
+    var route = this.paths[routeNode.routeKey];
+    return route.slice(Number(routeNode.pathIndex));
+  }
+
+  function routeNodeScore(tile, routeNode) {
+    var distance = Math.abs(Number(tile.row) - Number(routeNode.row)) + Math.abs(Number(tile.col) - Number(routeNode.col));
+    if (Number(tile.row) !== Number(routeNode.row) && Number(tile.col) !== Number(routeNode.col)) {
+      distance += 1;
+    }
+    return distance;
+  }
+
+  function nearestRouteNode(tile, used) {
+    var best = null;
+    var bestScore = 99999999;
+    for (var i = 0; i < this.routeOrder.length; i += 1) {
+      var node = this.routeOrder[i];
+      var key = this.index(node.row, node.col);
+      var target = this.findTile(node.row, node.col);
+      if (used[key] !== true && target.walkable === true) {
+        var score = this.routeNodeScore(tile, node);
+        if (score < bestScore) {
+          best = node;
+          bestScore = score;
+        }
+      }
+    }
+    return best;
+  }
+
+  function pathToMainRoute(tile) {
+    var routeNode = this.routeNodes[this.index(tile.row, tile.col)];
+    if (routeNode !== undefined) {
+      return this.routeSuffix(routeNode);
+    }
+
+    var used = {};
+    for (var attempt = 0; attempt < 12; attempt += 1) {
+      var candidate = this.nearestRouteNode(tile, used);
+      if (candidate === null) {
+        break;
+      }
+      used[this.index(candidate.row, candidate.col)] = true;
+      var target = this.findTile(candidate.row, candidate.col);
+      var prefix = this.findPath(tile, target);
+      if (prefix.length > 1 || this.index(tile.row, tile.col) === this.index(target.row, target.col)) {
+        var suffix = this.routeSuffix(candidate);
+        return prefix.concat(suffix.slice(1));
+      }
+    }
+
+    return this.findPath(tile, this.exits[0]);
+  }
+
+  function routeEnemy(enemy) {
+    var start = this.findTile(enemy.row, enemy.col);
+    enemy.path = this.pathToMainRoute(start);
+    enemy.pathIndex = 0;
   }
 
   function spawnDelay() {
@@ -360,7 +520,7 @@ q-component td-board {
     }
     var entrance = this.entrances[this.entranceIndex];
     var type = this.entranceIndex !== 0 ? this.entranceIndex : 1;
-    var props = this.game.props.enemyProps(type);
+    var enemyProperties = props.enemyProps(type);
     var path = this.paths[this.index(entrance.row, entrance.col)].slice();
     var id = "enemy-" + this.nextEnemyId;
     this.nextEnemyId += 1;
@@ -375,14 +535,14 @@ q-component td-board {
       y: entrance.y,
       width: this.tileWidth + "px",
       height: this.tileHeight + "px",
-      health: props.health * (Number(this.game.level) * 2.25),
-      speed: props.speed - (Number(this.game.level) * 5),
-      cost: props.cost,
+      health: enemyProperties.health * (Number(this.game.level) * 2.25),
+      speed: enemyProperties.speed - (Number(this.game.level) * 5),
+      cost: enemyProperties.cost,
       opacity: 1,
       rotation: 0,
       path: path,
       pathIndex: 0,
-      nextMoveAt: Date.now() + props.speed
+      nextMoveAt: Date.now() + enemyProperties.speed
     };
     var delay = this.recordSpawnedEnemy();
     this.rebuildLists();
@@ -410,18 +570,30 @@ q-component td-board {
     for (var i = 0; i < keys.length; i += 1) {
       var enemy = this.enemies[keys[i]];
       if (now >= enemy.nextMoveAt) {
-        enemy.pathIndex += 1;
-        if (enemy.pathIndex >= enemy.path.length) {
+        var nextIndex = Number(enemy.pathIndex) + 1;
+        if (nextIndex >= enemy.path.length) {
           delete this.enemies[keys[i]];
         } else {
-          var next = enemy.path[enemy.pathIndex];
+          var next = enemy.path[nextIndex];
+          var nextTile = this.findTile(next.row, next.col);
+          if (nextTile.walkable !== true) {
+            this.routeEnemy(enemy);
+            nextIndex = 1;
+            next = enemy.path[nextIndex];
+            if (next === undefined) {
+              enemy.nextMoveAt = now + Number(enemy.speed);
+              continue;
+            }
+            nextTile = this.findTile(next.row, next.col);
+          }
           var old = { x: enemy.x, y: enemy.y };
+          enemy.pathIndex = nextIndex;
           enemy.row = next.row;
           enemy.col = next.col;
           enemy.x = (next.col * this.tileWidth) + "px";
           enemy.y = (next.row * this.tileHeight) + "px";
           enemy.rotation = 90 + this.angleTo(old.x, old.y, enemy.x, enemy.y);
-          enemy.opacity = this.findTile(next.row, next.col).buildable ? 1 : 0.1;
+          enemy.opacity = nextTile.buildable ? 1 : 0.1;
           enemy.nextMoveAt = now + Number(enemy.speed);
         }
       }

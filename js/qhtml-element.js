@@ -3379,26 +3379,97 @@
     if (!node) {
       return out;
     }
-    if (typeof node.qhtmlReferenceNames === "function" &&
-        typeof node.qhtmlReferenceByName === "function") {
-      Array.from(node.qhtmlReferenceNames() || []).forEach((name) => {
-        const reference = node.qhtmlReferenceByName(String(name || ""));
-        const uuid = qhtmlNodeUuid(reference);
-        if (name && uuid) {
-          out[String(name)] = uuid;
+
+    const isReferenceBearingNode = function (sourceNode) {
+      const type = qhtmlNodeType(sourceNode);
+      return type === "QHTMLComponentInstance" ||
+        type === "QHTMLProperty" ||
+        type === "QHTMLPropertyAssignment" ||
+        type === "QHTMLFunction" ||
+        type === "QHTMLSignal" ||
+        type === "QHTMLComponentInstanceSlot" ||
+        type === "QHTMLTimer" ||
+        type === "QHTMLPropertyAnimation" ||
+        type === "QHTMLSequentialAnimation" ||
+        type === "QHTMLParallelAnimation" ||
+        type === "QHTMLScriptAction" ||
+        type === "QHTMLWorker" ||
+        type === "QHTMLPainter" ||
+        type === "QHTMLStyle" ||
+        type === "QHTMLTheme" ||
+        type === "QHTMLTransition" ||
+        type === "QHTMLClass" ||
+        type === "QHTMLCanvas" ||
+        type === "QHTMLVideo" ||
+        type === "QHTMLParticleEmitter" ||
+        type === "QHTMLModelView" ||
+        type === "QHTMLLayout" ||
+        type === "QHTMLRowLayout" ||
+        type === "QHTMLColumnLayout";
+    };
+
+    const addReferenceNode = function (sourceNode, overwrite) {
+      const name = qhtmlNodeName(sourceNode);
+      const uuid = qhtmlNodeUuid(sourceNode);
+      if (name && uuid && isReferenceBearingNode(sourceNode) &&
+          (overwrite || !Object.prototype.hasOwnProperty.call(out, String(name)))) {
+        out[String(name)] = uuid;
+      }
+    };
+
+    const addNodeReferences = function (sourceNode, overwrite) {
+      if (!sourceNode) {
+        return;
+      }
+      addReferenceNode(sourceNode, overwrite);
+      if (typeof sourceNode.qhtmlReferenceNames === "function" &&
+          typeof sourceNode.qhtmlReferenceByName === "function") {
+        Array.from(sourceNode.qhtmlReferenceNames() || []).forEach((name) => {
+          const reference = sourceNode.qhtmlReferenceByName(String(name || ""));
+          const uuid = qhtmlNodeUuid(reference);
+          if (name && uuid && (overwrite || !Object.prototype.hasOwnProperty.call(out, String(name)))) {
+            out[String(name)] = uuid;
+          }
+        });
+        return;
+      }
+      if (typeof sourceNode.qhtmlReferenceMap === "function") {
+        const map = sourceNode.qhtmlReferenceMap() || {};
+        Object.keys(map).forEach((name) => {
+          const uuid = String(map[name] || "");
+          if (name && uuid && (overwrite || !Object.prototype.hasOwnProperty.call(out, String(name)))) {
+            out[String(name)] = uuid;
+          }
+        });
+      }
+    };
+
+    const addDescendantReferences = function (sourceNode, overwrite) {
+      if (!sourceNode || typeof sourceNode.childCount !== "function" || typeof sourceNode.childAt !== "function") {
+        return;
+      }
+      const count = sourceNode.childCount();
+      for (let index = 0; index < count; index += 1) {
+        const child = sourceNode.childAt(index);
+        if (qhtmlNodeType(child) === "QHTMLComponentDefinition") {
+          continue;
         }
-      });
-      return out;
+        addNodeReferences(child, overwrite);
+        addDescendantReferences(child, overwrite);
+      }
+    };
+
+    const nodeType = qhtmlNodeType(node);
+    if (nodeType === "QHTMLComponentInstance") {
+      const definitionNode = typeof node.componentDefinition === "function"
+        ? node.componentDefinition()
+        : (typeof node.definition === "function" ? node.definition() : null);
+      addNodeReferences(definitionNode, false);
+      addDescendantReferences(definitionNode, false);
     }
-    if (typeof node.qhtmlReferenceMap === "function") {
-      const map = node.qhtmlReferenceMap() || {};
-      Object.keys(map).forEach((name) => {
-        const uuid = String(map[name] || "");
-        if (name && uuid) {
-          out[String(name)] = uuid;
-        }
-      });
-    }
+
+    addNodeReferences(node, true);
+    addDescendantReferences(node, true);
     return out;
   }
 

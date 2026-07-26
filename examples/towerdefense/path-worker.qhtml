@@ -1,4 +1,4 @@
-q-worker td-path-worker {
+q-component td-path-worker {
   q-property revision: 0
   q-signal pathCalculated(result)
 

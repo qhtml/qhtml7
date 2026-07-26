@@ -589,6 +589,14 @@
 
     parent() { return this.qhtmlParent; }
     parentJs() { return this.parent(); }
+    rootNode() {
+      let current = this;
+      while (current && current.parent()) {
+        current = current.parent();
+      }
+      return current || this;
+    }
+    rootNodeJs() { return this.rootNode(); }
     childCount() { return this.qhtmlChildren.length; }
     childAt(index) { return this.qhtmlChildren[index] || null; }
     children() { return this.qhtmlChildren.slice(); }
@@ -874,6 +882,10 @@
       while (parsedTree.childCount() > 0) {
         this.insertChild(boundedIndex + inserted, parsedTree.takeChildAt(0));
         inserted += 1;
+      }
+      const root = this.rootNode();
+      if (root && typeof root.rebuildQHTMLReferences === "function") {
+        root.rebuildQHTMLReferences();
       }
       return inserted;
     }
@@ -1750,6 +1762,8 @@
     }
     definition() { return this._definition; }
     definitionJs() { return this.definition(); }
+    componentDefinition() { return this._definition; }
+    componentDefinitionJs() { return this.componentDefinition(); }
     componentDefinitionUUID() { return this._definition ? this._definition.qhtmlUUID() : ""; }
     componentDefinitionUUIDJs() { return this.componentDefinitionUUID(); }
     referenceMemberCount() { return this._referenceMembers.length; }
@@ -2636,6 +2650,108 @@
     renderHtml() { return ""; }
   }
 
+  function qhtmlReferenceBearingNode(node) {
+    return node instanceof QHTMLComponentDefinition ||
+      node instanceof QHTMLComponentInstance ||
+      node instanceof QHTMLProperty ||
+      node instanceof QHTMLPropertyAssignment ||
+      node instanceof QHTMLFunction ||
+      node instanceof QHTMLSignal ||
+      node instanceof QHTMLComponentInstanceSlot ||
+      node instanceof QHTMLTimer ||
+      node instanceof QHTMLPropertyAnimation ||
+      node instanceof QHTMLSequentialAnimation ||
+      node instanceof QHTMLParallelAnimation ||
+      node instanceof QHTMLScriptAction ||
+      node instanceof QHTMLWorker ||
+      node instanceof QHTMLPainter ||
+      node instanceof QHTMLStyle ||
+      node instanceof QHTMLTheme ||
+      node instanceof QHTMLTransition ||
+      node instanceof QHTMLClass ||
+      node instanceof QHTMLCanvas ||
+      node instanceof QHTMLVideo ||
+      node instanceof QHTMLParticleEmitter ||
+      node instanceof QHTMLModelView ||
+      node instanceof QHTMLLayout ||
+      node instanceof QHTMLRowLayout ||
+      node instanceof QHTMLColumnLayout;
+  }
+
+  function qhtmlAddNamedReference(map, node) {
+    if (!node || !qhtmlReferenceBearingNode(node) || !node.qhtmlName()) {
+      return;
+    }
+    map.set(node.qhtmlName(), node);
+  }
+
+  function qhtmlCloneReferenceMap(map) {
+    return new Map(map ? Array.from(map.entries()) : []);
+  }
+
+  function qhtmlCollectScopeReferences(node, map, visited = new Set()) {
+    if (!node || visited.has(node.qhtmlUUID())) {
+      return;
+    }
+    visited.add(node.qhtmlUUID());
+    for (const child of node.children()) {
+      qhtmlAddNamedReference(map, child);
+      if (child instanceof QHTMLComponentDefinition || child instanceof QHTMLComponentInstance) {
+        continue;
+      }
+      qhtmlCollectScopeReferences(child, map, visited);
+    }
+    for (const member of node.ownedReferenceMembers()) {
+      qhtmlAddNamedReference(map, member);
+    }
+  }
+
+  function qhtmlApplyReferenceMap(node, map, parentContext = null) {
+    node.clearQHTMLReferences();
+    node.qhtmlContext.clear();
+    node.qhtmlContext.setParentContext(parentContext);
+    map.forEach((reference, name) => {
+      if (!reference || reference.qhtmlUUID() === node.qhtmlUUID()) {
+        return;
+      }
+      node.addQHTMLReference(name, reference);
+      node.updateObjectReference(name, reference);
+    });
+  }
+
+  function qhtmlRebuildReferencesInScope(scopeNode, inheritedMap = new Map(), parentContext = null, visited = new Set()) {
+    if (!scopeNode || visited.has(scopeNode.qhtmlUUID())) {
+      return;
+    }
+    visited.add(scopeNode.qhtmlUUID());
+
+    const scopeMap = qhtmlCloneReferenceMap(inheritedMap);
+    if (scopeNode instanceof QHTMLComponentInstance && scopeNode.definition()) {
+      qhtmlCollectScopeReferences(scopeNode.definition(), scopeMap);
+    }
+    qhtmlCollectScopeReferences(scopeNode, scopeMap);
+
+    qhtmlApplyReferenceMap(scopeNode, scopeMap, parentContext);
+    const scopeContext = scopeNode.qhtmlContext;
+
+    const applyChildren = function (node) {
+      for (const child of node.children()) {
+        if (child instanceof QHTMLComponentDefinition || child instanceof QHTMLComponentInstance) {
+          qhtmlRebuildReferencesInScope(child, scopeMap, scopeContext, visited);
+          continue;
+        }
+        qhtmlApplyReferenceMap(child, scopeMap, scopeContext);
+        applyChildren(child);
+      }
+      for (const member of node.ownedReferenceMembers()) {
+        qhtmlApplyReferenceMap(member, scopeMap, scopeContext);
+        applyChildren(member);
+      }
+    };
+
+    applyChildren(scopeNode);
+  }
+
   class QHTMLDomTree extends QHTMLDomNode {
     constructor() {
       super("QHTMLDomTree", "root");
@@ -2661,16 +2777,19 @@
           this.appendChild(QHTMLNode.nodeFromJsonObject(childObject, this));
         }
         this.resolveComponentInstanceDefinitions();
+        this.rebuildQHTMLReferences();
         return true;
       }
       const loaded = QHTMLNode.prototype.fromJsonObject.call(this, value);
       this.resolveComponentInstanceDefinitions();
+      this.rebuildQHTMLReferences();
       return loaded;
     }
     fromJsonValue(value) { return this.fromJSON(value); }
     fromJsonObject(object) {
       const loaded = QHTMLNode.prototype.fromJsonObject.call(this, object);
       this.resolveComponentInstanceDefinitions();
+      this.rebuildQHTMLReferences();
       return loaded;
     }
     fromJSONText(json) { return this.fromJSON(JSON.parse(json)); }
@@ -2717,6 +2836,11 @@
         }
       });
     }
+    rebuildQHTMLReferences() {
+      qhtmlRebuildReferencesInScope(this, new Map(), this.qhtmlContext.parentContext ? this.qhtmlContext.parentContext() : null);
+      return true;
+    }
+    rebuildQHTMLReferencesJs() { return this.rebuildQHTMLReferences(); }
     toHTML() {
       const body = this.renderHtml();
       return "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"generator\" content=\"QHTML7 standalone web exporter " + qhtmlEscapeAttribute(qhtmlVersionString()) + "\">\n<title>QHTML Export</title>\n</head>\n<body>\n" + body + "\n</body>\n</html>";

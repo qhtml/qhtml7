@@ -1454,6 +1454,7 @@
     bindComponentMembers(tree);
     transformInstanceSlots(tree);
     tree.resolveComponentInstanceDefinitions();
+    tree.rebuildQHTMLReferences();
     return tree;
   }
 

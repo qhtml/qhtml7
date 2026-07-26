@@ -21,6 +21,10 @@ q-component td-game {
     health: 10
   }
 
+  onready {
+    this.board.game = this;
+  }
+
   function awardDefenders(amount) {
     this.money = Number(this.money) + Number(amount);
     this.defender.money = this.money;
@@ -41,9 +45,7 @@ q-component td-game {
         span { text { TowerDefenseVS QHTML7 Port } }
       }
 
-      td-board board {
-        game: this
-      }
+      td-board board { }
 
       td-gun-store.td-store { }
 
