@@ -270,7 +270,17 @@ q-component q-tabs {
       return new Array();
     }
 
-    var sourceTabs = Array.prototype.slice.call(source.children);
+    var sourceTabs = Array.prototype.slice.call(source.children).filter(function(child) {
+      return child && String(child.tagName || "").toLowerCase() == "q-tab";
+    });
+    if (sourceTabs.length == 0) {
+      sourceTabs = Array.prototype.slice.call(this.children).filter(function(child) {
+        return child && String(child.tagName || "").toLowerCase() == "q-tab";
+      });
+    }
+    if (sourceTabs.length == 0) {
+      return new Array();
+    }
     for (var index = 0; index < sourceTabs.length; index = index + 1) {
       var tabElement = sourceTabs[index];
       if (!tabElement || String(tabElement.tagName || "").toLowerCase() != "q-tab") {
@@ -439,6 +449,7 @@ q-component q-tabs {
 
   onready {
     this.buildTabs();
+    setTimeout(() => { this.buildTabs(); }, 0);
   }
 
   tabDefaultTheme {
@@ -451,7 +462,7 @@ q-component q-tabs {
 
       div.q-tabs-source {
         aria-hidden: "true"
-        slot mainslot { }
+        slot { }
       }
     }
   }

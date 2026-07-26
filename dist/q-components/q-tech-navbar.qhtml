@@ -1,0 +1,437 @@
+q-import { q-graphics-scene.qhtml nocache }
+
+q-style qTechNavbarHostStyle {
+  display: block
+  width: 100%
+  min-width: 0
+  color: #f4fbff
+}
+
+q-style qTechNavbarShellStyle {
+  position: relative
+  display: block
+  width: 100%
+  min-height: 138px
+  box-sizing: border-box
+  overflow: hidden
+}
+
+q-style qTechNavbarBackgroundSceneStyle {
+  position: absolute
+  inset: 0
+  display: block
+  width: 100%
+  height: 100%
+  pointer-events: none
+}
+
+q-style qTechNavbarButtonRowStyle {
+  position: relative
+  z-index: 2
+  display: flex
+  align-items: center
+  gap: 14px
+  width: 100%
+  min-height: 138px
+  box-sizing: border-box
+  padding: 24px 42px
+  overflow-x: auto
+  overflow-y: hidden
+  scrollbar-width: thin
+  scrollbar-color: #1bdde5 #07131b
+}
+
+q-style qTechNavbarButtonHostStyle {
+  display: block
+  flex: 0 0 252px
+  width: 252px
+  height: 86px
+}
+
+q-style qTechNavbarButtonShellStyle {
+  position: relative
+  display: block
+  width: 252px
+  height: 86px
+  isolation: isolate
+}
+
+q-style qTechNavbarButtonSceneStyle {
+  position: absolute
+  inset: 0
+  z-index: 0
+  display: block
+  width: 252px
+  height: 86px
+  pointer-events: none
+}
+
+q-style qTechNavbarButtonHitStyle {
+  position: absolute
+  inset: 0
+  z-index: 1
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 100%
+  height: 100%
+  box-sizing: border-box
+  padding: 10px 26px
+  border: 0
+  outline: 0
+  background: transparent
+  color: #e55b08
+  font-family: "Arial Narrow, Eurostile, Rajdhani, system-ui, sans-serif"
+  font-size: 31px
+  font-style: italic
+  font-weight: 900
+  letter-spacing: 0.055em
+  line-height: 1
+  text-align: center
+  text-transform: uppercase
+  text-shadow: "-2px 0 #030405, 0 2px #030405, 2px 0 #030405, 0 -2px #030405, 0 0 11px rgba(255, 88, 0, 0.34)"
+  cursor: pointer
+  user-select: none
+}
+
+q-style qTechNavbarButtonHitHoverStyle {
+  color: #ff7418
+  filter: brightness(1.12)
+}
+
+q-style qTechNavbarButtonHitFocusStyle {
+  color: #ff8b37
+  text-shadow: "-2px 0 #030405, 0 2px #030405, 2px 0 #030405, 0 -2px #030405, 0 0 16px rgba(255, 105, 22, 0.72)"
+}
+
+q-default-theme qTechNavbarTheme {
+  q-tech-navbar { qTechNavbarHostStyle }
+  .q-tech-navbar-shell { qTechNavbarShellStyle }
+  q-graphics-scene.q-tech-navbar-background-scene { qTechNavbarBackgroundSceneStyle }
+  .q-tech-navbar-button-row { qTechNavbarButtonRowStyle }
+  q-tech-navbar-button { qTechNavbarButtonHostStyle }
+  .q-tech-navbar-button-shell { qTechNavbarButtonShellStyle }
+  q-graphics-scene.q-tech-navbar-button-scene { qTechNavbarButtonSceneStyle }
+  button.q-tech-navbar-button-hit { qTechNavbarButtonHitStyle }
+  button.q-tech-navbar-button-hit:hover { qTechNavbarButtonHitHoverStyle }
+  button.q-tech-navbar-button-hit:focus-visible { qTechNavbarButtonHitFocusStyle }
+}
+
+q-component q-tech-navbar-button {
+  q-property url: "#"
+  q-property text: "LINK"
+  q-property restingScale: 1
+  q-property hoverScale: 1.035
+  q-property restingOpacity: 0.94
+  q-property hoverOpacity: 1
+
+  function setInteractiveState(active) {
+    var scale = active ? this.hoverScale : this.restingScale;
+    var opacity = active ? this.hoverOpacity : this.restingOpacity;
+    buttonScene.buttonFrame.setScale(scale, scale);
+    buttonScene.buttonFrame.setOpacity(opacity);
+  }
+
+  qTechNavbarTheme {
+    div.q-tech-navbar-button-shell {
+      q-graphics-scene buttonScene {
+        class: "q-tech-navbar-button-scene"
+
+        q-graphics-item buttonFrame {
+          x: 0
+          y: 0
+          width: 252
+          height: 86
+          opacity: 0.94
+          transformOriginX: 126
+          transformOriginY: 43
+          maskEnabled: true
+
+          function mask(ctx) {
+            var w = this.width;
+            var h = this.height;
+            var edge = 14;
+            var notch = 12;
+
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.moveTo(edge, 2);
+            ctx.lineTo(w * 0.34, 2);
+            ctx.lineTo(w * 0.39, 9);
+            ctx.lineTo(w * 0.61, 9);
+            ctx.lineTo(w * 0.66, 2);
+            ctx.lineTo(w - edge, 2);
+            ctx.lineTo(w - 2, edge);
+            ctx.lineTo(w - 2, h - edge);
+            ctx.lineTo(w - edge, h - 2);
+            ctx.lineTo(w * 0.68, h - 2);
+            ctx.lineTo(w * 0.64, h - notch);
+            ctx.lineTo(w * 0.36, h - notch);
+            ctx.lineTo(w * 0.32, h - 2);
+            ctx.lineTo(edge, h - 2);
+            ctx.lineTo(2, h - edge);
+            ctx.lineTo(2, edge);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          function paint(ctx) {
+            function panelPath(context, inset) {
+              var w = this.width;
+              var h = this.height;
+              var edge = 14 + inset * 0.45;
+              var notch = 12;
+              context.beginPath();
+              context.moveTo(edge, inset);
+              context.lineTo(w * 0.34, inset);
+              context.lineTo(w * 0.39, 7 + inset);
+              context.lineTo(w * 0.61, 7 + inset);
+              context.lineTo(w * 0.66, inset);
+              context.lineTo(w - edge, inset);
+              context.lineTo(w - inset, edge);
+              context.lineTo(w - inset, h - edge);
+              context.lineTo(w - edge, h - inset);
+              context.lineTo(w * 0.68, h - inset);
+              context.lineTo(w * 0.64, h - notch - inset * 0.3);
+              context.lineTo(w * 0.36, h - notch - inset * 0.3);
+              context.lineTo(w * 0.32, h - inset);
+              context.lineTo(edge, h - inset);
+              context.lineTo(inset, h - edge);
+              context.lineTo(inset, edge);
+              context.closePath();
+            }
+
+            function accentLine(context, x1, y1, x2, y2) {
+              context.beginPath();
+              context.moveTo(x1, y1);
+              context.lineTo(x2, y2);
+              context.stroke();
+            }
+
+            function fastener(context, x, y) {
+              var metal = context.createRadialGradient(x - 1.5, y - 1.5, 0, x, y, 4.2);
+              metal.addColorStop(0, "#dce6e8");
+              metal.addColorStop(0.34, "#59666b");
+              metal.addColorStop(0.72, "#11171a");
+              metal.addColorStop(1, "#020405");
+              context.fillStyle = metal;
+              context.strokeStyle = "rgba(0, 0, 0, 0.92)";
+              context.lineWidth = 1;
+              context.beginPath();
+              context.arc(x, y, 3.3, 0, Math.PI * 2);
+              context.fill();
+              context.stroke();
+              context.strokeStyle = "rgba(211, 235, 238, 0.42)";
+              accentLine(context, x - 1.8, y, x + 1.8, y);
+            }
+
+            var w = this.width;
+            var h = this.height;
+            ctx.clearRect(0, 0, w, h);
+
+            ctx.save();
+            ctx.shadowColor = "rgba(0, 245, 255, 0.62)";
+            ctx.shadowBlur = 14;
+            ctx.strokeStyle = "rgba(0, 224, 235, 0.72)";
+            ctx.lineWidth = 3;
+            panelPath.call(this, ctx, 4);
+            ctx.stroke();
+            ctx.restore();
+
+            panelPath.call(this, ctx, 2);
+            var outerMetal = ctx.createLinearGradient(0, 0, 0, h);
+            outerMetal.addColorStop(0, "#e6e9e9");
+            outerMetal.addColorStop(0.1, "#757e82");
+            outerMetal.addColorStop(0.24, "#20272b");
+            outerMetal.addColorStop(0.76, "#11171b");
+            outerMetal.addColorStop(0.9, "#697378");
+            outerMetal.addColorStop(1, "#d4d8d9");
+            ctx.fillStyle = outerMetal;
+            ctx.fill();
+            ctx.strokeStyle = "#020405";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            panelPath.call(this, ctx, 9);
+            var innerPanel = ctx.createLinearGradient(0, 9, 0, h - 9);
+            innerPanel.addColorStop(0, "#252b2e");
+            innerPanel.addColorStop(0.18, "#090d0f");
+            innerPanel.addColorStop(0.7, "#171b1e");
+            innerPanel.addColorStop(1, "#050708");
+            ctx.fillStyle = innerPanel;
+            ctx.fill();
+            ctx.strokeStyle = "rgba(165, 184, 190, 0.62)";
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
+
+            ctx.save();
+            panelPath.call(this, ctx, 10);
+            ctx.clip();
+            ctx.globalAlpha = 0.18;
+            ctx.strokeStyle = "#b8c4c6";
+            ctx.lineWidth = 1;
+            for (var carbonX = -h; carbonX < w + h; carbonX += 8) {
+              accentLine(ctx, carbonX, h, carbonX + h, 0);
+            }
+            ctx.globalAlpha = 0.11;
+            for (var reverseX = 0; reverseX < w + h; reverseX += 11) {
+              accentLine(ctx, reverseX, 0, reverseX - h, h);
+            }
+            ctx.restore();
+
+            ctx.lineCap = "round";
+            ctx.strokeStyle = "#00eef2";
+            ctx.shadowColor = "#00f7ff";
+            ctx.shadowBlur = 8;
+            ctx.lineWidth = 2.4;
+            accentLine(ctx, 17, 17, 54, 17);
+            accentLine(ctx, w - 54, 17, w - 17, 17);
+            accentLine(ctx, 17, h - 17, 68, h - 17);
+            accentLine(ctx, w - 68, h - 17, w - 17, h - 17);
+            accentLine(ctx, 11, 26, 11, h - 26);
+            accentLine(ctx, w - 11, 26, w - 11, h - 26);
+            ctx.shadowBlur = 0;
+
+            fastener(ctx, 20, h * 0.5);
+            fastener(ctx, w - 20, h * 0.5);
+
+            var sheen = ctx.createLinearGradient(20, 12, w - 20, h - 12);
+            sheen.addColorStop(0, "rgba(255, 255, 255, 0.22)");
+            sheen.addColorStop(0.2, "rgba(255, 255, 255, 0.02)");
+            sheen.addColorStop(0.64, "rgba(255, 255, 255, 0.08)");
+            sheen.addColorStop(1, "rgba(0, 0, 0, 0.3)");
+            ctx.fillStyle = sheen;
+            panelPath.call(this, ctx, 12);
+            ctx.fill();
+          }
+        }
+      }
+
+      button.q-tech-navbar-button-hit {
+        type: "button"
+        aria-label: "${this.text}"
+        text { ${this.text} }
+        onmouseenter { this.setInteractiveState(true); }
+        onmouseleave { this.setInteractiveState(false); }
+        onfocus { this.setInteractiveState(true); }
+        onblur { this.setInteractiveState(false); }
+        onclick { window.location.assign(this.url); }
+      }
+    }
+  }
+}
+
+q-component q-tech-navbar {
+  q-property links: [{ url: "https://www.datafault.net/qhtml", text: "QHTML" }]
+
+  qTechNavbarTheme {
+    nav.q-tech-navbar-shell {
+      aria-label: "Technology navigation"
+
+      q-graphics-scene navbarScene {
+        class: "q-tech-navbar-background-scene"
+
+        q-graphics-item navbarFrame {
+          x: 0
+          y: 0
+          width: 1600
+          height: 138
+
+          function paint(ctx, scene) {
+            function framePath(context, x, y, width, height, cut) {
+              context.beginPath();
+              context.moveTo(x + cut, y);
+              context.lineTo(x + width - cut, y);
+              context.lineTo(x + width, y + cut);
+              context.lineTo(x + width, y + height - cut);
+              context.lineTo(x + width - cut, y + height);
+              context.lineTo(x + cut, y + height);
+              context.lineTo(x, y + height - cut);
+              context.lineTo(x, y + cut);
+              context.closePath();
+            }
+
+            function trace(context, points) {
+              context.beginPath();
+              context.moveTo(points[0][0], points[0][1]);
+              for (var pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
+                context.lineTo(points[pointIndex][0], points[pointIndex][1]);
+              }
+              context.stroke();
+            }
+
+            var bounds = scene.getBoundingClientRect();
+            var w = bounds.width;
+            var h = bounds.height;
+            var cut = 24;
+            ctx.clearRect(0, 0, w, h);
+
+            ctx.save();
+            ctx.shadowColor = "rgba(0, 240, 255, 0.78)";
+            ctx.shadowBlur = 20;
+            ctx.strokeStyle = "rgba(0, 236, 246, 0.8)";
+            ctx.lineWidth = 3;
+            framePath(ctx, 5, 5, w - 10, h - 10, cut);
+            ctx.stroke();
+            ctx.restore();
+
+            framePath(ctx, 2, 2, w - 4, h - 4, cut);
+            var shell = ctx.createLinearGradient(0, 0, 0, h);
+            shell.addColorStop(0, "rgba(31, 67, 78, 0.98)");
+            shell.addColorStop(0.18, "rgba(5, 25, 33, 0.98)");
+            shell.addColorStop(0.72, "rgba(6, 19, 27, 0.99)");
+            shell.addColorStop(1, "rgba(22, 58, 68, 0.98)");
+            ctx.fillStyle = shell;
+            ctx.fill();
+            ctx.strokeStyle = "rgba(120, 194, 205, 0.72)";
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
+
+            framePath(ctx, 15, 14, w - 30, h - 28, 16);
+            var interior = ctx.createLinearGradient(0, 14, 0, h - 14);
+            interior.addColorStop(0, "rgba(8, 30, 40, 0.98)");
+            interior.addColorStop(0.48, "rgba(2, 13, 20, 0.99)");
+            interior.addColorStop(1, "rgba(7, 27, 36, 0.98)");
+            ctx.fillStyle = interior;
+            ctx.fill();
+            ctx.strokeStyle = "rgba(0, 221, 231, 0.62)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.strokeStyle = "rgba(0, 230, 239, 0.42)";
+            ctx.lineWidth = 1;
+            trace(ctx, [[32, 26], [84, 26], [98, 38], [168, 38]]);
+            trace(ctx, [[w - 32, 26], [w - 84, 26], [w - 98, 38], [w - 168, 38]]);
+            trace(ctx, [[32, h - 26], [104, h - 26], [120, h - 38], [210, h - 38]]);
+            trace(ctx, [[w - 32, h - 26], [w - 104, h - 26], [w - 120, h - 38], [w - 210, h - 38]]);
+
+            ctx.fillStyle = "#45f7ff";
+            ctx.shadowColor = "#00f4ff";
+            ctx.shadowBlur = 9;
+            for (var lightX = 62; lightX < w - 62; lightX += 190) {
+              ctx.fillRect(lightX, 8, 54, 3);
+              ctx.fillRect(lightX + 44, h - 11, 38, 3);
+            }
+            ctx.shadowBlur = 0;
+
+            ctx.globalAlpha = 0.15;
+            ctx.fillStyle = "#56dce5";
+            for (var scanY = 20; scanY < h - 20; scanY += 7) {
+              ctx.fillRect(22, scanY, w - 44, 1);
+            }
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+
+      div.q-tech-navbar-button-row {
+        for (link in links) {
+          q-tech-navbar-button {
+            url: "${link.url}"
+            text: "${link.text}"
+          }
+        }
+      }
+    }
+  }
+}

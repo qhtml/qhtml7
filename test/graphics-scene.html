@@ -157,6 +157,59 @@
       color: #668ca4;
       font-size: 0.78rem;
     }
+
+    .feature-test {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #17364b;
+    }
+
+    .feature-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    .feature-title {
+      margin: 0;
+      color: #f4fbff;
+      font-size: 1.2rem;
+    }
+
+    .feature-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .feature-metric {
+      min-width: 132px;
+      padding: 7px 10px;
+      border: 1px solid #28516b;
+      border-radius: 6px;
+      background: rgb(8 25 37 / 84%);
+    }
+
+    .feature-metric output {
+      display: block;
+      margin-top: 2px;
+      color: #7fffd4;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.82rem;
+    }
+
+    .feature-scene {
+      height: clamp(300px, 45vh, 420px);
+      border-radius: 9px;
+      background:
+        linear-gradient(rgb(83 156 181 / 10%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(83 156 181 / 10%) 1px, transparent 1px),
+        radial-gradient(circle at 50% 50%, #132d3d, #07131e 76%);
+      background-size: 24px 24px, 24px 24px, auto;
+    }
   </style>
 </head>
 <body>
@@ -202,6 +255,46 @@
       The population continuously adds and removes randomly selected items around the target load. All changes are
       coalesced into the scene's next animation frame.
     </p>
+
+    <section class="feature-test" aria-labelledby="feature-test-title">
+      <header class="feature-header">
+        <div>
+          <h2 class="feature-title" id="feature-test-title">Hierarchy and Alpha-Mask Test</h2>
+          <p class="subtitle">
+            Child coordinates inherit parent transforms. The outer and nested masks each use two raster passes.
+          </p>
+        </div>
+        <div class="feature-metrics" aria-label="Hierarchy and mask test status">
+          <div class="feature-metric">
+            <span class="metric-label">Assertions</span>
+            <output id="feature-status-output">Starting</output>
+          </div>
+          <div class="feature-metric">
+            <span class="metric-label">Scene tree</span>
+            <output id="feature-tree-output">0 roots / 0 items</output>
+          </div>
+          <div class="feature-metric">
+            <span class="metric-label">Mask calls</span>
+            <output id="feature-mask-output">0</output>
+          </div>
+          <div class="feature-metric">
+            <span class="metric-label">Moving child</span>
+            <output id="feature-parent-output">Starting</output>
+          </div>
+        </div>
+      </header>
+
+      <graphics-scene
+        class="feature-scene"
+        id="feature-scene"
+        aria-label="Animated child hierarchy and alpha-mask test"
+      ></graphics-scene>
+      <p class="test-note">
+        The bright moving shapes are children of the large masked group. The smallest child switches between the
+        root and nested masked item every three seconds; it must remain registered and render relative to its current
+        parent throughout the reparenting operation.
+      </p>
+    </section>
   </main>
 
   <script src="../js/qhtml-graphics-scene.js"></script>
@@ -518,6 +611,422 @@
         }
       }
 
+      class HierarchyMaskRootItem extends QHTMLGraphicsItem {
+        constructor() {
+          super({
+            uuid: "hierarchy-mask-root",
+            width: 560,
+            height: 250,
+            painter: HierarchyMaskRootItem.paintItem,
+            masker: HierarchyMaskRootItem.paintMask
+          });
+          this.maskInvocationCount = 0;
+        }
+
+        static paintItem(context2d) {
+          const background = context2d.createLinearGradient(0, 0, this.width, this.height);
+          background.addColorStop(0, "rgb(8 48 70 / 0.94)");
+          background.addColorStop(0.52, "rgb(24 83 104 / 0.9)");
+          background.addColorStop(1, "rgb(34 39 91 / 0.94)");
+          context2d.fillStyle = background;
+          context2d.fillRect(-40, -40, this.width + 80, this.height + 80);
+
+          context2d.strokeStyle = "rgb(126 239 255 / 0.48)";
+          context2d.lineWidth = 2;
+          for (let lineX = -this.height; lineX < this.width; lineX += 28) {
+            context2d.beginPath();
+            context2d.moveTo(lineX, this.height);
+            context2d.lineTo(lineX + this.height, 0);
+            context2d.stroke();
+          }
+
+          context2d.fillStyle = "rgb(226 250 255 / 0.9)";
+          context2d.font = "600 14px ui-monospace, SFMono-Regular, Consolas, monospace";
+          context2d.fillText("OUTER MASK: parent + complete child subtree", 20, 28);
+        }
+
+        static paintMask(context2d) {
+          this.maskInvocationCount += 1;
+          const cornerRadius = Math.min(34, this.height * 0.16);
+
+          context2d.fillStyle = "white";
+          context2d.beginPath();
+          context2d.roundRect(
+            0,
+            0,
+            this.width * 0.72,
+            this.height,
+            cornerRadius
+          );
+          context2d.fill();
+
+          context2d.beginPath();
+          context2d.arc(
+            this.width * 0.72,
+            this.height * 0.5,
+            this.height * 0.46,
+            0,
+            Math.PI * 2
+          );
+          context2d.fill();
+
+          const feather = context2d.createRadialGradient(
+            this.width * 0.94,
+            this.height * 0.28,
+            0,
+            this.width * 0.94,
+            this.height * 0.28,
+            this.height * 0.3
+          );
+          feather.addColorStop(0, "rgb(255 255 255 / 0.96)");
+          feather.addColorStop(0.55, "rgb(255 255 255 / 0.55)");
+          feather.addColorStop(1, "rgb(255 255 255 / 0)");
+          context2d.fillStyle = feather;
+          context2d.beginPath();
+          context2d.arc(
+            this.width * 0.94,
+            this.height * 0.28,
+            this.height * 0.3,
+            0,
+            Math.PI * 2
+          );
+          context2d.fill();
+        }
+      }
+
+      class HierarchyChildGraphicsItem extends QHTMLGraphicsItem {
+        constructor(configuration) {
+          super({
+            uuid: configuration.uuid,
+            width: configuration.width,
+            height: configuration.height,
+            painter: HierarchyChildGraphicsItem.paintItem
+          });
+          this.primaryColor = configuration.primaryColor;
+          this.secondaryColor = configuration.secondaryColor;
+          this.label = configuration.label;
+          this.shape = configuration.shape;
+        }
+
+        static paintItem(context2d) {
+          const gradient = context2d.createLinearGradient(0, 0, this.width, this.height);
+          gradient.addColorStop(0, this.primaryColor);
+          gradient.addColorStop(1, this.secondaryColor);
+          context2d.fillStyle = gradient;
+          context2d.strokeStyle = "rgb(236 254 255 / 0.9)";
+          context2d.lineWidth = 2;
+          context2d.shadowColor = this.primaryColor;
+          context2d.shadowBlur = 16;
+          context2d.beginPath();
+
+          if (this.shape === "circle") {
+            context2d.ellipse(
+              this.width * 0.5,
+              this.height * 0.5,
+              this.width * 0.5,
+              this.height * 0.5,
+              0,
+              0,
+              Math.PI * 2
+            );
+          } else if (this.shape === "triangle") {
+            context2d.moveTo(this.width * 0.5, 0);
+            context2d.lineTo(this.width, this.height);
+            context2d.lineTo(0, this.height);
+            context2d.closePath();
+          } else {
+            context2d.roundRect(0, 0, this.width, this.height, Math.min(this.width, this.height) * 0.2);
+          }
+
+          context2d.fill();
+          context2d.stroke();
+          context2d.shadowBlur = 0;
+          context2d.fillStyle = "rgb(248 255 255 / 0.94)";
+          context2d.font = "700 10px ui-monospace, SFMono-Regular, Consolas, monospace";
+          context2d.textAlign = "center";
+          context2d.textBaseline = "middle";
+          context2d.fillText(this.label, this.width * 0.5, this.height * 0.5);
+        }
+      }
+
+      class NestedMaskGraphicsItem extends QHTMLGraphicsItem {
+        constructor() {
+          super({
+            uuid: "nested-mask-item",
+            width: 190,
+            height: 116,
+            painter: NestedMaskGraphicsItem.paintItem,
+            masker: NestedMaskGraphicsItem.paintMask
+          });
+          this.maskInvocationCount = 0;
+        }
+
+        static paintItem(context2d) {
+          const background = context2d.createLinearGradient(0, 0, this.width, 0);
+          background.addColorStop(0, "rgb(104 36 126 / 0.94)");
+          background.addColorStop(1, "rgb(33 119 151 / 0.94)");
+          context2d.fillStyle = background;
+          context2d.fillRect(-24, -24, this.width + 48, this.height + 48);
+
+          context2d.fillStyle = "rgb(255 255 255 / 0.17)";
+          for (let stripeX = -this.height; stripeX < this.width; stripeX += 22) {
+            context2d.save();
+            context2d.translate(stripeX, 0);
+            context2d.rotate(-0.45);
+            context2d.fillRect(0, -30, 9, this.height + 60);
+            context2d.restore();
+          }
+
+          context2d.fillStyle = "white";
+          context2d.font = "700 11px ui-monospace, SFMono-Regular, Consolas, monospace";
+          context2d.fillText("NESTED MASK", 14, 20);
+        }
+
+        static paintMask(context2d) {
+          this.maskInvocationCount += 1;
+          context2d.fillStyle = "white";
+
+          context2d.beginPath();
+          context2d.ellipse(
+            this.width * 0.34,
+            this.height * 0.5,
+            this.width * 0.34,
+            this.height * 0.48,
+            0,
+            0,
+            Math.PI * 2
+          );
+          context2d.fill();
+
+          context2d.beginPath();
+          context2d.ellipse(
+            this.width * 0.7,
+            this.height * 0.5,
+            this.width * 0.27,
+            this.height * 0.4,
+            0,
+            0,
+            Math.PI * 2
+          );
+          context2d.fill();
+        }
+      }
+
+      class GraphicsSceneFeatureAssertions {
+        constructor(statusOutput) {
+          this._statusOutput = statusOutput;
+        }
+
+        validate(scene, rootItem, nestedMaskItem, movingChild) {
+          try {
+            this._require(scene.listItems().length === 1, "expected exactly one root item");
+            this._require(scene.listItems()[0] === rootItem, "unexpected scene root");
+            this._require(scene.itemCount === 5, "scene-wide item count changed");
+            this._require(
+              scene.itemByUUID(movingChild.uuid) === movingChild,
+              "nested child missing from scene UUID registry"
+            );
+            this._require(rootItem.hasMask, "outer mask is not installed");
+            this._require(nestedMaskItem.hasMask, "nested mask is not installed");
+            this._require(
+              movingChild.parentItem === rootItem || movingChild.parentItem === nestedMaskItem,
+              "moving child has an unexpected parent"
+            );
+
+            const sceneSnapshot = scene.toJSON();
+            const rootRecord = sceneSnapshot.items[0];
+            const nestedRecord = this._findRecord(rootRecord.items, nestedMaskItem.uuid);
+            const movingRecord = this._findRecord(rootRecord.items, movingChild.uuid);
+            this._require(
+              rootRecord.masker.qhtmlType === "QHTMLGraphicsMasker",
+              "outer mask was not serialized"
+            );
+            this._require(
+              nestedRecord.masker.qhtmlType === "QHTMLGraphicsMasker",
+              "nested mask was not serialized"
+            );
+            this._require(movingRecord.uuid === movingChild.uuid, "moving child was not serialized");
+            this._statusOutput.value = "PASS";
+          } catch (error) {
+            this._statusOutput.value = `FAIL: ${error.message}`;
+            throw error;
+          }
+        }
+
+        _findRecord(records, uuid) {
+          for (const record of records) {
+            if (record.uuid === uuid) {
+              return record;
+            }
+            const nestedRecord = this._findRecord(record.items, uuid);
+            if (nestedRecord) {
+              return nestedRecord;
+            }
+          }
+          return null;
+        }
+
+        _require(condition, message) {
+          if (!condition) {
+            throw new Error(message);
+          }
+        }
+      }
+
+      class GraphicsSceneHierarchyMaskTest {
+        constructor(elements) {
+          this._scene = elements.scene;
+          this._treeOutput = elements.treeOutput;
+          this._maskOutput = elements.maskOutput;
+          this._parentOutput = elements.parentOutput;
+          this._assertions = new GraphicsSceneFeatureAssertions(elements.statusOutput);
+          this._rootItem = null;
+          this._nestedMaskItem = null;
+          this._movingChild = null;
+          this._movingChildIsNested = true;
+          this._lastParentPhase = -1;
+          this._startTime = performance.now();
+          this._frameRequest = 0;
+          this._animateFrame = this._animateFrame.bind(this);
+        }
+
+        start() {
+          this._createSceneGraph();
+          this._validateAndReport();
+          this._frameRequest = requestAnimationFrame(this._animateFrame);
+        }
+
+        _createSceneGraph() {
+          this._rootItem = this._scene.addItem(new HierarchyMaskRootItem());
+
+          const firstChild = new HierarchyChildGraphicsItem({
+            uuid: "orbit-child-a",
+            width: 76,
+            height: 76,
+            primaryColor: "#2de2e6",
+            secondaryColor: "#176bff",
+            label: "CHILD A",
+            shape: "circle"
+          });
+          const secondChild = new HierarchyChildGraphicsItem({
+            uuid: "orbit-child-b",
+            width: 68,
+            height: 68,
+            primaryColor: "#ff4ecd",
+            secondaryColor: "#7928ca",
+            label: "CHILD B",
+            shape: "triangle"
+          });
+          this._nestedMaskItem = new NestedMaskGraphicsItem();
+          this._movingChild = new HierarchyChildGraphicsItem({
+            uuid: "reparented-child",
+            width: 46,
+            height: 46,
+            primaryColor: "#ffe66d",
+            secondaryColor: "#ff7a18",
+            label: "MOVE",
+            shape: "rounded"
+          });
+
+          this._rootItem.addItem(firstChild);
+          this._rootItem.addItem(secondChild);
+          this._rootItem.addItem(this._nestedMaskItem);
+          this._nestedMaskItem.addItem(this._movingChild);
+          this._firstChild = firstChild;
+          this._secondChild = secondChild;
+        }
+
+        _animateFrame(timestamp) {
+          const elapsedSeconds = (timestamp - this._startTime) / 1000;
+          const bounds = this._scene.getBoundingClientRect();
+          const groupWidth = Math.max(260, Math.min(620, bounds.width - 44));
+          const groupHeight = Math.max(190, Math.min(270, bounds.height - 44));
+          const groupX = (bounds.width - groupWidth) * 0.5;
+          const groupY = (bounds.height - groupHeight) * 0.5;
+
+          this._rootItem
+            .setPosition(groupX, groupY)
+            .setSize(groupWidth, groupHeight)
+            .setTransformOrigin(groupWidth * 0.5, groupHeight * 0.5)
+            .setRotation(Math.sin(elapsedSeconds * 0.45) * 2.5);
+
+          this._firstChild
+            .setPosition(
+              groupWidth * 0.48 + Math.cos(elapsedSeconds * 1.2) * groupWidth * 0.43,
+              groupHeight * 0.5 + Math.sin(elapsedSeconds * 1.7) * groupHeight * 0.32
+            )
+            .setRotation(elapsedSeconds * 95)
+            .setOpacity(0.82);
+
+          this._secondChild
+            .setPosition(
+              groupWidth * 0.36 + Math.cos(elapsedSeconds * 0.86 + 2.4) * groupWidth * 0.42,
+              groupHeight * 0.48 + Math.sin(elapsedSeconds * 1.34 + 1.1) * groupHeight * 0.36
+            )
+            .setRotation(-elapsedSeconds * 120)
+            .setOpacity(0.88);
+
+          this._nestedMaskItem
+            .setPosition(groupWidth * 0.38, groupHeight * 0.28)
+            .setRotation(Math.sin(elapsedSeconds * 0.9) * 8);
+
+          this._updateMovingChildParent(elapsedSeconds);
+          if (this._movingChildIsNested) {
+            this._movingChild
+              .setPosition(
+                70 + Math.cos(elapsedSeconds * 2.3) * 80,
+                35 + Math.sin(elapsedSeconds * 2.8) * 42
+              )
+              .setRotation(elapsedSeconds * 180);
+          } else {
+            this._movingChild
+              .setPosition(
+                groupWidth * 0.5 + Math.cos(elapsedSeconds * 1.8) * groupWidth * 0.38,
+                groupHeight * 0.48 + Math.sin(elapsedSeconds * 2.1) * groupHeight * 0.38
+              )
+              .setRotation(-elapsedSeconds * 160);
+          }
+
+          this._updateMetrics();
+          this._frameRequest = requestAnimationFrame(this._animateFrame);
+        }
+
+        _updateMovingChildParent(elapsedSeconds) {
+          const parentPhase = Math.floor(elapsedSeconds / 3);
+          if (parentPhase === this._lastParentPhase) {
+            return;
+          }
+          this._lastParentPhase = parentPhase;
+          this._movingChildIsNested = parentPhase % 2 === 0;
+          if (this._movingChildIsNested) {
+            this._nestedMaskItem.addItem(this._movingChild);
+          } else {
+            this._rootItem.addItem(this._movingChild);
+          }
+          this._validateAndReport();
+        }
+
+        _validateAndReport() {
+          this._assertions.validate(
+            this._scene,
+            this._rootItem,
+            this._nestedMaskItem,
+            this._movingChild
+          );
+          this._treeOutput.value = `${this._scene.listItems().length} root / ${this._scene.itemCount} items`;
+          this._parentOutput.value = this._movingChildIsNested ? "Nested mask" : "Outer mask";
+        }
+
+        _updateMetrics() {
+          const totalMaskCalls = (
+            this._rootItem.maskInvocationCount
+            + this._nestedMaskItem.maskInvocationCount
+          );
+          this._maskOutput.value = totalMaskCalls.toLocaleString();
+          this._parentOutput.value = this._movingChildIsNested ? "Nested mask" : "Outer mask";
+        }
+      }
+
       class GraphicsSceneTestApplication {
         constructor(documentRoot) {
           this._document = documentRoot;
@@ -536,6 +1045,15 @@
             mutationsOutput: this._document.getElementById("mutations-output")
           });
           stressTest.start();
+
+          const hierarchyMaskTest = new GraphicsSceneHierarchyMaskTest({
+            scene: this._document.getElementById("feature-scene"),
+            statusOutput: this._document.getElementById("feature-status-output"),
+            treeOutput: this._document.getElementById("feature-tree-output"),
+            maskOutput: this._document.getElementById("feature-mask-output"),
+            parentOutput: this._document.getElementById("feature-parent-output")
+          });
+          hierarchyMaskTest.start();
         }
       }
 

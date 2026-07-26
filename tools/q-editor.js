@@ -62,7 +62,7 @@
   const QEDITOR_CODEMIRROR_SCRIPT = 'codemirror/codemirror.js';
   const QEDITOR_CODEMIRROR_CSS = 'codemirror/codemirror.css';
   const QEDITOR_QHTML_RUNTIME_SCRIPTS = [
-    '../dist/qhtml-wasm.js'
+    '../dist/qhtml.js'
   ];
   const QEDITOR_QDOM_DISPLAY_HIDDEN_KEYS = new Set([
     'originalSource',

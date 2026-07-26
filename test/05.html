@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QHTML For Loop Stress Rect Test 05</title>
-  <script src="../dist/qhtml-wasm.js"></script>
+  <script src="../dist/qhtml.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -104,33 +104,33 @@ q-component stress-rect {
   q-property-animation widthAnim {
     target: this
     property: "width"
-    duration: 140
+    duration: 5400
     steps: this.numSteps
     easing: "linear"
     repeat: false
-    from: 84
-    to: 520
+    from: 8vw
+    to: 30vw
     running: true
 
     onstepped(value, currentStep) {
-      var status = this.ownerElement.querySelector(".rect-status");
+    console.log(this)
+      var status = this.querySelector(".rect-status");
       if (status) {
         status.textContent = "width " + Math.round(value) + "px / step " + currentStep;
       }
     }
-
-    onended {
-      var oldFrom = this.from;
-        this.from = this.to;
-      this.to = oldFrom;
-      this.start();
+    onended() {
+      var oldFrom = this.widthAnim.from;
+        this.widthAnim.from = this.widthAnim.to;
+     this.widthAnim.to = oldFrom;
+      this.widthAnim.start();
     }
-  }
 
+  }
   q-property-animation opacityAnim {
     target: this
     property: "opacity"
-    duration: 1400
+    duration: 140
     steps: 100
     easing: "linear"
     repeat: false
@@ -139,17 +139,18 @@ q-component stress-rect {
     running: true
 
     onended {
-      var oldFrom = this.from;
-      this.from = this.to ;
-      this.to = oldFrom;
-      this.start();
+  var oldFrom = this.opacityAnim.from;
+        this.opacityAnim.from = this.opacityAnim.to;
+     this.opacityAnim.to = oldFrom;
+      this.opacityAnim.start();
+
     }
   }
 
   onready {
     var rect = this;
-    this.widthAnim.to = this.widthAnim.to + this.numSteps;
-    this.widthAnim.duration = this.widthAnim.duration + (10 * this.numSteps);
+    this.widthAnim.to = this.widthAnim.to.add(this.numSteps);
+    this.widthAnim.steps *= 2;
         this.widthAnim.start();
         this.opacityAnim.start();
   }
@@ -164,7 +165,8 @@ q-component stress-rect {
 }
 
 q-component stress-stage {
-  q-property somearray: [5, 10, 15, 20, 25, 30, 35, 40, 45, 100, 200, 300, 400]
+q-logger { q-signal }
+  q-property somearray: [ 4, 10, 20, 30, 40]
   div.animation-stage {
     for (num in this.somearray) {
       stress-rect {

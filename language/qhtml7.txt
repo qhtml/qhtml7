@@ -4,7 +4,7 @@ QHTML7 specifications prompt.
 --------------- use for reference only ----------------------
 --------------- proceed to next milestone -------------------
 
-1. `qhtml-wasm.js` is included <script src="qhtml-wasm.js"></script> which will have the code to initialize the qhtml7.wasm file (which will be discussed later) using the glue `qhtml7-glue.js` which will be compiled as a type of webassembly based library that will provide the base classes and functionality for some parts of the system. We will discuss the webassembly details shortly.
+1. `qhtml.js` is included <script src="qhtml.js"></script> which will have the code to initialize the qhtml7.wasm file (which will be discussed later) using the glue `qhtml7-glue.js` which will be compiled as a type of webassembly based library that will provide the base classes and functionality for some parts of the system. We will discuss the webassembly details shortly.
 
 2. Once the webassembly is loaded and initialized fully, we need to create a CustomElement class in javascript that has an attribute "ready" which is automatically set to 0 when the script runs in a closure. This CustomElement will be tag "q-html"  so it will be accessible via <q-html> </q-html>. As soon as the element is created either via HTML or via Javascript .createDocument, the `ready` attribute is set to `"0"` and then the entire inner Contents of the element is stored and saved to a bound property on this particular <q-html> DOM element under the name `.qhtmlSource`, accessible to all via `querySelector("q-html").qhtmlSource`.
 

@@ -8,7 +8,7 @@
   }
 
   const base = new URL(".", currentScript.src).href;
-  const QHTML_VERSION = String(globalScope.QHTML_VERSION || "4.3.7");
+  const QHTML_VERSION = String(globalScope.QHTML_VERSION || "7.4.0");
   const QHTML_LOADING_INDICATOR_ATTRIBUTE = "data-qhtml-loading-indicator";
 
   function qhtmlVersionQuery() {
@@ -29,7 +29,12 @@
   }
 
   const qhtml6Url = versionedUrl(new URL("qhtml6/qhtml.js", base).href);
-  const qhtml7Url = versionedUrl(new URL("qhtml-wasm.js", base).href);
+  const qhtml7ScriptUrls = [
+    "qhtml_types.js",
+    "qhtml_parser.js",
+    "qhtml-graphics-scene.js",
+    "qhtml-element.js"
+  ].map((path) => versionedUrl(new URL(path, base).href));
   let qhtml6Promise = null;
   let qhtml7Promise = null;
 
@@ -158,7 +163,32 @@
 
   function loadQHTML7() {
     if (!qhtml7Promise) {
-      qhtml7Promise = loadScript(qhtml7Url);
+      qhtml7Promise = (async () => {
+        globalScope.QHTML7 = Object.assign(globalScope.QHTML7 || {}, {
+          runtime: "native-js",
+          nativeRuntime: true,
+          QHTML_VERSION,
+          qhtmlVersion: QHTML_VERSION,
+          version: QHTML_VERSION
+        });
+        for (const url of qhtml7ScriptUrls) {
+          const path = new URL(url, base).pathname.split("/").pop();
+          if (path === "qhtml_types.js" && globalScope.QHTMLTypes) {
+            continue;
+          }
+          if (path === "qhtml_parser.js" && globalScope.QHTMLParser) {
+            continue;
+          }
+          if (path === "qhtml-graphics-scene.js" && globalScope.customElements.get("graphics-scene")) {
+            continue;
+          }
+          if (path === "qhtml-element.js" && globalScope.customElements.get("q-html7")) {
+            continue;
+          }
+          await loadScript(url);
+        }
+        return globalScope.QHTML7;
+      })();
     }
     return qhtml7Promise;
   }
@@ -187,9 +217,10 @@
     }
   };
 
+  const scheduleStart = () => globalScope.setTimeout(start, 0);
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start, { once: true });
+    document.addEventListener("DOMContentLoaded", scheduleStart, { once: true });
   } else {
-    start();
+    scheduleStart();
   }
 })();

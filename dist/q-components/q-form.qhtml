@@ -113,23 +113,23 @@ q-component q-form {
 
   function submit() {
     const form = this.formElement();
-    const formData = new FormData(form);
-    const data = Object.fromEntries(formData.entries());
+    const payloadFormData = new FormData(form);
+    const payloadData = Object.fromEntries(payloadFormData.entries());
     const method = String(this.type).toUpperCase();
-    const query = new URLSearchParams(formData).toString();
+    const query = new URLSearchParams(payloadFormData).toString();
     const requestUrl = method === "GET" && query
       ? String(this.url) + (String(this.url).indexOf("?") === -1 ? "?" : "&") + query
       : String(this.url);
     const options = { method: method };
     if (method !== "GET") {
-      options.body = formData;
+      options.body = payloadFormData;
     }
     this.submitting = true;
-    this.beforeSubmit(formData, data);
+    this.beforeSubmit(payloadFormData, payloadData);
     return fetch(requestUrl, options).then((response) => {
       this.response = response;
       this.submitting = false;
-      this.submitted(response, data);
+      this.submitted(response, payloadData);
       return response;
     }).catch((error) => {
       this.submitting = false;

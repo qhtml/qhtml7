@@ -1,8 +1,21 @@
 # QHTML7
 
-QHTML7 is a WebAssembly-first implementation of the QHTML language: a declarative way to describe HTML, CSS, component structure, runtime properties, signals, layout, and browser-facing behavior in one readable source format.
+QHTML7 is a native JavaScript implementation of the QHTML language: a declarative way to describe HTML, CSS, component structure, runtime properties, signals, layout, and browser-facing behavior in one readable source format.
 
 Language design, specifications, and tests created by humans; implementation by ChatGPT 5.6 Codex.
+
+## What's New
+
+QHTML7 now ships as a native JavaScript runtime. The earlier WebAssembly backing system was accurate, but large QHTML scripts had too much startup and interaction lag under WASM, and the distributable package was larger than necessary. The runtime was redesigned as native JavaScript while retaining the QHTMLDomTree object model, the QHTML node classes, and the QHTML7 syntax shortcuts used by the WASM version.
+
+The runtime still treats QHTML as the model. Parsed source becomes a `QHTMLDomTree`; mounted DOM elements point back to their QHTML node objects; and editing tools can continue using `.toQHTML()`, `.fromQHTML()`, `.toJSON()`, `.fromJSON()`, and `.toHTML()`.
+
+Scope is intentionally component-centered:
+
+- `this` resolves to the nearest parent `q-component` instance in QHTML functions, signal handlers, property handlers, animations, and event blocks. It does not become the current `q-property-animation`, `q-style`, `q-painter`, or other helper object.
+- Rendered DOM nodes are still the browser output. QHTML helpers resolve back to the DOM element when browser work is needed, so DOM APIs such as `this.querySelector(...)`, `this.setAttribute(...)`, and CSS shortcut assignments remain direct and predictable.
+- Properties flow top-down through the QHTML context. Local objects and local properties can overshadow ancestor names for that branch and its descendants.
+- Named objects are passed by reference to their direct descendants. Parent objects themselves are not copied into child scope as ordinary names; use `parent()` / `parentComponent()` on mounted DOM helpers, or `.parent()` / `.qhtmlParent` on QHTML node objects.
 
 Useful local entry points:
 
@@ -23,10 +36,6 @@ Copy the files in `dist/` to your web server:
 
 ```text
 /path/to/site/dist/qhtml.js
-/path/to/site/dist/qhtml-wasm.js
-/path/to/site/dist/qhtml-element.js
-/path/to/site/dist/qhtml7-wasm.js
-/path/to/site/dist/qhtml7-wasm.wasm
 ```
 
 Then include the entry point:
@@ -35,7 +44,7 @@ Then include the entry point:
 <script src="/dist/qhtml.js"></script>
 ```
 
-`qhtml.js` loads the QHTML7 bridge and WebAssembly runtime from the same directory. Use a real HTTP server; browser filesystem loading is not a supported runtime environment.
+`qhtml.js` is the QHTML7 native JavaScript runtime bundle. Use a real HTTP server; browser filesystem loading is not a supported runtime environment.
 
 For local development from this repo:
 
@@ -215,7 +224,7 @@ Resulting HTML:
 
 `q-component` defines a reusable QHTML component type. A component is a named QHTML template with its own properties, functions, signals, slots, and rendered DOM structure.
 
-Think of it as a WebAssembly-backed custom component definition:
+Think of it as a QHTMLDomTree-backed custom component definition:
 
 - The `q-component` block defines the component type.
 - Instantiating that type creates a component instance.
@@ -339,7 +348,7 @@ Simplified resulting HTML:
 </target-box>
 ```
 
-Inside a component, `this` refers to the current component instance in JavaScript handlers and functions:
+Inside a component, `this` refers to the nearest parent component instance in JavaScript handlers, functions, property handlers, signal handlers, animations, and event blocks:
 
 ```qhtml
 q-component counter-card {
@@ -378,7 +387,7 @@ q-component action-card {
   button {
     text { Mark done }
     onclick {
-      this.parentElement.markDone();
+      this.markDone();
     }
   }
 
@@ -389,6 +398,40 @@ action-card card1 { }
 ```
 
 Functions are runtime behavior, so there is no special static HTML output to show beyond the rendered button and state node.
+
+### Component Scope And Named References
+
+QHTML scope is top-down. A parent component's properties and named references are visible to its descendants unless a local object shadows the same name.
+
+```qhtml
+q-component status-panel {
+  q-property statusText: "ready"
+
+  div {
+    text { ${statusText} }
+  }
+}
+
+q-component dashboard-card {
+  q-property statusText: "loading"
+
+  status-panel panelA { }
+
+  div {
+    text { ${panelA.statusText} }
+  }
+}
+
+dashboard-card { }
+```
+
+Rules to keep in mind:
+
+- `this.statusText` resolves on the nearest component instance.
+- `panelA.statusText` dot-walks through the named component instance.
+- A child may define its own `statusText`, which shadows the inherited name only for that child branch.
+- Named sibling objects are references available to direct descendants through the inherited QHTML context.
+- Parent objects are reached explicitly with `parent()` / `parentComponent()` from mounted DOM helpers, or `.parent()` / `.qhtmlParent` from QHTML node objects.
 
 ### Slots
 
@@ -837,18 +880,18 @@ Useful methods on the DOM element:
 
 ### Event Handlers
 
-DOM event handlers use `on<event>` blocks:
+DOM event handlers use `on<event>` blocks. The handler executes in the nearest parent component instance scope, so `this` is the component instance, not the clicked helper node:
 
 ```qhtml
 button {
   text { Click me }
   onclick {
-    this.textContent = "Clicked";
+    this.querySelector("button").textContent = "Clicked";
   }
 }
 ```
 
-The handler runs with the rendered DOM element as `this`.
+Use normal DOM APIs from the component instance when you need browser output, for example `this.querySelector(...)`, `this.setAttribute(...)`, or CSS shortcut properties.
 
 ### `q-script`
 
@@ -922,7 +965,7 @@ Paint handlers may also appear as `onPaintBackground`, `onPaintBorder`, and `onP
 
 ## 9. QHTMLDomTree API
 
-QHTML7 stores the persistent document model in WebAssembly as a `QHTMLDomTree`.
+QHTML7 stores the persistent document model as a `QHTMLDomTree`.
 
 Common flow:
 
@@ -936,7 +979,7 @@ Common flow:
 <script src="/dist/qhtml.js"></script>
 <script>
 document.addEventListener("QHTML7Ready", function () {
-  const tree = new QHTML7.Module.QHTMLDomTree();
+  const tree = new QHTMLDomTree();
   tree.fromQHTML('section { h2 { text { Hello } } }');
 
   console.log(tree.toHTML());
@@ -948,10 +991,10 @@ document.addEventListener("QHTML7Ready", function () {
 
 ### Traversal
 
-Every QHTMLDomNode-based object exposes child helpers from WebAssembly:
+Every QHTMLDomNode-based object exposes child helpers:
 
 ```js
-const tree = new QHTML7.Module.QHTMLDomTree();
+const tree = new QHTMLDomTree();
 tree.fromQHTML('q-layout { q-row { q-col { text { Cell } } } }');
 
 const children = tree.childList();
@@ -1010,11 +1053,11 @@ tools/page-builder/palette.js
 
 ### Runtime Events
 
-Wait for the WebAssembly runtime:
+Wait for the runtime:
 
 ```js
 document.addEventListener("QHTML7Ready", function (event) {
-  console.log(event.detail.Module);
+  console.log(event.detail);
 });
 ```
 
@@ -1083,4 +1126,3 @@ Resulting HTML:
 ```
 
 ## Development Notes
-
