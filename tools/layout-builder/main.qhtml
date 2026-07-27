@@ -67,6 +67,8 @@ q-style lbCanvas {
   overflow: auto
   padding: 16px
   box-sizing: border-box
+  user-select: none
+  touch-action: none
 }
 
 q-style lbWorkspace {
@@ -84,6 +86,9 @@ q-style lbWorkspaceCollapsed {
 q-style lbPreviewMount {
   min-width: 75vw
   min-height: 75vh
+  position: relative
+  padding: 24px
+  box-sizing: border-box
   background: linear-gradient(90deg, rgba(226,232,240,.55) 1px, transparent 1px), linear-gradient(180deg, rgba(226,232,240,.55) 1px, transparent 1px)
   background-size: 24px 24px
 }

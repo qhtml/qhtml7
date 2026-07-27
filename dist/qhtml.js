@@ -7078,511 +7078,166 @@
     '[qhtml-layout="q-row"]',
     '[qhtml-layout="q-col"]'
   ].join(',');
-  const QHTML_LAYOUT_BORDER_GAP = 6;
-  const QHTML_LAYOUT_CONTROLLED_PROPERTIES = [
-    "width",
-    "height",
-    "minWidth",
-    "minHeight",
-    "maxWidth",
-    "maxHeight",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft"
-  ];
-  const QHTML_LAYOUT_PROPERTY_FALLBACKS = {
-    width: "100%",
-    height: "100%",
-    minWidth: "0px",
-    minHeight: "0px",
-    maxWidth: "inherit",
-    maxHeight: "inherit",
-    paddingTop: "0px",
-    paddingRight: "0px",
-    paddingBottom: "0px",
-    paddingLeft: "0px"
-  };
-
-  function normalizedQHTMLLayoutPropertyName(name) {
-    return String(name || "")
-      .trim()
-      .replace(/-/g, "")
-      .toLowerCase();
-  }
-
-  function qhtmlLayoutCssName(name) {
-    return String(name || "").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-  }
-
-  function qhtmlLayoutPropertySource(node, name) {
-    if (!node) {
-      return "";
-    }
-    const wanted = normalizedQHTMLLayoutPropertyName(name);
-    const count = typeof node.childCount === "function" ? node.childCount() : 0;
-    for (let index = 0; index < count; index += 1) {
-      const child = node.childAt(index);
-      const type = qhtmlNodeType(child);
-      if (type !== "QHTMLPropertyAssignment" && type !== "QHTMLProperty") {
-        continue;
-      }
-      if (normalizedQHTMLLayoutPropertyName(qhtmlNodeName(child)) !== wanted) {
-        continue;
-      }
-      if (typeof child.value === "function") {
-        return String(child.value() == null ? "" : child.value()).trim();
-      }
-    }
-    if (typeof node.property === "function") {
-      const candidates = [String(name || ""), qhtmlLayoutCssName(name)];
-      for (let index = 0; index < candidates.length; index += 1) {
-        const value = node.property(candidates[index]);
-        if (value != null && String(value).trim()) {
-          return String(value).trim();
-        }
-      }
-    }
-    return "";
-  }
-
-  function qhtmlLayoutCssValue(name, source) {
-    const text = stripMatchingQuotes(String(source == null ? "" : source).trim());
-    if (!text) {
-      return "";
-    }
-    return serializeCssShortcutValue(qhtmlLayoutCssName(name), text);
-  }
-
-  function qhtmlLayoutConcreteMaximum(source) {
-    const value = stripMatchingQuotes(String(source == null ? "" : source).trim()).toLowerCase();
-    return Boolean(value && !["inherit", "auto", "none", "initial", "unset"].includes(value));
-  }
-
-  function qhtmlLayoutPixels(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
-      return "0px";
-    }
-    return `${Math.max(0, Math.ceil(number * 100) / 100)}px`;
-  }
-
-  function qhtmlLayoutNumericCss(style, name) {
-    const value = Number.parseFloat(style && style[name] ? style[name] : "0");
-    return Number.isFinite(value) ? value : 0;
-  }
 
   function qhtmlLayoutElements(rootElement) {
     if (!rootElement) {
       return [];
     }
-    const result = [];
+    const elements = [];
     if (rootElement.matches && rootElement.matches(QHTML_LAYOUT_SELECTOR)) {
-      result.push(rootElement);
+      elements.push(rootElement);
     }
     if (rootElement.querySelectorAll) {
-      rootElement.querySelectorAll(QHTML_LAYOUT_SELECTOR).forEach((element) => result.push(element));
+      rootElement.querySelectorAll(QHTML_LAYOUT_SELECTOR).forEach((element) => elements.push(element));
     }
-    return result;
+    return elements;
   }
 
-  function nearestQHTMLLayoutParent(element, rootElement) {
-    let current = element ? element.parentElement : null;
-    while (current && current !== rootElement.parentElement) {
-      if (current.matches && current.matches(QHTML_LAYOUT_SELECTOR)) {
-        return current;
-      }
-      if (current === rootElement) {
-        break;
-      }
-      current = current.parentElement;
-    }
-    return null;
-  }
-
-  function qhtmlLayoutDepth(element, rootElement) {
-    let depth = 0;
-    let current = element;
-    while (current && current !== rootElement) {
-      current = nearestQHTMLLayoutParent(current, rootElement);
-      if (current) {
-        depth += 1;
-      }
-    }
-    return depth;
-  }
-
+  /*
+   * The browser runtime intentionally does not perform editor geometry work.
+   * Layout-builder resizing, gaps, ancestor growth, intrinsic minimums, and
+   * constraint redistribution belong to the layout-builder implementation.
+   *
+   * Runtime layout semantics are limited to the natural cross-axis fill rule:
+   *   - q-row fills the available width of its parent layout.
+   *   - q-col fills the available height of its parent layout.
+   *
+   * The authored/resized axis is left untouched: q-row height and q-col width
+   * remain exactly as declared by QHTML or by the layout builder.
+   */
   function createQHTMLLayoutController(rootElement, registry) {
-    const states = new WeakMap();
-    const observed = new Set();
-    let resizeObserver = null;
+    const previousInlineStyles = new WeakMap();
     let mutationObserver = null;
     let animationFrame = 0;
     let disposed = false;
 
-    function stateFor(element) {
-      let state = states.get(element);
-      if (state) {
-        return state;
+    function rememberInlineStyle(element, propertyName) {
+      let properties = previousInlineStyles.get(element);
+      if (!properties) {
+        properties = new Map();
+        previousInlineStyles.set(element, properties);
       }
-      state = {
-        authored: new Map(),
-        lastNodeValues: new Map(),
-        runtimeValues: new Map(),
-        initialized: false,
-        internalWrite: false
-      };
-      states.set(element, state);
-      return state;
+      if (!properties.has(propertyName)) {
+        properties.set(propertyName, {
+          value: element.style.getPropertyValue(propertyName),
+          priority: element.style.getPropertyPriority(propertyName)
+        });
+      }
     }
 
-    function initializeState(element) {
-      const state = stateFor(element);
-      if (state.initialized) {
-        return state;
-      }
-      const node = element && element.qhtmlNode ? element.qhtmlNode : null;
-      QHTML_LAYOUT_CONTROLLED_PROPERTIES.forEach((name) => {
-        const value = qhtmlLayoutPropertySource(node, name);
-        state.authored.set(name, value);
-        state.lastNodeValues.set(name, value);
-      });
-      state.initialized = true;
-      return state;
-    }
-
-    function applyNodeSourceToBrowser(element, name, source) {
+    function setManagedStyle(element, propertyName, value) {
       if (!element || !element.style) {
         return;
       }
-      const cssName = qhtmlLayoutCssName(name);
-      const cssValue = qhtmlLayoutCssValue(name, source);
-      if (cssValue) {
-        element.style.setProperty(cssName, cssValue);
+      rememberInlineStyle(element, propertyName);
+      if (element.style.getPropertyValue(propertyName) !== value) {
+        element.style.setProperty(propertyName, value);
+      }
+    }
+
+    function releaseManagedStyle(element, propertyName) {
+      const properties = previousInlineStyles.get(element);
+      if (!properties || !properties.has(propertyName) || !element || !element.style) {
+        return;
+      }
+      const previous = properties.get(propertyName);
+      if (previous.value) {
+        element.style.setProperty(propertyName, previous.value, previous.priority || '');
       } else {
-        element.style.removeProperty(cssName);
+        element.style.removeProperty(propertyName);
+      }
+      properties.delete(propertyName);
+      if (!properties.size) {
+        previousInlineStyles.delete(element);
       }
     }
 
-    function syncExternalWasmChanges(element) {
-      const node = element && element.qhtmlNode ? element.qhtmlNode : null;
-      if (!node) {
-        return;
-      }
-      const state = initializeState(element);
-      if (state.internalWrite) {
-        return;
-      }
-      QHTML_LAYOUT_CONTROLLED_PROPERTIES.forEach((name) => {
-        const current = qhtmlLayoutPropertySource(node, name);
-        const previous = state.lastNodeValues.get(name) || "";
-        if (current === previous) {
-          return;
-        }
-        state.lastNodeValues.set(name, current);
-        state.authored.set(name, current);
-        state.runtimeValues.delete(name);
-        applyNodeSourceToBrowser(element, name, current);
-      });
-    }
-
-    function writeLayoutProperty(element, name, source) {
+    function applyParentFill(element) {
       if (!element || !element.style) {
         return;
       }
-      const node = element.qhtmlNode || null;
-      const state = initializeState(element);
-      const value = String(source == null ? "" : source).trim();
-      const cssName = qhtmlLayoutCssName(name);
-      const cssValue = qhtmlLayoutCssValue(name, value);
-      const previousRuntime = state.runtimeValues.get(name);
-      const currentCss = element.style.getPropertyValue(cssName).trim();
-      if (previousRuntime === value && currentCss === cssValue) {
+      const type = String(element.getAttribute('qhtml-layout') || '').toLowerCase();
+      setManagedStyle(element, 'box-sizing', 'border-box');
+
+      if (type === 'q-row') {
+        releaseManagedStyle(element, 'height');
+        setManagedStyle(element, 'width', '100%');
+        setManagedStyle(element, 'align-self', 'stretch');
+        return;
+      }
+      if (type === 'q-col') {
+        releaseManagedStyle(element, 'width');
+        setManagedStyle(element, 'height', '100%');
+        setManagedStyle(element, 'align-self', 'stretch');
         return;
       }
 
-      if (cssValue) {
-        element.style.setProperty(cssName, cssValue);
-      } else {
-        element.style.removeProperty(cssName);
-      }
-      state.runtimeValues.set(name, value);
-      state.lastNodeValues.set(name, value);
-
-      if (node && typeof node.setPropertyText === "function") {
-        state.internalWrite = true;
-        try {
-          node.setPropertyText(name, value);
-        } catch (error) {
-          console.warn("QHTML layout WASM synchronization failed", name, value, error);
-        } finally {
-          state.internalWrite = false;
-        }
-      }
-      element.dispatchEvent(new CustomEvent("QHTMLLayoutPropertyChanged", {
-        bubbles: true,
-        detail: { name, value, qhtmlNode: node, source: "browser-controller" }
-      }));
-    }
-
-    function releaseLayoutProperty(element, name) {
-      const state = initializeState(element);
-      if (!state.runtimeValues.has(name)) {
-        return;
-      }
-      const authored = state.authored.get(name) || QHTML_LAYOUT_PROPERTY_FALLBACKS[name] || "inherit";
-      state.runtimeValues.delete(name);
-      const cssName = qhtmlLayoutCssName(name);
-      const cssValue = qhtmlLayoutCssValue(name, authored);
-      if (cssValue) {
-        element.style.setProperty(cssName, cssValue);
-      } else {
-        element.style.removeProperty(cssName);
-      }
-      state.lastNodeValues.set(name, authored);
-      const node = element.qhtmlNode || null;
-      if (node && typeof node.setPropertyText === "function") {
-        state.internalWrite = true;
-        try {
-          node.setPropertyText(name, authored);
-        } catch (error) {
-          console.warn("QHTML layout WASM restoration failed", name, authored, error);
-        } finally {
-          state.internalWrite = false;
-        }
-      }
-    }
-
-    function authoredValue(element, name) {
-      const state = initializeState(element);
-      return state.authored.get(name) || "";
-    }
-
-    function effectiveValue(element, name) {
-      const state = initializeState(element);
-      return state.runtimeValues.has(name)
-        ? state.runtimeValues.get(name)
-        : (state.authored.get(name) || "");
-    }
-
-    function ensureMinimumInset(element) {
-      const style = globalScope.getComputedStyle(element);
-      [
-        ["paddingTop", "paddingTop"],
-        ["paddingRight", "paddingRight"],
-        ["paddingBottom", "paddingBottom"],
-        ["paddingLeft", "paddingLeft"]
-      ].forEach(([propertyName, computedName]) => {
-        const current = qhtmlLayoutNumericCss(style, computedName);
-        if (current + 0.01 < QHTML_LAYOUT_BORDER_GAP) {
-          writeLayoutProperty(element, propertyName, `${QHTML_LAYOUT_BORDER_GAP}px`);
-        }
-      });
-    }
-
-    function innerBox(element) {
-      const rect = element.getBoundingClientRect();
-      const style = globalScope.getComputedStyle(element);
-      const borderLeft = qhtmlLayoutNumericCss(style, "borderLeftWidth");
-      const borderRight = qhtmlLayoutNumericCss(style, "borderRightWidth");
-      const borderTop = qhtmlLayoutNumericCss(style, "borderTopWidth");
-      const borderBottom = qhtmlLayoutNumericCss(style, "borderBottomWidth");
-      const paddingLeft = qhtmlLayoutNumericCss(style, "paddingLeft");
-      const paddingRight = qhtmlLayoutNumericCss(style, "paddingRight");
-      const paddingTop = qhtmlLayoutNumericCss(style, "paddingTop");
-      const paddingBottom = qhtmlLayoutNumericCss(style, "paddingBottom");
-      return {
-        rect,
-        left: rect.left + borderLeft + paddingLeft,
-        right: rect.right - borderRight - paddingRight,
-        top: rect.top + borderTop + paddingTop,
-        bottom: rect.bottom - borderBottom - paddingBottom,
-        width: Math.max(0, rect.width - borderLeft - borderRight - paddingLeft - paddingRight),
-        height: Math.max(0, rect.height - borderTop - borderBottom - paddingTop - paddingBottom)
-      };
-    }
-
-    function childConstraintValue(element, propertyName, available) {
-      const authored = authoredValue(element, propertyName);
-      const availableValue = qhtmlLayoutPixels(available);
-      if (!qhtmlLayoutConcreteMaximum(authored)) {
-        return availableValue;
-      }
-      const authoredCss = qhtmlLayoutCssValue(propertyName, authored);
-      return `min(${authoredCss}, ${availableValue})`;
-    }
-
-    function enforcePass(layouts) {
-      const ordered = layouts.slice().sort((left, right) =>
-        qhtmlLayoutDepth(right, rootElement) - qhtmlLayoutDepth(left, rootElement));
-      const layoutParents = new Set();
-      ordered.forEach((child) => {
-        const parent = nearestQHTMLLayoutParent(child, rootElement);
-        if (parent) {
-          layoutParents.add(parent);
-        }
-      });
-      layoutParents.forEach(ensureMinimumInset);
-      layouts.forEach((element) => {
-        if (layoutParents.has(element)) {
-          return;
-        }
-        releaseLayoutProperty(element, "paddingTop");
-        releaseLayoutProperty(element, "paddingRight");
-        releaseLayoutProperty(element, "paddingBottom");
-        releaseLayoutProperty(element, "paddingLeft");
-      });
-
-      const growthWidth = new Map();
-      const growthHeight = new Map();
-
-      ordered.forEach((child) => {
-        const parent = nearestQHTMLLayoutParent(child, rootElement);
-        if (!parent) {
-          return;
-        }
-        const parentBox = innerBox(parent);
-        const childType = String(child.getAttribute("qhtml-layout") || "").toLowerCase();
-        const childMaxWidth = authoredValue(child, "maxWidth");
-        const childMaxHeight = authoredValue(child, "maxHeight");
-
-        if (childType === "q-row" && !qhtmlLayoutConcreteMaximum(childMaxWidth)) {
-          writeLayoutProperty(child, "width", qhtmlLayoutPixels(parentBox.width));
-        } else if (childType === "q-row") {
-          releaseLayoutProperty(child, "width");
-        }
-
-        if (childType === "q-col" && !qhtmlLayoutConcreteMaximum(childMaxHeight)) {
-          writeLayoutProperty(child, "height", qhtmlLayoutPixels(parentBox.height));
-        } else if (childType === "q-col") {
-          releaseLayoutProperty(child, "height");
-        }
-
-        const parentMaxWidth = effectiveValue(parent, "maxWidth");
-        const parentMaxHeight = effectiveValue(parent, "maxHeight");
-        const parentWidthLimited = qhtmlLayoutConcreteMaximum(parentMaxWidth);
-        const parentHeightLimited = qhtmlLayoutConcreteMaximum(parentMaxHeight);
-
-        if (parentWidthLimited) {
-          writeLayoutProperty(child, "maxWidth", childConstraintValue(child, "maxWidth", parentBox.width));
-        } else {
-          releaseLayoutProperty(child, "maxWidth");
-        }
-        if (parentHeightLimited) {
-          writeLayoutProperty(child, "maxHeight", childConstraintValue(child, "maxHeight", parentBox.height));
-        } else {
-          releaseLayoutProperty(child, "maxHeight");
-        }
-
-        const childRect = child.getBoundingClientRect();
-        if (!parentWidthLimited) {
-          const horizontalOverflow =
-            Math.max(0, parentBox.left - childRect.left) +
-            Math.max(0, childRect.right - parentBox.right);
-          if (horizontalOverflow > 0.5) {
-            const needed = parentBox.rect.width + horizontalOverflow;
-            growthWidth.set(parent, Math.max(growthWidth.get(parent) || 0, needed));
-          }
-        }
-        if (!parentHeightLimited) {
-          const verticalOverflow =
-            Math.max(0, parentBox.top - childRect.top) +
-            Math.max(0, childRect.bottom - parentBox.bottom);
-          if (verticalOverflow > 0.5) {
-            const needed = parentBox.rect.height + verticalOverflow;
-            growthHeight.set(parent, Math.max(growthHeight.get(parent) || 0, needed));
-          }
-        }
-      });
-
-      layouts.forEach((parent) => {
-        if (growthWidth.has(parent)) {
-          const authoredMinWidth = qhtmlLayoutCssValue("minWidth", authoredValue(parent, "minWidth"));
-          const required = qhtmlLayoutPixels(growthWidth.get(parent));
-          writeLayoutProperty(parent, "minWidth", authoredMinWidth
-            ? `max(${authoredMinWidth}, ${required})`
-            : required);
-        }
-        if (growthHeight.has(parent)) {
-          const authoredMinHeight = qhtmlLayoutCssValue("minHeight", authoredValue(parent, "minHeight"));
-          const required = qhtmlLayoutPixels(growthHeight.get(parent));
-          writeLayoutProperty(parent, "minHeight", authoredMinHeight
-            ? `max(${authoredMinHeight}, ${required})`
-            : required);
-        }
-      });
-    }
-
-    function refreshObservedLayouts(layouts) {
-      if (!resizeObserver) {
-        return;
-      }
-      layouts.forEach((element) => {
-        if (observed.has(element)) {
-          return;
-        }
-        observed.add(element);
-        resizeObserver.observe(element);
-      });
-      Array.from(observed).forEach((element) => {
-        if (element.isConnected && rootElement.contains(element)) {
-          return;
-        }
-        observed.delete(element);
-        resizeObserver.unobserve(element);
-      });
+      releaseManagedStyle(element, 'width');
+      releaseManagedStyle(element, 'height');
+      releaseManagedStyle(element, 'align-self');
     }
 
     function run() {
       animationFrame = 0;
       if (disposed || isQHTML7RegistryDisposed(registry)) {
-        return;
+        return false;
       }
-      const layouts = qhtmlLayoutElements(rootElement).filter((element) => element.qhtmlNode);
-      if (layouts.length === 0) {
-        return;
-      }
-      refreshObservedLayouts(layouts);
-      for (let pass = 0; pass < 3; pass += 1) {
-        enforcePass(layouts);
-      }
+      qhtmlLayoutElements(rootElement).forEach(applyParentFill);
+      return true;
     }
 
     function schedule() {
       if (disposed || animationFrame) {
-        return;
+        return false;
       }
       animationFrame = globalScope.requestAnimationFrame(run);
+      return true;
     }
 
     function refresh() {
+      return schedule();
+    }
+
+    function refreshNow() {
       if (disposed) {
         return false;
       }
-      qhtmlLayoutElements(rootElement)
-        .filter((element) => element.qhtmlNode)
-        .forEach(syncExternalWasmChanges);
-      schedule();
-      return true;
+      if (animationFrame) {
+        globalScope.cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+      }
+      return run();
     }
 
     function start() {
       if (disposed) {
-        return;
+        return false;
       }
-      if (typeof ResizeObserver === "function") {
-        resizeObserver = new ResizeObserver(schedule);
-      }
-      if (typeof MutationObserver === "function") {
+      if (typeof MutationObserver === 'function') {
         mutationObserver = new MutationObserver(schedule);
         mutationObserver.observe(rootElement, {
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ["qhtml-layout"]
+          attributeFilter: ['qhtml-layout']
         });
       }
-      schedule();
+      return schedule();
+    }
+
+    function restoreManagedStyles(element) {
+      const properties = previousInlineStyles.get(element);
+      if (!properties || !element || !element.style) {
+        return;
+      }
+      properties.forEach((previous, propertyName) => {
+        if (previous.value) {
+          element.style.setProperty(propertyName, previous.value, previous.priority || '');
+        } else {
+          element.style.removeProperty(propertyName);
+        }
+      });
+      previousInlineStyles.delete(element);
     }
 
     function dispose() {
@@ -7591,18 +7246,14 @@
         globalScope.cancelAnimationFrame(animationFrame);
         animationFrame = 0;
       }
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-        resizeObserver = null;
-      }
       if (mutationObserver) {
         mutationObserver.disconnect();
         mutationObserver = null;
       }
-      observed.clear();
+      qhtmlLayoutElements(rootElement).forEach(restoreManagedStyles);
     }
 
-    return { start, schedule, refresh, run, dispose };
+    return { start, schedule, refresh, refreshNow, run, dispose };
   }
 
   function nodeHasDirectQHTMLProperty(node, name) {
@@ -16661,23 +16312,26 @@
     hasReference(target, nameOrUUID) {
       return Boolean(resolveQHTMLReferenceNode(target, nameOrUUID, registryForQHTMLTarget(target)));
     },
-    refreshLayouts(target) {
+    refreshLayouts(target, synchronous) {
+      const refreshController = (controller) => {
+        if (!controller) {
+          return false;
+        }
+        if (synchronous && typeof controller.refreshNow === "function") {
+          return controller.refreshNow();
+        }
+        return typeof controller.refresh === "function" ? controller.refresh() : false;
+      };
       if (!target) {
         let refreshed = false;
         document.querySelectorAll(QHTML_ROOT_SELECTOR).forEach((rootElement) => {
           const registry = rootElement.__qhtmlRegistry || rootElement.qhtmlComponentRegistry;
-          const controller = registry && registry.layoutController;
-          if (controller && typeof controller.refresh === "function") {
-            refreshed = controller.refresh() || refreshed;
-          }
+          refreshed = refreshController(registry && registry.layoutController) || refreshed;
         });
         return refreshed;
       }
       const registry = registryForQHTMLTarget(target);
-      const controller = registry && registry.layoutController;
-      return controller && typeof controller.refresh === "function"
-        ? controller.refresh()
-        : false;
+      return refreshController(registry && registry.layoutController);
     },
     setLayoutProperty(target, name, value) {
       const registry = registryForQHTMLTarget(target);
