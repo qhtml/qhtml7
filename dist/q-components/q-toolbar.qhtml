@@ -85,8 +85,8 @@ q-component q-toolbar extends q-draggable-item extends q-resizable-item {
   }
 
   function applySize(rawWidth, rawHeight) {
-    var nextWidth = Math.max(this.minWidth(), Math.round(this.numberOr(rawWidth, this.width == null ? 360 : this.width)));
-    var nextHeight = Math.max(this.minHeight(), Math.round(this.numberOr(rawHeight, this.height == null ? 64 : this.height)));
+    var nextWidth = Math.max(this.minWidth, Math.round(this.numberOr(rawWidth, this.width == null ? 360 : this.width)));
+    var nextHeight = Math.max(this.minHeight, Math.round(this.numberOr(rawHeight, this.height == null ? 64 : this.height)));
     var shell = this.shellNode();
     this.width = nextWidth;
     this.height = nextHeight;
@@ -360,8 +360,8 @@ q-component q-resizable-item {
   }
 
   function applySize(rawWidth, rawHeight) {
-    var nextWidth = Math.max(this.minWidth(), Math.round(this.numberOr(rawWidth, this.width == null ? 320 : this.width)));
-    var nextHeight = Math.max(this.minHeight(), Math.round(this.numberOr(rawHeight, this.height == null ? 56 : this.height)));
+    var nextWidth = Math.max(this.minWidth, Math.round(this.numberOr(rawWidth, this.width == null ? 320 : this.width)));
+    var nextHeight = Math.max(this.minHeight, Math.round(this.numberOr(rawHeight, this.height == null ? 56 : this.height)));
 
     this.width = nextWidth;
     this.height = nextHeight;
