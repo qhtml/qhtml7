@@ -5,11 +5,7 @@ js/*.zip
 tmp/*
 ./.*/
 ./*/.*
-./doc/*
 ./tmp
 ./tmp/*
 ./*.zip
 *.zip
-doc/*
-./doc
-doc
