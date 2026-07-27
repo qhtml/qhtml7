@@ -115,12 +115,12 @@ q-component q-form {
     const form = this.formElement();
     const payloadFormData = new FormData(form);
     const payloadData = Object.fromEntries(payloadFormData.entries());
-    const method = String(this.type).toUpperCase();
+    const method_ = String(this.type).toUpperCase();
     const query = new URLSearchParams(payloadFormData).toString();
     const requestUrl = method === "GET" && query
       ? String(this.url) + (String(this.url).indexOf("?") === -1 ? "?" : "&") + query
       : String(this.url);
-    const options = { method: method };
+    const options = { method: method_ };
     if (method !== "GET") {
       options.body = payloadFormData;
     }
