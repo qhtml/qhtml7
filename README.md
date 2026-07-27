@@ -21,14 +21,14 @@ Scope is intentionally component-centered:
 
 Useful local entry points:
 
-- Dev gallery: https:///qhtml.github.io/qhtml7/test/demo.html
-- Component tests: https:///qhtml.github.io/qhtml7/test/02.html
-- Style/theme tests: https:///qhtml.github.io/qhtml7/test/03.html
-- Particle editor: https:///qhtml.github.io/qhtml7/tools/particle-editor.html
-- Layout builder: https:///qhtml.github.io/qhtml7/tools/layout-builder.html
-- Page builder: https:///qhtml.github.io/qhtml7/tools/page-builder.html
-- QHTML editor: https:///qhtml.github.io/qhtml7/tools/editor.html
-- Graphics Scene Test https:///qhtml.github.io/qhtml7/test/graphics-scene.html
+- Dev gallery: https://qhtml.github.io/qhtml7/test/demo.html
+- Component tests: https://qhtml.github.io/qhtml7/test/02.html
+- Style/theme tests: https://qhtml.github.io/qhtml7/test/03.html
+- Particle editor: https://qhtml.github.io/qhtml7/tools/particle-editor.html
+- Layout builder: https://qhtml.github.io/qhtml7/tools/layout-builder.html
+- Page builder: https://qhtml.github.io/qhtml7/tools/page-builder.html
+- QHTML editor: https://qhtml.github.io/qhtml7/tools/editor.html
+- Graphics Scene Test https://qhtml.github.io/qhtml7/test/graphics-scene.html
 - Language notes: `language/qhtml7.txt`
 
 ## 1. Quick Start And HTML Syntax
