@@ -442,17 +442,21 @@ Slots let a component define insertion points for caller-provided content.
 
 ```qhtml
 q-component panel-box {
-  section.panel {
-    h3 { text { Panel shell } }
-    div.panel-body {
-      slot { body }
+  section.panel { h3 { text { Panel shell } } 
+  div.panel-body {
+
+      slot body {  }
+
     }
   }
 }
 
 panel-box {
+
   body {
+
     p { text { Projected content } }
+
   }
 }
 ```
@@ -484,12 +488,12 @@ Use `q-slot-default` to provide fallback content when the caller does not supply
 
 ```qhtml
 q-component notice-card {
-  q-slot-default body {
-    p { text { Default notice } }
-  }
+   slot body {
+      p { text { Default notice } }
+   }
 
   article.notice {
-    slot { body }
+    slot body { }
   }
 }
 
@@ -896,39 +900,37 @@ button {
 
 Use normal DOM APIs from the component instance when you need browser output, for example `this.querySelector(...)`, `this.setAttribute(...)`, or CSS shortcut properties.
 
-### `q-script`
-
-`q-script { ... }` runs JavaScript and replaces itself with the returned value.
-
-```qhtml
-div {
-  q-script { return "p { text { Inserted by q-script } }"; }
-}
-```
-
-Assignment form:
-
-```qhtml
-div {
-  data-note: q-script { return "n:" + (4 + 1) }
-  text { q-script { return "script-inline"; } }
-}
-```
-
-### Inline Expressions
+### SetContextProperty for inline  Expressions
 
 `${expression}` evaluates inside text/attribute strings.
 
-```qhtml
-q-var currentUser { "Ada" }
+You can call object1.setContextProperty(propertyName, object2) as long as object2 is in scope and object1 is in scope. 
 
-div {
-  title: "Current user: ${currentUser}"
-  text { Hello ${currentUser} }
-}
+- object1 can be any QHTML instantiated element or DOM Node
+- object2  can be any arbitrary recognized symbol including things like `var someobject = new JavascriptClass()`  which you can expose to QHTML by calling  `qhtmlObject.setContextProperty("someobject", someobject);` followed by `qhtmlObject.render()` to re-evaluate the qhtmlObject with the new context property defined. 
+- Critical for dynamically building objects using QHTML with mixed javascript code that already exists, this makes it easy to integrate. 
+
+```qhtml 
+
+
+
+div#mydiv { title: "Current user: ${currentUser}" text { Hello ${currentUser} }
+
 ```
 
-Expressions are evaluated when the final string is rendered. They are not automatic watchers by themselves.
+Expressions are evaluated when the final string is rendered. They are not automatic watchers by themselves. 
+```javascript 
+
+document.querySelector("#mydiv").setContextProperty("currentUser", "myUserA")
+document.querySelector("#mydiv").render()
+
+```
+
+The result is 
+```
+<div id="mydiv" title="Current User: myUserA">Hello myUserA</div>
+
+````
 
 ## 8. Paint And Houdini
 

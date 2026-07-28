@@ -538,20 +538,48 @@
     constructor(parentContext = null) {
       this._parentContext = parentContext;
       this._references = new Map();
+      this._contextProperties = new Map();
     }
 
     setParentContext(parentContext) { this._parentContext = parentContext; }
     parentContext() { return this._parentContext; }
-    clear() { this._references.clear(); }
+    clear() {
+      this._references.clear();
+      this._contextProperties.clear();
+    }
+    clearReferences() { this._references.clear(); }
+    clearContextProperties() { this._contextProperties.clear(); }
     setReference(key, reference) {
       const name = trim(key);
+      if (!name) {
+        return false;
+      }
       this._references.set(name, reference);
+      return true;
     }
+    setContextProperty(key, value) {
+      const name = trim(key);
+      if (!name) {
+        throw new TypeError("QHTML context property names must not be empty");
+      }
+      this._contextProperties.set(name, value);
+      return value;
+    }
+    contextProperty(key, fallback = undefined) {
+      const name = trim(key);
+      return this._contextProperties.has(name) ? this._contextProperties.get(name) : fallback;
+    }
+    hasContextProperty(key) { return this._contextProperties.has(trim(key)); }
+    removeContextProperty(key) { return this._contextProperties.delete(trim(key)); }
+    contextPropertyKeys() { return Array.from(this._contextProperties.keys()); }
     updateKeywordReference(name, value) { this.setReference(name, new QHTMLKeyword(name, value)); }
     updateNamedReference(name, uuid) { this.setReference(name, new QHTMLNamedReference(name, uuid)); }
     updateObjectReference(name, target) { this.setReference(name, new QHTMLObjectReference(name, target)); }
     resolve(key) {
       const name = trim(key);
+      if (this._contextProperties.has(name)) {
+        return this._contextProperties.get(name);
+      }
       if (this._references.has(name)) {
         const reference = this._references.get(name);
         return reference instanceof QHTMLObjectReference ? reference.target() : reference;
@@ -559,8 +587,29 @@
       return this._parentContext ? this._parentContext.resolve(name) : null;
     }
     containsLocalReference(key) { return this._references.has(trim(key)); }
-    resolveTypeJs(key) { const ref = this.resolve(key); return ref ? ref.qhtmlType() : ""; }
-    keys() { return Array.from(this._references.keys()); }
+    containsLocalContextProperty(key) { return this.hasContextProperty(key); }
+    resolveTypeJs(key) {
+      const value = this.resolve(key);
+      if (value == null) {
+        return "";
+      }
+      if (typeof value.qhtmlType === "function") {
+        return value.qhtmlType();
+      }
+      if (typeof value === "object" && value.constructor && value.constructor.name) {
+        return value.constructor.name;
+      }
+      return typeof value;
+    }
+    keys() {
+      const out = this.contextPropertyKeys();
+      for (const key of this._references.keys()) {
+        if (!out.includes(key)) {
+          out.push(key);
+        }
+      }
+      return out;
+    }
     visibleKeys() {
       const out = this.keys();
       if (this._parentContext) {
@@ -572,7 +621,7 @@
       }
       return out;
     }
-    size() { return this._references.size; }
+    size() { return this.keys().length; }
   }
 
   class QHTMLNode extends QHTMLReference {
@@ -754,6 +803,14 @@
     updateNamedReference(name, uuid) { this.qhtmlContext.updateNamedReference(name, uuid); }
     updateNamedReferenceJs(name, uuid) { this.updateNamedReference(name, uuid); }
     updateObjectReference(name, target) { this.qhtmlContext.updateObjectReference(name, target); }
+    setContextProperty(name, value) { return this.qhtmlContext.setContextProperty(name, value); }
+    setContextPropertyJs(name, value) { return this.setContextProperty(name, value); }
+    contextProperty(name, fallback = undefined) { return this.qhtmlContext.contextProperty(name, fallback); }
+    contextPropertyJs(name, fallback = undefined) { return this.contextProperty(name, fallback); }
+    hasContextProperty(name) { return this.qhtmlContext.hasContextProperty(name); }
+    hasContextPropertyJs(name) { return this.hasContextProperty(name); }
+    removeContextProperty(name) { return this.qhtmlContext.removeContextProperty(name); }
+    removeContextPropertyJs(name) { return this.removeContextProperty(name); }
     addQHTMLReference(visibleName, reference) {
       const ref = reference === undefined ? visibleName : reference;
       const name = reference === undefined && visibleName ? visibleName.qhtmlName() : trim(visibleName);
@@ -815,8 +872,23 @@
     }
     resolveJs(key) { return this.resolve(key); }
     resolveTypeJs(key) { return this.qhtmlContext ? this.qhtmlContext.resolveTypeJs(key) : ""; }
-    contextKeysJs() { return this.qhtmlContext ? this.qhtmlContext.visibleKeys() : []; }
+    contextKeys() { return this.qhtmlContext ? this.qhtmlContext.visibleKeys() : []; }
+    contextKeysJs() { return this.contextKeys(); }
     runtime() { for (const child of this.children()) child.runtime(); }
+    render() {
+      const root = this.rootNode();
+      if (root && typeof root.prepareRender === "function") {
+        root.prepareRender();
+      }
+      if (root && typeof root.renderHandler === "function") {
+        const handler = root.renderHandler();
+        if (typeof handler === "function") {
+          return handler(this);
+        }
+      }
+      return this.renderHtmlInContext(this);
+    }
+    renderJs() { return this.render(); }
     renderHtml() { return this.children().map(child => child.renderHtml()).join(""); }
     renderHtmlInContext(contextNode) { return this.renderHtml(); }
     renderHtmlJs() { return this.renderHtml(); }
@@ -2708,7 +2780,7 @@
 
   function qhtmlApplyReferenceMap(node, map, parentContext = null) {
     node.clearQHTMLReferences();
-    node.qhtmlContext.clear();
+    node.qhtmlContext.clearReferences();
     node.qhtmlContext.setParentContext(parentContext);
     map.forEach((reference, name) => {
       if (!reference || reference.qhtmlUUID() === node.qhtmlUUID()) {
@@ -2735,16 +2807,17 @@
     const scopeContext = scopeNode.qhtmlContext;
 
     const applyChildren = function (node) {
+      const nodeContext = node.qhtmlContext || scopeContext;
       for (const child of node.children()) {
         if (child instanceof QHTMLComponentDefinition || child instanceof QHTMLComponentInstance) {
-          qhtmlRebuildReferencesInScope(child, scopeMap, scopeContext, visited);
+          qhtmlRebuildReferencesInScope(child, scopeMap, nodeContext, visited);
           continue;
         }
-        qhtmlApplyReferenceMap(child, scopeMap, scopeContext);
+        qhtmlApplyReferenceMap(child, scopeMap, nodeContext);
         applyChildren(child);
       }
       for (const member of node.ownedReferenceMembers()) {
-        qhtmlApplyReferenceMap(member, scopeMap, scopeContext);
+        qhtmlApplyReferenceMap(member, scopeMap, nodeContext);
         applyChildren(member);
       }
     };
@@ -2752,12 +2825,107 @@
     applyChildren(scopeNode);
   }
 
+  function qhtmlComponentDefinitionFromContextValue(value) {
+    if (value instanceof QHTMLComponentDefinition) {
+      return value;
+    }
+    if (value instanceof QHTMLComponentInstance) {
+      return value.definition();
+    }
+    if (!value) {
+      return null;
+    }
+    if (value.qhtmlNode instanceof QHTMLComponentDefinition) {
+      return value.qhtmlNode;
+    }
+    if (typeof value.componentDefinition === "function") {
+      const definition = value.componentDefinition();
+      if (definition instanceof QHTMLComponentDefinition) {
+        return definition;
+      }
+    }
+    if (typeof value.definition === "function") {
+      const definition = value.definition();
+      if (definition instanceof QHTMLComponentDefinition) {
+        return definition;
+      }
+    }
+    return null;
+  }
+
+  function qhtmlMoveChildren(sourceNode, targetNode) {
+    while (sourceNode.childCount() > 0) {
+      targetNode.appendChild(sourceNode.takeChildAt(0));
+    }
+  }
+
+  function qhtmlPromoteDomElementToComponentInstance(node, definition) {
+    const attributes = node.attributes();
+    const instanceName = trim(attributes.id || attributes.name || "");
+    const instance = new QHTMLComponentInstance(instanceName, attributes, definition);
+    instance.setQHTMLUUID(node.qhtmlUUID());
+    instance.setProperty("qhtmlComponentName", definition.qhtmlName());
+    instance.setProperty("componentName", definition.qhtmlName());
+
+    const slotsByName = new Map();
+    for (const slot of definition.findChildrenByType("QHTMLComponentSlot")) {
+      if (slot.qhtmlName()) {
+        slotsByName.set(slot.qhtmlName(), slot);
+      }
+    }
+
+    while (node.childCount() > 0) {
+      const child = node.takeChildAt(0);
+      const slotName = child instanceof QHTMLDomElement ? child.tagName() : "";
+      if (slotName && slotsByName.has(slotName)) {
+        const slotView = new QHTMLComponentInstanceSlot(instance, slotsByName.get(slotName), slotName);
+        slotView.setQHTMLUUID(child.qhtmlUUID());
+        qhtmlMoveChildren(child, slotView);
+        instance.appendChild(slotView);
+      } else {
+        instance.appendChild(child);
+      }
+    }
+    return instance;
+  }
+
+  function qhtmlResolveDynamicComponentsInContainer(container) {
+    let promoted = 0;
+    for (let index = 0; index < container.childCount(); index += 1) {
+      let child = container.childAt(index);
+      if (child instanceof QHTMLDomElement) {
+        const componentName = child.tagName();
+        const definition = qhtmlComponentDefinitionFromContextValue(child.resolve(componentName));
+        if (definition) {
+          const replacement = qhtmlPromoteDomElementToComponentInstance(child, definition);
+          container.takeChildAt(index);
+          container.insertChild(index, replacement);
+          child = replacement;
+          promoted += 1;
+        }
+      }
+      promoted += qhtmlResolveDynamicComponentsInContainer(child);
+      for (const member of child.ownedReferenceMembers()) {
+        promoted += qhtmlResolveDynamicComponentsInContainer(member);
+      }
+    }
+    return promoted;
+  }
+
   class QHTMLDomTree extends QHTMLDomNode {
     constructor() {
       super("QHTMLDomTree", "root");
       this.qhtmlSignalBus = new QHTMLSignalBus();
       this.qhtmlJavaScriptRuntime = new QHTMLJavaScriptRuntime();
+      this._qhtmlRenderHandler = null;
     }
+    setRenderHandler(handler) {
+      this._qhtmlRenderHandler = typeof handler === "function" ? handler : null;
+      return this;
+    }
+    setRenderHandlerJs(handler) { return this.setRenderHandler(handler); }
+    renderHandler() { return this._qhtmlRenderHandler; }
+    clearRenderHandler() { this._qhtmlRenderHandler = null; }
     clear() { this.clearChildren(); }
     root() { return this; }
     rootJs() { return this.root(); }
@@ -2810,6 +2978,10 @@
       };
       visit(this);
     }
+    resolveDynamicComponentDefinitions() {
+      return qhtmlResolveDynamicComponentsInContainer(this);
+    }
+    resolveDynamicComponentDefinitionsJs() { return this.resolveDynamicComponentDefinitions(); }
     resolveComponentInstanceDefinitions() {
       const definitionsByName = new Map();
       const definitionsByUuid = new Map();
@@ -2826,9 +2998,13 @@
           return;
         }
         const componentName = node.property("qhtmlComponentName") || node.property("componentName");
+        const contextualDefinition = componentName
+          ? qhtmlComponentDefinitionFromContextValue(node.resolve(componentName))
+          : null;
         const definition = definitionsByUuid.get(node.componentDefinitionUUID()) ||
           (componentName ? definitionsByName.get(componentName) : null) ||
-          (node.definition() ? definitionsByUuid.get(node.definition().qhtmlUUID()) : null);
+          contextualDefinition ||
+          (node.definition() ? definitionsByUuid.get(node.definition().qhtmlUUID()) || node.definition() : null);
         if (definition) {
           node.setDefinition(definition);
           node.setProperty("qhtmlComponentName", definition.qhtmlName());
@@ -2841,6 +3017,14 @@
       return true;
     }
     rebuildQHTMLReferencesJs() { return this.rebuildQHTMLReferences(); }
+    prepareRender() {
+      this.resolveDynamicComponentDefinitions();
+      this.resolveComponentInstanceDefinitions();
+      this.rebuildQHTMLReferences();
+      this.runtime();
+      return this;
+    }
+    prepareRenderJs() { return this.prepareRender(); }
     toHTML() {
       const body = this.renderHtml();
       return "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"generator\" content=\"QHTML7 standalone web exporter " + qhtmlEscapeAttribute(qhtmlVersionString()) + "\">\n<title>QHTML Export</title>\n</head>\n<body>\n" + body + "\n</body>\n</html>";

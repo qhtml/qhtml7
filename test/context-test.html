@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QHTML7 Context Property and Render Tests</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(46, 160, 67, 0.13), transparent 34rem),
+        radial-gradient(circle at 100% 20%, rgba(56, 139, 253, 0.12), transparent 38rem),
+        #0d1117;
+    }
+
+    button, input { font: inherit; }
+
+    .page-shell {
+      width: min(1440px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    .page-header,
+    .panel {
+      border: 1px solid #30363d;
+      border-radius: 14px;
+      background: rgba(22, 27, 34, 0.92);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    }
+
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 24px;
+      margin-bottom: 18px;
+    }
+
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.45rem, 2.4vw, 2.15rem);
+      line-height: 1.1;
+    }
+
+    .page-header p {
+      max-width: 850px;
+      margin: 0;
+      color: #9da7b3;
+      line-height: 1.55;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 9px;
+      min-width: 290px;
+    }
+
+    button {
+      min-height: 38px;
+      padding: 8px 13px;
+      border: 1px solid #484f58;
+      border-radius: 8px;
+      color: #e6edf3;
+      background: #21262d;
+      cursor: pointer;
+    }
+
+    button:hover { background: #30363d; }
+    button:disabled { opacity: 0.48; cursor: progress; }
+    button.primary { border-color: #2ea043; background: #238636; }
+    button.primary:hover { background: #2ea043; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .summary-card {
+      padding: 16px 18px;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      background: #161b22;
+    }
+
+    .summary-card .label {
+      display: block;
+      margin-bottom: 5px;
+      color: #8b949e;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .summary-card .value {
+      display: block;
+      font-size: 1.65rem;
+      font-weight: 750;
+    }
+
+    .summary-card[data-kind="passed"] .value { color: #3fb950; }
+    .summary-card[data-kind="failed"] .value { color: #f85149; }
+    .summary-card[data-kind="status"] .value { font-size: 1rem; line-height: 2.05rem; }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.18fr) minmax(420px, 0.82fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel { overflow: hidden; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 55px;
+      padding: 13px 17px;
+      border-bottom: 1px solid #30363d;
+      background: #161b22;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .panel-header code,
+    .runtime-meta code {
+      color: #79c0ff;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    .runtime-meta {
+      padding: 11px 17px;
+      border-bottom: 1px solid #30363d;
+      color: #8b949e;
+      font-size: 0.84rem;
+    }
+
+    #qhtml-runtime-host {
+      display: block;
+      min-height: 360px;
+      padding: 18px;
+      background: #0d1117;
+    }
+
+    #qhtml-runtime-host .runtime-tree {
+      display: grid;
+      gap: 13px;
+    }
+
+    #qhtml-runtime-host .scope-card {
+      padding: 16px;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      background: #161b22;
+    }
+
+    #qhtml-runtime-host .scope-card h3 { margin: 0 0 8px; }
+    #qhtml-runtime-host .scope-card p { margin: 6px 0; color: #b1bac4; }
+
+    #qhtml-runtime-host othercomp:not([component-instance]) {
+      display: block;
+      margin-top: 12px;
+      padding: 13px;
+      border: 1px dashed #d29922;
+      border-radius: 8px;
+      background: rgba(210, 153, 34, 0.08);
+    }
+
+    #qhtml-runtime-host othercomp:not([component-instance])::before {
+      content: "Unresolved HTML fallback <othercomp>";
+      display: block;
+      margin-bottom: 8px;
+      color: #e3b341;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    #qhtml-runtime-host myslot {
+      display: block;
+      padding: 9px;
+      border-left: 3px solid #d29922;
+    }
+
+    #qhtml-runtime-host othercomp[component-instance] {
+      display: block;
+      margin-top: 12px;
+    }
+
+    #qhtml-runtime-host .resolved-component {
+      padding: 14px;
+      border: 1px solid #2ea043;
+      border-radius: 9px;
+      background: rgba(46, 160, 67, 0.09);
+    }
+
+    #qhtml-runtime-host .resolved-component h4 {
+      margin: 0 0 7px;
+      color: #56d364;
+    }
+
+    #qhtml-runtime-host .slot-override {
+      margin-top: 10px;
+      padding: 10px;
+      border-left: 3px solid #58a6ff;
+      background: rgba(56, 139, 253, 0.08);
+    }
+
+    #qhtml-runtime-host .runtime-added {
+      color: #d2a8ff;
+      font-weight: 650;
+    }
+
+    .test-list {
+      max-height: 680px;
+      overflow: auto;
+    }
+
+    .test-row {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 11px 15px;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .test-row:last-child { border-bottom: 0; }
+
+    .test-icon {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #21262d;
+      color: #8b949e;
+      font-weight: 800;
+    }
+
+    .test-row[data-status="passed"] .test-icon { background: rgba(46,160,67,.18); color: #3fb950; }
+    .test-row[data-status="failed"] .test-icon { background: rgba(248,81,73,.18); color: #f85149; }
+    .test-row[data-status="running"] .test-icon { color: #d29922; }
+
+    .test-name { font-weight: 650; line-height: 1.35; }
+    .test-detail { margin-top: 4px; color: #8b949e; font-size: 0.82rem; line-height: 1.45; }
+    .test-group { color: #79c0ff; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
+
+    .log-panel { margin-top: 18px; }
+    #test-log {
+      min-height: 130px;
+      max-height: 330px;
+      overflow: auto;
+      margin: 0;
+      padding: 15px 17px;
+      color: #b1bac4;
+      background: #010409;
+      font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      white-space: pre-wrap;
+    }
+
+    .help {
+      margin-top: 18px;
+      padding: 15px 17px;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      color: #9da7b3;
+      background: rgba(22, 27, 34, 0.75);
+      line-height: 1.55;
+    }
+
+    .help code { color: #79c0ff; }
+
+    @media (max-width: 980px) {
+      .page-header { flex-direction: column; }
+      .button-row { justify-content: flex-start; min-width: 0; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .content-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+  <script src="../dist/qhtml.js"></script>
+
+</head>
+<body data-test="pending">
+  <div class="page-shell">
+    <header class="page-header">
+      <div>
+        <h1>QHTML7 Context Property / Render Test Suite</h1>
+        <p>
+          Tests persistent runtime context injection on the model and browser facade, then promotes an unresolved
+          <code>&lt;othercomp&gt;</code> node into a QHTML component definition without reparsing the original source.
+        </p>
+      </div>
+      <div class="button-row">
+        <button id="reset-button" type="button">Reset Fixture</button>
+        <button id="promote-button" type="button">Promote Component</button>
+        <button id="mutate-button" type="button">Mutate + Render</button>
+        <button id="run-button" class="primary" type="button">Run All Tests</button>
+      </div>
+    </header>
+
+    <section class="summary-grid" aria-label="Test summary">
+      <div class="summary-card" data-kind="total">
+        <span class="label">Total</span>
+        <span class="value" id="summary-total">0</span>
+      </div>
+      <div class="summary-card" data-kind="passed">
+        <span class="label">Passed</span>
+        <span class="value" id="summary-passed">0</span>
+      </div>
+      <div class="summary-card" data-kind="failed">
+        <span class="label">Failed</span>
+        <span class="value" id="summary-failed">0</span>
+      </div>
+      <div class="summary-card" data-kind="status">
+        <span class="label">Status</span>
+        <span class="value" id="summary-status">Initializing</span>
+      </div>
+    </section>
+
+    <main class="content-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Live QHTML Runtime</h2>
+          <code id="runtime-state">unmounted</code>
+        </div>
+        <div class="runtime-meta">
+          Exact root call: <code>document.querySelector("q-html").setContextProperty(...)</code>
+        </div>
+        <q-html id="qhtml-runtime-host"></q-html>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Assertions</h2>
+          <code id="assertion-state">pending</code>
+        </div>
+        <div id="test-list" class="test-list"></div>
+      </section>
+    </main>
+
+    <section class="panel log-panel">
+      <div class="panel-header">
+        <h2>Execution Log</h2>
+        <code id="result">pending</code>
+      </div>
+      <pre id="test-log"></pre>
+    </section>
+
+    <div class="help">
+      Place this file beside the modified <code>qhtml_types.js</code> and <code>qhtml-element.js</code> files, then serve
+      the directory through HTTP. The fixture is assembled directly with <code>QHTMLTypes</code>, so no parser file is required.
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    class ExternalWorker {
+      constructor(label, value) {
+        this.label = label;
+        this.value = value;
+      }
+
+      double() {
+        return this.value * 2;
+      }
+    }
+
+    class AssertionError extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "AssertionError";
+      }
+    }
+
+    class TestCase {
+      constructor(group, name, execute) {
+        this.group = group;
+        this.name = name;
+        this.execute = execute;
+        this.status = "pending";
+        this.detail = "";
+        this.element = null;
+      }
+    }
+
+    class TestReporter {
+      constructor(documentObject) {
+        this.document = documentObject;
+        this.listElement = documentObject.getElementById("test-list");
+        this.logElement = documentObject.getElementById("test-log");
+        this.resultElement = documentObject.getElementById("result");
+        this.assertionStateElement = documentObject.getElementById("assertion-state");
+        this.summary = {
+          total: documentObject.getElementById("summary-total"),
+          passed: documentObject.getElementById("summary-passed"),
+          failed: documentObject.getElementById("summary-failed"),
+          status: documentObject.getElementById("summary-status")
+        };
+      }
+
+      initialize(testCases) {
+        this.listElement.replaceChildren();
+        testCases.forEach((testCase) => {
+          const row = this.document.createElement("div");
+          row.className = "test-row";
+          row.dataset.status = "pending";
+
+          const icon = this.document.createElement("span");
+          icon.className = "test-icon";
+          icon.textContent = "·";
+
+          const content = this.document.createElement("div");
+          const name = this.document.createElement("div");
+          name.className = "test-name";
+          name.textContent = testCase.name;
+          const detail = this.document.createElement("div");
+          detail.className = "test-detail";
+          detail.textContent = "Not run";
+          content.append(name, detail);
+
+          const group = this.document.createElement("span");
+          group.className = "test-group";
+          group.textContent = testCase.group;
+
+          row.append(icon, content, group);
+          this.listElement.appendChild(row);
+          testCase.element = { row, icon, detail };
+        });
+        this.logElement.textContent = "";
+        this.resultElement.textContent = "pending";
+        this.updateSummary(testCases, "Ready");
+      }
+
+      mark(testCase, status, detail) {
+        testCase.status = status;
+        testCase.detail = detail || "";
+        testCase.element.row.dataset.status = status;
+        testCase.element.icon.textContent = status === "passed" ? "✓" : status === "failed" ? "×" : "…";
+        testCase.element.detail.textContent = testCase.detail || status;
+      }
+
+      log(message) {
+        const timestamp = new Date().toISOString().slice(11, 23);
+        this.logElement.textContent += `[${timestamp}] ${message}\n`;
+        this.logElement.scrollTop = this.logElement.scrollHeight;
+      }
+
+      updateSummary(testCases, statusText) {
+        const passed = testCases.filter((testCase) => testCase.status === "passed").length;
+        const failed = testCases.filter((testCase) => testCase.status === "failed").length;
+        this.summary.total.textContent = String(testCases.length);
+        this.summary.passed.textContent = String(passed);
+        this.summary.failed.textContent = String(failed);
+        this.summary.status.textContent = statusText;
+        this.assertionStateElement.textContent = failed > 0 ? "failed" : passed === testCases.length ? "passed" : "running";
+      }
+
+      complete(testCases) {
+        const failed = testCases.filter((testCase) => testCase.status === "failed");
+        const passed = testCases.length - failed.length;
+        const result = failed.length === 0
+          ? `${passed}/${testCases.length} tests passed`
+          : `${passed}/${testCases.length} passed; ${failed.length} failed`;
+        this.resultElement.textContent = result;
+        this.updateSummary(testCases, failed.length === 0 ? "All tests passed" : "Failures detected");
+        this.document.body.dataset.test = failed.length === 0 ? "passed" : "failed";
+      }
+    }
+
+    class QHTMLFixtureFactory {
+      constructor(QHTMLTypesObject) {
+        this.Q = QHTMLTypesObject;
+      }
+
+      element(tagName, attributes, children) {
+        const node = new this.Q.QHTMLDomElement(tagName, attributes || {});
+        (children || []).forEach((child) => node.appendChild(child));
+        return node;
+      }
+
+      text(value) {
+        return new this.Q.QHTMLTextFragment(value);
+      }
+
+      create() {
+        const Q = this.Q;
+        const tree = new Q.QHTMLDomTree();
+        const rootService = { name: "root-service", version: 1 };
+        const preMountValue = { phase: "before-mount" };
+        const leafContextValue = { scope: "leaf-only" };
+
+        tree.setContextProperty("rootService", rootService);
+
+        const shell = this.element("main", { id: "runtime-tree", class: "runtime-tree" });
+        const scopeA = this.element("section", { id: "scope-a", class: "scope-card" });
+        const scopeB = this.element("section", { id: "scope-b", class: "scope-card" });
+
+        scopeA.setContextProperty("preMountValue", preMountValue);
+
+        const scopeAHeading = this.element("h3", {}, [this.text("Scope A")]);
+        const rootContextOutput = this.element("p", { id: "root-context-output" }, [
+          this.text("Inherited root context: ${rootService.name} v${rootService.version}")
+        ]);
+        const workerOutput = this.element("p", { id: "worker-output" }, [
+          this.text("External worker: ${obj1.label}; value=${obj1.value}")
+        ]);
+        const preMountOutput = this.element("p", { id: "premount-output" }, [
+          this.text("Pre-mount context: ${preMountValue.phase}")
+        ]);
+
+        workerOutput.childAt(0).setContextProperty("leafContext", leafContextValue);
+
+        const unresolvedComponent = this.element("othercomp", { "data-state": "unresolved" });
+        const slotElement = this.element("myslot");
+        const slotOverride = this.element("div", { id: "slot-override", class: "slot-override" }, [
+          this.text("Slot override sees ${obj1.label}; shared token=${sharedState.token}")
+        ]);
+        slotElement.appendChild(slotOverride);
+        unresolvedComponent.appendChild(slotElement);
+
+        scopeA.appendChild(scopeAHeading);
+        scopeA.appendChild(rootContextOutput);
+        scopeA.appendChild(workerOutput);
+        scopeA.appendChild(preMountOutput);
+        scopeA.appendChild(unresolvedComponent);
+
+        scopeB.appendChild(this.element("h3", {}, [this.text("Scope B") ]));
+        scopeB.appendChild(this.element("p", { id: "scope-b-worker-output" }, [
+          this.text("Shared worker in Scope B: ${obj1.label}; value=${obj1.value}")
+        ]));
+
+        shell.appendChild(scopeA);
+        shell.appendChild(scopeB);
+        tree.appendChild(shell);
+
+        return {
+          tree,
+          shell,
+          scopeA,
+          scopeB,
+          unresolvedComponent,
+          workerOutput,
+          rootService,
+          preMountValue,
+          leafContextValue
+        };
+      }
+
+      createDynamicComponentDefinition() {
+        const definition = new this.Q.QHTMLComponentDefinition("othercomp");
+        const article = this.element("article", { class: "resolved-component" });
+        article.appendChild(this.element("h4", {}, [this.text("Dynamic QHTML component resolved") ]));
+        article.appendChild(this.element("p", { id: "component-context-output" }, [
+          this.text("Definition context: ${obj1.label}; current value=${obj1.value}")
+        ]));
+
+        const slot = new this.Q.QHTMLComponentSlot("myslot");
+        slot.appendChild(this.element("p", { id: "default-slot-content" }, [
+          this.text("Default slot content; this should be replaced by the instance override.")
+        ]));
+        article.appendChild(slot);
+        article.appendChild(this.element("small", {}, [
+          this.text("Definition supplied dynamically through setContextProperty().")
+        ]));
+        definition.appendChild(article);
+        return definition;
+      }
+    }
+
+    class ContextRenderTestApplication {
+      constructor(documentObject, globalObject) {
+        this.document = documentObject;
+        this.global = globalObject;
+        this.Q = globalObject.QHTMLTypes;
+        this.host = documentObject.getElementById("qhtml-runtime-host");
+        this.runtimeState = documentObject.getElementById("runtime-state");
+        this.reporter = new TestReporter(documentObject);
+        this.factory = new QHTMLFixtureFactory(this.Q);
+        this.fixture = null;
+        this.testCases = [];
+        this.worker = null;
+        this.sharedState = null;
+        this.externalFunction = null;
+        this.qhtmlHelperObject = null;
+        this.dynamicDefinition = null;
+        this.initialSource = "";
+        this.initialTree = null;
+        this.promotedComponentUuid = "";
+        this.isRunning = false;
+      }
+
+      assert(condition, message) {
+        if (!condition) {
+          throw new AssertionError(message);
+        }
+      }
+
+      assertEqual(actual, expected, message) {
+        if (actual !== expected) {
+          throw new AssertionError(`${message}; expected ${String(expected)}, received ${String(actual)}`);
+        }
+      }
+
+      scopeAElement() {
+        return this.host.querySelector("#scope-a");
+      }
+
+      scopeBElement() {
+        return this.host.querySelector("#scope-b");
+      }
+
+      componentElement() {
+        return this.host.querySelector("othercomp[component-instance]");
+      }
+
+      async resetFixture() {
+        this.fixture = this.factory.create();
+        this.initialTree = this.fixture.tree;
+        this.worker = new ExternalWorker("worker-one", 21);
+        this.sharedState = { token: "shared-001", mutations: 0 };
+        this.externalFunction = (left, right) => left + right;
+        this.qhtmlHelperObject = new this.Q.QHTMLDomElement("helper-object", { role: "service" });
+        this.dynamicDefinition = this.factory.createDynamicComponentDefinition();
+        this.promotedComponentUuid = "";
+
+        await this.global.QHTML7.mountTree(this.host, this.fixture.tree);
+        this.initialSource = this.host.qhtmlSource;
+        this.runtimeState.textContent = "unresolved component mounted";
+        this.document.body.dataset.test = "pending";
+        return this.fixture;
+      }
+
+      defineTests() {
+        const test = (group, name, execute) => new TestCase(group, name, execute);
+        this.testCases = [
+          test("Model API", "QHTMLDomTree exposes setContextProperty() and render()", () => {
+            this.assert(typeof this.fixture.tree.setContextProperty === "function", "QHTMLDomTree setter is missing");
+            this.assert(typeof this.fixture.tree.render === "function", "QHTMLDomTree render is missing");
+          }),
+
+          test("Model API", "Every QHTMLNode subtype inherits setContextProperty()", () => {
+            const textNode = this.fixture.workerOutput.childAt(0);
+            this.assert(typeof this.fixture.scopeA.setContextProperty === "function", "QHTMLDomElement setter is missing");
+            this.assert(typeof textNode.setContextProperty === "function", "QHTMLTextFragment setter is missing");
+            this.assertEqual(textNode.resolve("leafContext"), this.fixture.leafContextValue, "Leaf-node context value was not retained");
+          }),
+
+          test("Pre-mount", "Root and local model context render before browser binding", () => {
+            this.assert(this.host.textContent.includes("root-service v1"), "Root context did not render through descendants");
+            this.assert(this.host.textContent.includes("before-mount"), "Local pre-mount context did not render");
+          }),
+
+          test("DOM API", "The <q-html> root exposes setContextProperty() and render()", () => {
+            this.assert(typeof this.host.setContextProperty === "function", "Root DOM setter is missing");
+            this.assert(typeof this.host.render === "function", "Root DOM render is missing");
+            this.assertEqual(this.host.qhtmlDomTree, this.fixture.tree, "Browser root is not bound to the original tree");
+          }),
+
+          test("DOM API", "Rendered QHTML DOM nodes expose setContextProperty() and render()", () => {
+            const scopeA = this.scopeAElement();
+            this.assert(typeof scopeA.setContextProperty === "function", "Child DOM setter is missing");
+            this.assert(typeof scopeA.render === "function", "Child DOM render is missing");
+            this.assert(scopeA.qhtmlNode instanceof this.Q.QHTMLNode, "Child DOM element is not bound to a QHTMLNode");
+          }),
+
+          test("Objects", "An arbitrary class instance is injected and callable", () => {
+            const scopeA = this.scopeAElement();
+            const returned = scopeA.setContextProperty("obj1", this.worker);
+            this.assertEqual(returned, this.worker, "Setter did not return the assigned object");
+            this.assertEqual(scopeA.obj1, this.worker, "Direct context alias lost object identity");
+            this.assertEqual(scopeA.qhtmlResolve("obj1"), this.worker, "qhtmlResolve lost object identity");
+            this.assertEqual(scopeA.obj1.double(), 42, "Injected object method returned the wrong result");
+          }),
+
+          test("Functions", "A standalone JavaScript function is injected and callable", () => {
+            const scopeA = this.scopeAElement();
+            scopeA.setContextProperty("externalFunction", this.externalFunction);
+            this.assertEqual(scopeA.externalFunction, this.externalFunction, "Function identity was not preserved");
+            this.assertEqual(scopeA.externalFunction(12, 30), 42, "Injected function invocation failed");
+          }),
+
+          test("QHTML objects", "A QHTML object can be stored as a context value", () => {
+            const scopeA = this.scopeAElement();
+            scopeA.setContextProperty("qhtmlHelperObject", this.qhtmlHelperObject);
+            this.assertEqual(scopeA.qhtmlResolve("qhtmlHelperObject"), this.qhtmlHelperObject, "QHTML object identity was not preserved");
+            this.assertEqual(scopeA.qhtmlResolve("qhtmlHelperObject").qhtmlType(), "QHTMLDomElement", "Resolved QHTML object has the wrong type");
+          }),
+
+          test("Identity", "The same JavaScript object is shared across two contexts", () => {
+            const scopeA = this.scopeAElement();
+            const scopeB = this.scopeBElement();
+            scopeB.setContextProperty("obj1", this.worker);
+            scopeA.setContextProperty("sharedState", this.sharedState);
+            scopeB.setContextProperty("sharedState", this.sharedState);
+            this.assertEqual(scopeA.obj1, scopeB.obj1, "Contexts do not reference the same worker object");
+            scopeA.sharedState.mutations += 1;
+            this.assertEqual(scopeB.sharedState.mutations, 1, "Shared mutation was not visible from the second context");
+          }),
+
+          test("Scoping", "Local context values remain isolated and shadow independently", () => {
+            const scopeA = this.scopeAElement();
+            const scopeB = this.scopeBElement();
+            scopeA.setContextProperty("localValue", "scope-a-only");
+            scopeB.setContextProperty("localValue", "scope-b-only");
+            this.assertEqual(scopeA.localValue, "scope-a-only", "Scope A local value is wrong");
+            this.assertEqual(scopeB.localValue, "scope-b-only", "Scope B local value is wrong");
+            this.assert(typeof this.host.qhtmlResolve("localValue") === "undefined", "Local value leaked into the root context");
+          }),
+
+          test("Names", "Non-identifier property names remain accessible through qhtmlResolve()", () => {
+            const scopeA = this.scopeAElement();
+            const value = { kind: "hyphenated-name" };
+            scopeA.setContextProperty("service-with-dash", value);
+            this.assertEqual(scopeA.qhtmlResolve("service-with-dash"), value, "Hyphenated context name did not resolve");
+          }),
+
+          test("Validation", "Empty context property names are rejected", () => {
+            let threw = false;
+            try {
+              this.scopeAElement().setContextProperty("   ", 1);
+            } catch (error) {
+              threw = error instanceof TypeError;
+            }
+            this.assert(threw, "Empty property name should throw TypeError");
+          }),
+
+          test("Persistence", "Injected values survive rebuildQHTMLReferences()", () => {
+            this.fixture.tree.rebuildQHTMLReferences();
+            this.assertEqual(this.fixture.scopeA.resolve("obj1"), this.worker, "Worker was cleared during reference rebuild");
+            this.assertEqual(this.fixture.scopeA.resolve("externalFunction"), this.externalFunction, "Function was cleared during reference rebuild");
+            this.assertEqual(this.fixture.scopeB.resolve("sharedState"), this.sharedState, "Shared object was cleared during reference rebuild");
+          }),
+
+          test("Fallback", "Unknown component syntax initially renders as a normal HTML tag", () => {
+            const unresolved = this.host.querySelector("othercomp:not([component-instance])");
+            this.assert(unresolved !== null, "Unknown component fallback tag is missing");
+            this.assert(unresolved.querySelector("myslot") !== null, "Fallback slot tag should remain ordinary HTML before promotion");
+            this.promotedComponentUuid = unresolved.qhtmlNode.qhtmlUUID();
+          }),
+
+          test("Definition", "A component definition is injected into the owning context", () => {
+            const scopeA = this.scopeAElement();
+            scopeA.setContextProperty("othercomp", this.dynamicDefinition);
+            this.assertEqual(scopeA.qhtmlNode.resolve("othercomp"), this.dynamicDefinition, "Model context did not prioritize the injected component definition");
+          }),
+
+          test("Render", "render() promotes the unknown tag and returns the rebound target", () => {
+            const staleScope = this.scopeAElement();
+            const reboundScope = staleScope.render();
+            const component = this.componentElement();
+            this.assert(reboundScope !== staleScope, "Structural render should return the new DOM node, not the stale node");
+            this.assert(staleScope.isConnected === false, "Previous DOM node should be disconnected after structural render");
+            this.assert(reboundScope && reboundScope.id === "scope-a", "render() did not return the rebound scope element");
+            this.assert(component !== null, "Unknown tag was not promoted to a component instance");
+            this.assertEqual(component.qhtmlNode.qhtmlType(), "QHTMLComponentInstance", "Promoted node has the wrong QHTML type");
+            this.assertEqual(component.qhtmlNode.qhtmlUUID(), this.promotedComponentUuid, "Promotion did not preserve node UUID");
+            this.runtimeState.textContent = "dynamic component promoted";
+          }),
+
+          test("Slots", "A named fallback child becomes a component slot override", () => {
+            const component = this.componentElement();
+            const override = component.querySelector("#slot-override");
+            this.assert(override !== null, "Slot override content did not render");
+            this.assert(component.querySelector("myslot") === null, "Raw <myslot> wrapper should not remain after promotion");
+            this.assert(component.querySelector("#default-slot-content") === null, "Default slot should be replaced by instance content");
+            this.assert(override.textContent.includes("worker-one"), "Slot override did not inherit the external object context");
+            this.assert(override.textContent.includes("shared-001"), "Slot override did not inherit the shared context object");
+          }),
+
+          test("Persistence", "Object and function identities survive structural rebind", () => {
+            const reboundScope = this.scopeAElement();
+            const reboundScopeB = this.scopeBElement();
+            this.assertEqual(reboundScope.obj1, this.worker, "Worker identity changed after render");
+            this.assertEqual(reboundScope.externalFunction, this.externalFunction, "Function identity changed after render");
+            this.assertEqual(reboundScopeB.obj1, this.worker, "Shared worker disappeared from Scope B after render");
+            this.assertEqual(reboundScope.externalFunction(20, 22), 42, "Rebound function alias is not callable");
+          }),
+
+          test("Re-evaluation", "Changing an external object is reflected by the next render", () => {
+            this.worker.value = 50;
+            const reboundScope = this.scopeAElement().render();
+            this.assert(reboundScope.querySelector("#worker-output").textContent.includes("value=50"), "Scope interpolation did not re-evaluate");
+            this.assert(this.componentElement().querySelector("#component-context-output").textContent.includes("value=50"), "Component interpolation did not re-evaluate");
+            this.assert(this.scopeBElement().querySelector("#scope-b-worker-output").textContent.includes("value=50"), "Shared Scope B interpolation did not re-evaluate");
+          }),
+
+          test("Tree mutation", "Updated children render without reparsing the original source", () => {
+            const scopeNode = this.scopeAElement().qhtmlNode;
+            const runtimeAdded = new this.Q.QHTMLDomElement("p", { id: "runtime-added", class: "runtime-added" });
+            runtimeAdded.appendChild(new this.Q.QHTMLTextFragment("Runtime-only child sees ${obj1.label} at value ${obj1.value}"));
+            scopeNode.appendChild(runtimeAdded);
+
+            const reboundScope = this.scopeAElement().render();
+            const output = reboundScope.querySelector("#runtime-added");
+            this.assert(output !== null, "Runtime-added child did not render");
+            this.assert(output.textContent.includes("worker-one"), "Runtime-added child did not resolve context");
+            this.assertEqual(this.host.qhtmlSource, this.initialSource, "render() replaced or regenerated qhtmlSource");
+            this.assertEqual(this.host.qhtmlDomTree, this.initialTree, "render() replaced the QHTMLDomTree object");
+            this.runtimeState.textContent = "tree mutated without source reload";
+          }),
+
+          test("Root context", "The exact <q-html>.setContextProperty() call reaches all descendants", () => {
+            const rootValue = { message: "root-injected-after-mount" };
+            this.host.setContextProperty("lateRootValue", rootValue);
+            this.assertEqual(this.scopeAElement().qhtmlNode.resolve("lateRootValue"), rootValue, "Scope A did not inherit late root context");
+            this.assertEqual(this.componentElement().qhtmlNode.resolve("lateRootValue"), rootValue, "Dynamic component did not inherit late root context");
+          }),
+
+          test("Global facade", "QHTML7.setContextProperty() and QHTML7.render() delegate correctly", () => {
+            const scopeB = this.scopeBElement();
+            const service = { source: "QHTML7 facade" };
+            this.global.QHTML7.setContextProperty(scopeB, "facadeService", service);
+            this.assertEqual(scopeB.facadeService, service, "QHTML7 setter did not install the context alias");
+            const reboundScopeB = this.global.QHTML7.render(scopeB);
+            this.assert(reboundScopeB && reboundScopeB.id === "scope-b", "QHTML7.render() did not return the rebound target");
+            this.assertEqual(reboundScopeB.facadeService, service, "Facade-injected value did not survive render");
+          }),
+
+          test("Root render", "Rendering the QHTMLDomTree returns the existing <q-html> host", () => {
+            const returnedHost = this.host.render();
+            this.assertEqual(returnedHost, this.host, "Root render should return the bound <q-html> host");
+            this.assertEqual(this.host.qhtmlDomTree, this.fixture.tree, "Root render changed the tree identity");
+          })
+        ];
+      }
+
+      async runAllTests() {
+        if (this.isRunning) {
+          return;
+        }
+        this.isRunning = true;
+        this.setControlsDisabled(true);
+        await this.resetFixture();
+        this.defineTests();
+        this.reporter.initialize(this.testCases);
+        this.reporter.log(`QHTML version: ${String(this.global.QHTML_VERSION || "7.4.0")}`);
+        this.reporter.log(`Tree UUID: ${this.fixture.tree.qhtmlUUID()}`);
+
+        for (const testCase of this.testCases) {
+          this.reporter.mark(testCase, "running", "Running");
+          this.reporter.updateSummary(this.testCases, `Running: ${testCase.name}`);
+          try {
+            await testCase.execute();
+            this.reporter.mark(testCase, "passed", "Passed");
+            this.reporter.log(`PASS [${testCase.group}] ${testCase.name}`);
+          } catch (error) {
+            const detail = error && error.message ? error.message : String(error);
+            this.reporter.mark(testCase, "failed", detail);
+            this.reporter.log(`FAIL [${testCase.group}] ${testCase.name}: ${detail}`);
+            if (error && error.stack) {
+              this.reporter.log(error.stack);
+            }
+          }
+        }
+
+        this.reporter.complete(this.testCases);
+        this.isRunning = false;
+        this.setControlsDisabled(false);
+      }
+
+      async promoteInteractive() {
+        if (!this.fixture) {
+          await this.resetFixture();
+        }
+        const scopeA = this.scopeAElement();
+        if (!this.componentElement()) {
+          scopeA.setContextProperty("obj1", this.worker);
+          scopeA.setContextProperty("sharedState", this.sharedState);
+          scopeA.setContextProperty("othercomp", this.dynamicDefinition);
+          scopeA.render();
+        }
+        this.runtimeState.textContent = "dynamic component promoted manually";
+      }
+
+      async mutateInteractive() {
+        await this.promoteInteractive();
+        const scopeA = this.scopeAElement();
+        this.worker.value += 1;
+        const existing = scopeA.qhtmlNode.children().find((node) =>
+          node instanceof this.Q.QHTMLDomElement && node.attribute("data-manual-mutation") === "1"
+        );
+        if (!existing) {
+          const child = new this.Q.QHTMLDomElement("p", {
+            class: "runtime-added",
+            "data-manual-mutation": "1"
+          });
+          child.appendChild(new this.Q.QHTMLTextFragment("Manual mutation rendered at worker value ${obj1.value}"));
+          scopeA.qhtmlNode.appendChild(child);
+        }
+        this.scopeAElement().render();
+        this.runtimeState.textContent = `manual mutation rendered; worker=${this.worker.value}`;
+      }
+
+      setControlsDisabled(disabled) {
+        ["run-button", "reset-button", "promote-button", "mutate-button"].forEach((id) => {
+          this.document.getElementById(id).disabled = disabled;
+        });
+      }
+
+      bindControls() {
+        this.document.getElementById("run-button").addEventListener("click", () => this.runAllTests());
+        this.document.getElementById("reset-button").addEventListener("click", async () => {
+          await this.resetFixture();
+          this.runtimeState.textContent = "fixture reset";
+        });
+        this.document.getElementById("promote-button").addEventListener("click", () => this.promoteInteractive());
+        this.document.getElementById("mutate-button").addEventListener("click", () => this.mutateInteractive());
+      }
+
+      async initialize() {
+        this.bindControls();
+        await this.runAllTests();
+      }
+    }
+
+    const application = new ContextRenderTestApplication(document, globalThis);
+    application.initialize().catch((error) => {
+      document.body.dataset.test = "failed";
+      document.getElementById("summary-status").textContent = "Initialization failed";
+      document.getElementById("result").textContent = error && error.message ? error.message : String(error);
+      document.getElementById("test-log").textContent = error && error.stack ? error.stack : String(error);
+    });
+  </script>
+</body>
+</html>

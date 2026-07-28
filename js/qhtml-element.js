@@ -33,6 +33,8 @@
     "qhtmlReferenceUUIDs",
     "qhtmlReferences",
     "qhtmlReferenceNodes",
+    "setContextProperty",
+    "render",
     "__qhtmlRegistry"
   ]);
 
@@ -814,18 +816,30 @@
 
   installQHTML6CompatibilityGlobals();
 
-  function walkQHTMLNode(node, visitor) {
+  function walkQHTMLNode(node, visitor, visited = new Set()) {
     if (!node || typeof visitor !== "function") {
       return;
     }
+    const uuid = qhtmlNodeUuid(node);
+    const identity = uuid || node;
+    if (visited.has(identity)) {
+      return;
+    }
+    visited.add(identity);
     visitor(node);
     const count = typeof node.childCount === "function" ? node.childCount() : 0;
     for (let index = 0; index < count; index += 1) {
-      walkQHTMLNode(node.childAt(index), visitor);
+      walkQHTMLNode(node.childAt(index), visitor, visited);
+    }
+    if (typeof node.componentDefinition === "function") {
+      const definition = node.componentDefinition();
+      if (definition && definition !== node) {
+        walkQHTMLNode(definition, visitor, visited);
+      }
     }
     if (typeof node.lastRenderedIterationNodes === "function") {
       node.lastRenderedIterationNodes().forEach((child) => {
-        walkQHTMLNode(child, visitor);
+        walkQHTMLNode(child, visitor, visited);
       });
     }
   }
@@ -3169,21 +3183,33 @@
       }
     }
     if (typeof node.qhtmlResolve === "function") {
-      return node.qhtmlResolve(key) || null;
+      const resolved = node.qhtmlResolve(key);
+      if (resolved !== null && typeof resolved !== "undefined") {
+        return resolved;
+      }
+      if (typeof node.contextKeys === "function" && Array.from(node.contextKeys() || []).includes(key)) {
+        return resolved;
+      }
     }
     if (typeof node.resolve === "function") {
-      return node.resolve(key) || null;
+      const resolved = node.resolve(key);
+      if (resolved !== null && typeof resolved !== "undefined") {
+        return resolved;
+      }
+      if (typeof node.contextKeys === "function" && Array.from(node.contextKeys() || []).includes(key)) {
+        return resolved;
+      }
     }
-    return null;
+    return undefined;
   }
 
   function resolveQHTMLRuntimeReference(target, nameOrUUID, registry) {
     const sourceRegistry = registry || registryForQHTMLTarget(target);
     const referenceNode = resolveQHTMLReferenceNode(target, nameOrUUID, sourceRegistry);
-    if (!referenceNode) {
+    if (typeof referenceNode === "undefined") {
       return undefined;
     }
-    if (!sourceRegistry) {
+    if (!isQHTMLWasmReference(referenceNode) || !sourceRegistry) {
       return referenceNode;
     }
     const selfElement = isQHTMLWasmReference(target) ? null : target;
@@ -3294,14 +3320,43 @@
         return qhtmlReferenceFacadeFor(domElement, sourceRegistry || domElement.__qhtmlRegistry, true);
       }
     });
+    define("setContextProperty", {
+      value(name, value) {
+        const activeRegistry = sourceRegistry || domElement.__qhtmlRegistry;
+        const node = qhtmlNodeForReferenceTarget(domElement, activeRegistry);
+        if (!node || typeof node.setContextProperty !== "function") {
+          throw new TypeError("The target is not bound to a QHTMLNode context");
+        }
+        const result = node.setContextProperty(name, value);
+        installQHTMLReferenceAccess(domElement, activeRegistry, true);
+        return result;
+      }
+    });
+    define("render", {
+      value() {
+        const activeRegistry = sourceRegistry || domElement.__qhtmlRegistry;
+        const node = qhtmlNodeForReferenceTarget(domElement, activeRegistry);
+        if (!node || typeof node.render !== "function") {
+          return null;
+        }
+        return node.render();
+      }
+    });
 
     if (!installAliases) {
       return;
     }
-    const map = qhtmlDirectReferenceNameMap(domElement, sourceRegistry || domElement.__qhtmlRegistry);
+    const activeRegistry = sourceRegistry || domElement.__qhtmlRegistry;
+    const map = qhtmlDirectReferenceNameMap(domElement, activeRegistry);
+    const contextNode = qhtmlNodeForReferenceTarget(domElement, activeRegistry);
+    const aliasNames = new Set(Object.keys(map));
+    if (contextNode && typeof contextNode.contextKeys === "function") {
+      Array.from(contextNode.contextKeys() || []).forEach((name) => aliasNames.add(String(name || "")));
+    }
+    const hasAliasName = function (name) { return aliasNames.has(name); };
     const previous = qhtmlReferenceAliases.get(domElement) || new Set();
     previous.forEach((name) => {
-      if (Object.prototype.hasOwnProperty.call(map, name)) {
+      if (hasAliasName(name)) {
         return;
       }
       const descriptor = Object.getOwnPropertyDescriptor(domElement, name);
@@ -3315,7 +3370,7 @@
     });
     const installed = new Set();
     previous.forEach((name) => {
-      if (!Object.prototype.hasOwnProperty.call(map, name)) {
+      if (!hasAliasName(name)) {
         return;
       }
       const descriptor = Object.getOwnPropertyDescriptor(domElement, name);
@@ -3323,7 +3378,7 @@
         installed.add(name);
       }
     });
-    Object.keys(map).forEach((name) => {
+    Array.from(aliasNames).forEach((name) => {
       if (!isValidPropertyIdentifier(name) ||
           installed.has(name) ||
           QHTML_DIRECT_ALIAS_RESERVED_NAMES.has(name)) {
@@ -3397,6 +3452,9 @@
 
   function resolveLexicalQHTMLReference(name, registry, selfElement) {
     const referenceNode = resolveQHTMLReferenceNode(selfElement, name, registry);
+    if (!isQHTMLWasmReference(referenceNode)) {
+      return referenceNode;
+    }
     const value = runtimeValueForQHTMLReference(referenceNode, registry, selfElement);
     return typeof value === "undefined" ? referenceNode : value;
   }
@@ -3424,10 +3482,7 @@
       addNames(contextNode.contextKeys());
     }
     names.forEach((name) => {
-      const value = resolveLexicalQHTMLReference(name, registry, domElement);
-      if (typeof value !== "undefined") {
-        add(name, value);
-      }
+      add(name, resolveLexicalQHTMLReference(name, registry, domElement));
     });
   }
 
@@ -8809,6 +8864,45 @@
     return domElement;
   }
 
+  function renderBoundQHTMLTree(targetNode, registry) {
+    const activeRegistry = registry || registryForQHTMLTarget(targetNode);
+    const rootElement = activeRegistry && activeRegistry.rootElement;
+    const tree = activeRegistry && activeRegistry.tree;
+    if (!rootElement || !tree) {
+      return null;
+    }
+
+    const targetUuid = qhtmlNodeUuid(targetNode);
+    if (typeof activeRegistry.stopTimers === "function") {
+      activeRegistry.stopTimers();
+    }
+
+    rootElement.innerHTML = typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
+    bindComponentDomRuntime(rootElement, tree);
+    rootElement.qhtmlDomTree = tree;
+    rootElement.qhtmlDom = tree;
+    rootElement.qhtmlNode = tree;
+    rootElement.__qhtml7Mounted = true;
+    rootElement.setAttribute("ready", "1");
+
+    const nextRegistry = rootElement.__qhtmlRegistry || rootElement.qhtmlComponentRegistry;
+    const renderedTarget = targetNode === tree
+      ? rootElement
+      : (targetUuid && nextRegistry && nextRegistry.elementsByUuid
+        ? nextRegistry.elementsByUuid.get(targetUuid) || null
+        : null);
+
+    rootElement.dispatchEvent(new CustomEvent("QHTMLRendered", {
+      bubbles: true,
+      detail: {
+        qhtmlNode: targetNode || tree,
+        qhtmlDom: tree,
+        element: renderedTarget || rootElement
+      }
+    }));
+    return renderedTarget || rootElement;
+  }
+
   function rebindRuntimeLoggersForHost(hostElement) {
     const registry = hostElement && (hostElement.__qhtmlRegistry || hostElement.qhtmlComponentRegistry);
     const tree = hostElement && hostElement.qhtmlDomTree;
@@ -9460,6 +9554,14 @@
       tree,
       globals: globalScope
     };
+    if (typeof tree.setRenderHandler === "function") {
+      tree.setRenderHandler(function qhtmlBoundTreeRenderer(targetNode) {
+        return renderBoundQHTMLTree(
+          targetNode || tree,
+          rootElement.__qhtmlRegistry || rootElement.qhtmlComponentRegistry || registry
+        );
+      });
+    }
     registry.scriptRegistry = new QHTMLScriptRegistry(registry);
     nodesByUuid.forEach((node) => {
       const nodeType = node && typeof node.qhtmlType === "function" ? node.qhtmlType() : "";
@@ -10214,6 +10316,26 @@
     },
     hasReference(target, nameOrUUID) {
       return Boolean(resolveQHTMLReferenceNode(target, nameOrUUID, registryForQHTMLTarget(target)));
+    },
+    setContextProperty(target, name, value) {
+      const registry = registryForQHTMLTarget(target);
+      const node = qhtmlNodeForReferenceTarget(target, registry);
+      if (!node || typeof node.setContextProperty !== "function") {
+        throw new TypeError("The target is not bound to a QHTMLNode context");
+      }
+      const result = node.setContextProperty(name, value);
+      if (target && !isQHTMLWasmReference(target)) {
+        installQHTMLReferenceAccess(target, registry, true);
+      }
+      return result;
+    },
+    render(target) {
+      const registry = registryForQHTMLTarget(target);
+      const node = qhtmlNodeForReferenceTarget(target, registry);
+      if (!node || typeof node.render !== "function") {
+        return null;
+      }
+      return node.render();
     },
     refreshLayouts(target, synchronous) {
       const refreshController = (controller) => {
