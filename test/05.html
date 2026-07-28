@@ -97,8 +97,7 @@
     <h1>QHTML For Loop Stress Rect Test 05</h1>
     <p class="intro">A predefined QHTML array drives a for loop that instantiates animated stress-rect components.</p>
 
-    <q-html id="animation-root">
-q-component stress-rect {
+    <q-html id="animation-root">q-component stress-rect {
   q-property label: "0"
   q-property numSteps: 150
   q-property-animation widthAnim {
@@ -142,7 +141,7 @@ q-component stress-rect {
   var oldFrom = this.opacityAnim.from;
         this.opacityAnim.from = this.opacityAnim.to;
      this.opacityAnim.to = oldFrom;
-      this.opacityAnim.start();
+
 
     }
   }

@@ -42,7 +42,7 @@
   });
 
   if (!globalScope.QHTMLTypes || typeof globalScope.QHTMLTypes.QHTMLDomTree !== "function") {
-    throw new Error("qhtml-element.js must be loaded after qhtml_types.js initializes QHTMLTypes");
+    console.log("qhtml-element.js must be loaded after qhtml_types.js initializes QHTMLTypes");
   }
 
   const QHTMLTypes = globalScope.QHTMLTypes;
@@ -52,24 +52,25 @@
     if (typeof tree.fromJSON === "function") {
       const ok = tree.fromJSON(json);
       if (!ok) {
-        throw new Error("QHTMLTypes.QHTMLDomTree fromJSON failed");
+        throw new Warning("QHTMLTypes.QHTMLDomTree fromJSON failed");
+
       }
       return tree;
     }
     if (typeof tree.fromJSONText === "function") {
       const ok = tree.fromJSONText(JSON.stringify(json));
       if (!ok) {
-        throw new Error("QHTMLTypes.QHTMLDomTree fromJSONText failed");
+        console.log("QHTMLTypes.QHTMLDomTree fromJSONText failed");
       }
       return tree;
     }
-    throw new Error("QHTMLTypes.QHTMLDomTree does not expose fromJSON/fromJSONText");
+    console.log("QHTMLTypes.QHTMLDomTree does not expose fromJSON/fromJSONText");
   }
 
   function instantiateParserTree(source, contextNode) {
     const Parser = QHTMLTypes.QHTMLParser || globalScope.QHTMLParser;
     if (typeof Parser !== "function") {
-      throw new Error("js/qhtml_parser.js must expose QHTMLParser before qhtml-element.js can parse QHTML source");
+      console.log("js/qhtml_parser.js must expose QHTMLParser before qhtml-element.js can parse QHTML source");
     }
 
     const parser = new Parser();
@@ -89,7 +90,7 @@
         return { parser, tree: qhtmlTreeFromJson(parsed) };
       }
     }
-    throw new Error("QHTMLParser must expose parseTree(), parseToJSON(), or parse() returning a QHTMLDomTree/JSON tree");
+    console.log("QHTMLParser must expose parseTree(), parseToJSON(), or parse() returning a QHTMLDomTree/JSON tree");
   }
 
   function dispatchQHTMLContentLoadedSoon() {
@@ -193,7 +194,7 @@
     state.importCounts.set(key, count);
     if (count > state.maxPerResource) {
       const kind = importDef && importDef.kind ? importDef.kind : "q-import";
-      throw new Error(
+      console.log(
         `QHTML ${kind} limit exceeded for ${key}: imported ${count} times during one expansion; ` +
         `maximum is ${state.maxPerResource}.`
       );
@@ -301,7 +302,7 @@
     if (path.startsWith(":/")) {
       source = qhtmlResourceText(path);
       if (source == null) {
-        throw new Error(`QHTML resource not found: ${path}`);
+        console.log(`QHTML resource not found: ${path}`);
       }
     } else {
       let response;
@@ -317,10 +318,10 @@
         }
       }
       if (fetchError) {
-        throw new Error(`QHTML ${importDef.kind} failed for ${path}: ${fetchError && fetchError.message ? fetchError.message : fetchError}`);
+        console.log(`QHTML ${importDef.kind} failed for ${path}: ${fetchError && fetchError.message ? fetchError.message : fetchError}`);
       }
       if (!response.ok) {
-        throw new Error(`QHTML ${importDef.kind} failed for ${path}: ${response.status} ${response.statusText}`);
+        console.log(`QHTML ${importDef.kind} failed for ${path}: ${response.status} ${response.statusText}`);
       }
       source = await response.text();
     }
@@ -601,7 +602,7 @@
       }
       expandedSource = nextSource;
     }
-    throw new Error("QHTML q-require nesting exceeded 8 expansion passes");
+    console.log("QHTML q-require nesting exceeded 8 expansion passes");
   }
 
   function replaceImportDeclarations(source, replacements) {
@@ -2176,7 +2177,7 @@
       if (reportQHTMLRuntimeError(binding.caller, error, registry)) {
         return undefined;
       }
-      throw error;
+      //throw error;
     }
   }
 
@@ -2294,13 +2295,13 @@
         if (requestQHTML6LegacyQDomFallback(rootElement, "slot")) {
           return "";
         }
-        throw new TypeError("this.qdom(...).slot is not a function");
+       // throw new TypeError("this.qdom(...).slot is not a function");
       },
       slots() {
         if (requestQHTML6LegacyQDomFallback(rootElement, "slots")) {
           return [];
         }
-        throw new TypeError("this.qdom(...).slots is not a function");
+        //throw new TypeError("this.qdom(...).slots is not a function");
       }
     };
   }
@@ -2509,7 +2510,7 @@
         } catch (error) {
           component.__qhtml6FallbackResumeStarted = false;
           if (!reportQHTMLRuntimeError(component, error, component.__qhtmlRegistry || null)) {
-            throw error;
+          //  throw error;
           }
         }
       });
@@ -2739,7 +2740,7 @@
       }
     } catch (error) {
       replaceWithQHTMLError(fallbackElement, source, error);
-      throw error;
+     // throw error;
     }
     return promoteParserHostToQHTML(fallbackElement, source, "qhtml6");
   }
@@ -4136,7 +4137,7 @@
       if (reportQHTMLRuntimeError(domElement, error, registry)) {
         return;
       }
-      throw error;
+     // throw error;
     }
   }
 
@@ -4813,7 +4814,7 @@
         bubbles: true,
         detail: { qhtmlNode: classNode, name: className, body, error }
       }));
-      console.error("Unable to register QHTML class", className, error);
+      console.log("Unable to register QHTML class", className, error);
       return null;
     }
   }
@@ -4884,7 +4885,7 @@
         bubbles: true,
         detail: { qhtmlNode: instanceNode, name: instanceName, className, error }
       }));
-      console.error("Unable to instantiate QHTML class", className, instanceName, error);
+      console.log("Unable to instantiate QHTML class", className, instanceName, error);
       return null;
     }
   }
@@ -5622,7 +5623,7 @@
         if (reportQHTMLRuntimeError(ownerElement, error, registry)) {
           return;
         }
-        throw error;
+       // throw error;
       }
     };
 
@@ -5703,7 +5704,7 @@
           if (reportQHTMLRuntimeError(ownerElement, error, registry)) {
             return;
           }
-          throw error;
+         // throw error;
         }
       }, 0);
     }
@@ -6690,7 +6691,7 @@
       try {
         matches = Array.from(scopeElement.querySelectorAll(rule.selector));
       } catch (error) {
-        console.error(`Invalid q-theme selector "${rule.selector}"`, error);
+        console.log(`Invalid q-theme selector "${rule.selector}"`, error);
         return;
       }
       matches.forEach((element) => {
@@ -6776,7 +6777,7 @@
     const propertyListName = parameters[0];
     const listEntry = domElement.__qhtmlProperties && domElement.__qhtmlProperties[propertyListName];
     if (!listEntry) {
-      console.error(`QHTML paint handler expected q-property "${propertyListName}" to contain QHTMLProperty references`);
+      console.log(`QHTML paint handler expected q-property "${propertyListName}" to contain QHTMLProperty references`);
       return null;
     }
     const raw = String(listEntry.rawValue || "").trim();
@@ -6786,7 +6787,7 @@
       const name = String(item || "").trim().replace(/^this\./, "");
       const entry = domElement.__qhtmlProperties && domElement.__qhtmlProperties[name];
       if (!entry) {
-        console.error(`QHTML paint property "${item}" is not a QHTMLProperty on this component`);
+        console.log(`QHTML paint property "${item}" is not a QHTMLProperty on this component`);
         return null;
       }
       entries.push({ name, entry });
@@ -7174,7 +7175,7 @@
       }));
     }).catch((error) => {
       paintBinding.error = error;
-      console.error("Unable to register QHTML paint worklet", error);
+      console.log("Unable to register QHTML paint worklet", error);
       domElement.dispatchEvent(new CustomEvent("QHTMLPaintWorkletError", {
         bubbles: true,
         detail: { eventName, paintName, blobUrl, qhtmlNode: sourceNode, error }
@@ -7188,7 +7189,7 @@
     }
     const painter = registry.paintersByName.get(String(painterName || "").trim());
     if (!painter) {
-      console.error(`QHTML painter "${painterName}" was not found.`);
+      console.log(`QHTML painter "${painterName}" was not found.`);
       return;
     }
     const eventName = paintEventNameForStyleTarget(targetName);
@@ -7328,13 +7329,13 @@
       }
       const context = canvasElement.getContext ? canvasElement.getContext("2d") : null;
       if (!context) {
-        throw new Error("q-canvas could not create a 2D rendering context.");
+        console.log("q-canvas could not create a 2D rendering context.");
       }
       context.clearRect(0, 0, canvasElement.width, canvasElement.height);
       const invokePainter = function invokePainter(painterName) {
         const painter = registry && registry.paintersByName ? registry.paintersByName.get(String(painterName || "")) : null;
         if (!painter || typeof painter.body !== "function") {
-          throw new Error(`QHTML painter "${painterName}" was not found.`);
+          console.log(`QHTML painter "${painterName}" was not found.`);
         }
         return runCanvasPaintBody(canvasElement, context, painter.body(), registry, invokePainter);
       };
@@ -7360,7 +7361,7 @@
     if (reportQHTMLRuntimeError(domElement || (registry && registry.rootElement) || null, error, registry)) {
       return "";
     }
-    throw error;
+  //  throw error;
   }
 
   function qhtmlNodeBodyText(node, domElement, registry) {
@@ -7457,13 +7458,13 @@
     const cleaned = String(expression || "").trim().replace(/^["']|["']$/g, "");
     const match = /^([A-Za-z_$][A-Za-z0-9_$-]*)(?:\.([A-Za-z_$][A-Za-z0-9_$-]*))?$/.exec(cleaned);
     if (!match) {
-      throw new Error(`Invalid q-anchor expression: ${cleaned}`);
+      console.log(`Invalid q-anchor expression: ${cleaned}`);
     }
     const targetName = match[1];
     const targetEdge = normalizeAnchorEdge(match[2] || "left");
     const target = registry.elementsByName.get(targetName);
     if (!target) {
-      throw new Error(`QHTML anchor target was not found: ${targetName}`);
+      console.log(`QHTML anchor target was not found: ${targetName}`);
     }
     return { target, targetEdge };
   }
@@ -9922,10 +9923,10 @@
       } else if (typeof tree.fromJSONText === "function") {
         ok = tree.fromJSONText(typeof value === "string" ? value : JSON.stringify(value));
       } else {
-        throw new Error("QHTMLDomTree does not expose fromJSON/fromJSONText");
+        console.log("QHTMLDomTree does not expose fromJSON/fromJSONText");
       }
       if (!ok) {
-        throw new Error("QHTML fromJSON failed: invalid JSON payload");
+        console.log("QHTML fromJSON failed: invalid JSON payload");
       }
       return this.__qhtmlSetTree(tree);
     }
@@ -10529,7 +10530,7 @@
       const parent = this.parentElement;
 
       if (!parent) {
-        throw new Error("<particle-emitter> must be placed inside a parent element.");
+        console.log("<particle-emitter> must be placed inside a parent element.");
       }
 
       const parentStyle = getComputedStyle(parent);

@@ -873,7 +873,7 @@
     insertQHTMLSource(index, source) {
       const Parser = globalScope.QHTMLParser || (globalScope.QHTMLTypes && globalScope.QHTMLTypes.QHTMLParser);
       if (typeof Parser !== "function") {
-        throw new Error("QHTMLParser is not loaded; include js/qhtml_parser.js before calling insertQHTMLSource().");
+        console.log("QHTMLParser is not loaded; include js/qhtml_parser.js before calling insertQHTMLSource().");
       }
       const parser = new Parser();
       const parsedTree = parser.parseTree(String(source || ""), this);

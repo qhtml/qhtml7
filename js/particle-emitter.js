@@ -467,7 +467,7 @@
       const parent = this.parentElement;
 
       if (!parent) {
-        throw new Error("<particle-emitter> must be placed inside a parent element.");
+        console.log("<particle-emitter> must be placed inside a parent element.");
       }
 
       const parentStyle = getComputedStyle(parent);

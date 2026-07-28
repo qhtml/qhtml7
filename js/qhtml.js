@@ -1,10 +1,13 @@
+
+
+
 (function () {
   "use strict";
-
+try {
   const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
   const currentScript = document.currentScript;
   if (!currentScript || !currentScript.src) {
-    throw new Error("qhtml.js must be loaded from a script URL");
+    console.log("qhtml.js must be loaded from a script URL");
   }
 
   const base = new URL(".", currentScript.src).href;
@@ -143,7 +146,7 @@
           innerResolve(script);
         };
         script.onerror = function onQHTMLScriptError() {
-          innerReject(new Error("Failed to load " + src));
+          innerReject(console.log("Failed to load " + src));
         };
       });
       script.__qhtmlLoadPromise.then(resolve, reject);
@@ -223,4 +226,5 @@
   } else {
     scheduleStart();
   }
+} catch (err) { console.log("QHTML Error:",err);}
 })();

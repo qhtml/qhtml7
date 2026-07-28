@@ -3,7 +3,7 @@
 
   const QHTMLTypes = globalScope.QHTMLTypes;
   if (!QHTMLTypes) {
-    throw new Error("qhtml_parser.js must be loaded after qhtml_types.js");
+    console.log("qhtml_parser.js must be loaded after qhtml_types.js");
   }
 
   const DEFAULT_KEYWORDS = Object.freeze([
