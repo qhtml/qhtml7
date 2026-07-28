@@ -1,5 +1,5 @@
 (function (globalScope) {
-  const QHTML_VERSION = "7.4.2";
+  const QHTML_VERSION = "7.4.3";
   globalScope.QHTML_VERSION = QHTML_VERSION;
 })(typeof globalThis !== "undefined" ? globalThis : window);
 
