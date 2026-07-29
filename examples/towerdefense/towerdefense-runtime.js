@@ -27,6 +27,8 @@
       ".td-tile.blocked{border-color:darkRed;}",
       ".td-gun{position:absolute;box-sizing:border-box;border:2px solid #f9f0f0;background:#000;z-index:120;}",
       ".td-gun.selected{outline:3px solid #fff;}",
+      ".td-gun-particle-field{position:absolute;display:block;pointer-events:none;overflow:hidden;z-index:260;}",
+      ".td-gun-particle-field particle-emitter{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;}",
       ".td-entity{position:absolute;box-sizing:border-box;z-index:105;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
       ".td-projectile{position:absolute;z-index:300;pointer-events:none;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
       ".td-projectile-layer{position:absolute;inset:0;display:block;z-index:300;pointer-events:none;overflow:visible;}",
@@ -41,8 +43,15 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   }
 
-  function clamp(value, minimum, maximum) {
-    return Math.max(minimum, Math.min(maximum, value));
+  function cssValue(value) {
+    return value == null ? "" : String(value);
+  }
+
+  function setStyleValue(element, property, value) {
+    var next = cssValue(value);
+    if (element.style[property] !== next) {
+      element.style[property] = next;
+    }
   }
 
   function applyBox(element, model) {
@@ -50,17 +59,16 @@
     element.qhtmlObject = model;
     element.qhtmlObjectUuid = model.uuid;
     element.setAttribute("data-qhtml-object", model.uuid);
-    element.style.left = model.x;
-    element.style.top = model.y;
-    element.style.width = model.width;
-    element.style.height = model.height;
+    setStyleValue(element, "left", model.x);
+    setStyleValue(element, "top", model.y);
+    setStyleValue(element, "width", model.width);
+    setStyleValue(element, "height", model.height);
   }
 
   function setImage(element, src, alt) {
-    var image = element.firstElementChild;
+    var image = element.querySelector(":scope > img.td-fill");
 
-    if (!image || image.tagName !== "IMG") {
-      element.textContent = "";
+    if (!image) {
       image = document.createElement("img");
       image.className = "td-fill";
       element.appendChild(image);
@@ -131,206 +139,89 @@
     })
   ]);
 
-  class ParticleEffectController {
-    constructor(host, projectile, registry) {
-      this.host = host;
-      this.projectile = projectile;
-      this.registry = registry;
-      this.profile = registry.resolve(projectile.type);
-      this.effect = null;
-      this.emitters = [];
-      this._configureAttempts = 0;
-      this._destroyed = false;
-      this._impacted = false;
-      this._startTimers = [];
+  function gunParticleConfig(type) {
+    var profile = particleEffects.resolve(type);
+    var fallback = profile && profile.fallback ? profile.fallback : {};
+
+    return Object.assign({
+      src: "assets/particles/particleA.png",
+      color: "#ffc020",
+      colorOpacity: "0.85",
+      emitRate: "0",
+      interval: "12",
+      maxActiveParticles: "72",
+      maxActiveParticlesVariation: "8",
+      lifetime: "260",
+      lifetimeVariation: "80",
+      xVariation: "0",
+      yVariation: "0",
+      xVelocity: "2.0",
+      yVelocity: "0",
+      xVelocityVariation: "0.35",
+      yVelocityVariation: "0.35",
+      xAcceleration: "0",
+      yAcceleration: "0.002",
+      xAccelerationVariation: "0.002",
+      yAccelerationVariation: "0.004",
+      startSize: "18",
+      endSize: "3",
+      startSizeVariation: "8",
+      endSizeVariation: "2",
+      startOpacity: "0.9",
+      endOpacity: "0.02",
+      startOpacityVariation: "0.12",
+      endOpacityVariation: "0.02"
+    }, fallback, {
+      running: "false"
+    });
+  }
+
+  function configureGunParticleEmitter(emitter, gun, range) {
+    var config = gunParticleConfig(gun.type);
+    Object.keys(config).forEach(function (key) {
+      emitter.setAttribute(key, String(config[key]));
+    });
+
+    emitter.setAttribute("x", String(range));
+    emitter.setAttribute("y", String(range));
+    emitter.setAttribute("width", "1");
+    emitter.setAttribute("height", "1");
+    emitter.setAttribute("xVariation", "0");
+    emitter.setAttribute("yVariation", "0");
+    emitter.setAttribute("running", "false");
+  }
+
+  function ensureGunParticleEffects(board) {
+    if (!board.__tdGunParticleEffects) {
+      board.__tdGunParticleEffects = board.gunParticleEffects || {};
+      board.gunParticleEffects = board.__tdGunParticleEffects;
+      if (typeof board.setContextProperty === "function") {
+        board.setContextProperty("gunParticleEffects", board.__tdGunParticleEffects);
+      }
+    }
+    return board.__tdGunParticleEffects;
+  }
+
+  function scheduleBoardStart(board) {
+    if (board.__tdStartScheduled === true) {
+      return;
     }
 
-    mount() {
-      this.effect = document.createElement(this.profile.tagName);
-      this.effect.classList.add("td-particle-effect");
-      this.host.replaceChildren(this.effect);
-      this._configureWhenReady();
-    }
-
-    _configureWhenReady() {
-      if (this._destroyed || !this.effect) {
+    board.__tdStartScheduled = true;
+    setTimeout(function () {
+      board.__tdStartScheduled = false;
+      if (!board.game) {
+        var game = board.closest("td-game");
+        if (game) {
+          board.game = game;
+        }
+      }
+      if (!board.game) {
+        scheduleBoardStart(board);
         return;
       }
-
-      this.emitters = Array.prototype.slice.call(this.effect.querySelectorAll("particle-emitter"));
-
-      if (this.emitters.length === 0 && this._configureAttempts < 12) {
-        this._configureAttempts += 1;
-        requestAnimationFrame(this._configureWhenReady.bind(this));
-        return;
-      }
-
-      if (this.emitters.length === 0) {
-        this.emitters = [this._createFallbackEmitter()];
-      }
-
-      this._configureEmitters();
-    }
-
-    _createFallbackEmitter() {
-      var emitter = document.createElement("particle-emitter");
-      var config = this.profile.fallback;
-
-      emitter.setAttribute("data-role", "travel");
-      Object.keys(config).forEach(function (key) {
-        emitter.setAttribute(key, String(config[key]));
-      });
-      emitter.setAttribute("startOpacity", "1");
-      emitter.setAttribute("endOpacity", "0");
-      emitter.setAttribute("running", "false");
-      this.effect.appendChild(emitter);
-      return emitter;
-    }
-
-    _boardSize() {
-      var boardSurface = this.host.parentElement;
-      var rect = boardSurface ? boardSurface.getBoundingClientRect() : null;
-      return {
-        width: Math.max(1, rect && rect.width ? rect.width : 1500),
-        height: Math.max(1, rect && rect.height ? rect.height : 1000)
-      };
-    }
-
-    _coordinates() {
-      var size = this._boardSize();
-      var startX = numericPixels(this.projectile.startX, 0);
-      var startY = numericPixels(this.projectile.startY, 0);
-      var targetX = numericPixels(this.projectile.targetX, startX);
-      var targetY = numericPixels(this.projectile.targetY, startY);
-
-      return {
-        startX: startX,
-        startY: startY,
-        targetX: targetX,
-        targetY: targetY,
-        path: [
-          clamp(startX / size.width, 0, 1),
-          clamp(startY / size.height, 0, 1),
-          clamp(targetX / size.width, 0, 1),
-          clamp(targetY / size.height, 0, 1)
-        ].join(" ")
-      };
-    }
-
-    _configureEmitters() {
-      var coordinates = this._coordinates();
-      var projectileDuration = Math.max(1, Number(this.projectile.duration) || 1);
-
-      this.emitters.forEach(function (emitter) {
-        var role = emitter.getAttribute("data-role") || "travel";
-        var startDelay = Math.max(0, Number(emitter.getAttribute("data-start-delay")) || 0);
-
-        emitter.setAttribute("running", "false");
-
-        if (role === "impact") {
-          emitter.setAttribute("x", String(coordinates.targetX));
-          emitter.setAttribute("y", String(coordinates.targetY));
-          return;
-        }
-
-        if (role === "origin") {
-          emitter.setAttribute("x", String(coordinates.startX));
-          emitter.setAttribute("y", String(coordinates.startY));
-        } else {
-          var movementDuration = Math.max(1, projectileDuration - startDelay);
-          emitter.setAttribute("delay", "0");
-          emitter.setAttribute("path", coordinates.path);
-          // particle-emitter divides duration across points. Two points require 2x duration.
-          emitter.setAttribute("duration", String(movementDuration * 2));
-          emitter.setAttribute("sleep", String(projectileDuration + 1000));
-        }
-
-        var startEmitter = function () {
-          if (this._destroyed || this._impacted) {
-            return;
-          }
-          emitter.setAttribute("running", "true");
-          if (typeof emitter.start === "function") {
-            emitter.start();
-          }
-        }.bind(this);
-
-        if (startDelay > 0) {
-          this._startTimers.push(setTimeout(startEmitter, startDelay));
-        } else {
-          startEmitter();
-        }
-      }, this);
-    }
-
-    impact() {
-      if (this._impacted) {
-        return this.impactLifetime();
-      }
-
-      this._impacted = true;
-      this._clearStartTimers();
-      var coordinates = this._coordinates();
-
-      this.emitters.forEach(function (emitter) {
-        var role = emitter.getAttribute("data-role") || "travel";
-
-        if (role === "impact") {
-          var burstCount = Math.max(1, Number(emitter.getAttribute("data-burst")) || 1);
-          emitter.setAttribute("x", String(coordinates.targetX));
-          emitter.setAttribute("y", String(coordinates.targetY));
-          if (typeof emitter.burst === "function") {
-            emitter.burst(coordinates.targetX, coordinates.targetY, burstCount);
-          }
-          return;
-        }
-
-        if (typeof emitter.stop === "function") {
-          emitter.stop();
-        } else {
-          emitter.setAttribute("running", "false");
-        }
-      });
-
-      return this.impactLifetime();
-    }
-
-    impactLifetime() {
-      var maximum = 180;
-
-      this.emitters.forEach(function (emitter) {
-        if ((emitter.getAttribute("data-role") || "travel") !== "impact") {
-          return;
-        }
-
-        var lifetime = Math.max(0, Number(emitter.getAttribute("lifetime")) || 0);
-        var variation = Math.max(0, Number(emitter.getAttribute("lifetimeVariation")) || 0);
-        maximum = Math.max(maximum, lifetime + variation + 80);
-      });
-
-      return maximum;
-    }
-
-    _clearStartTimers() {
-      this._startTimers.forEach(function (timer) {
-        clearTimeout(timer);
-      });
-      this._startTimers = [];
-    }
-
-    destroy() {
-      this._destroyed = true;
-      this._clearStartTimers();
-      this.emitters.forEach(function (emitter) {
-        if (typeof emitter.stop === "function") {
-          emitter.stop();
-        }
-        if (typeof emitter.clear === "function") {
-          emitter.clear();
-        }
-      });
-      this.emitters = [];
-    }
+      board.startGame();
+    }, 0);
   }
 
   class TDTileView extends HTMLElement {
@@ -365,6 +256,60 @@
       this.render();
     }
 
+    disconnectedCallback() {
+      if (this.__tdGunParticleEmitter && typeof this.__tdGunParticleEmitter.clear === "function") {
+        this.__tdGunParticleEmitter.clear();
+      }
+    }
+
+    ensureParticleField(gun) {
+      if (!this.__tdGunParticleField) {
+        this.__tdGunParticleField = document.createElement("div");
+        this.__tdGunParticleField.className = "td-gun-particle-field";
+        this.__tdGunParticleEmitter = document.createElement("particle-emitter");
+        this.__tdGunParticleEmitter.setAttribute("data-role", "tower-muzzle");
+        this.__tdGunParticleField.appendChild(this.__tdGunParticleEmitter);
+        this.appendChild(this.__tdGunParticleField);
+      }
+
+      var range = Math.max(1, Number(gun.range) || 1);
+      var width = numericPixels(gun.width, 50);
+      var height = numericPixels(gun.height, 50);
+      var left = (width * 0.5) - range;
+      var top = (height * 0.5) - range;
+
+      this.__tdGunParticleField.style.left = left + "px";
+      this.__tdGunParticleField.style.top = top + "px";
+      this.__tdGunParticleField.style.width = (range * 2) + "px";
+      this.__tdGunParticleField.style.height = (range * 2) + "px";
+      this.__tdGunParticleField.style.transformOrigin = "50% 50%";
+      this.__tdGunParticleField.style.transform = "rotate(" + gun.rotation + "deg)";
+      configureGunParticleEmitter(this.__tdGunParticleEmitter, gun, range);
+
+      if (!this.__tdGunParticleApi) {
+        this.__tdGunParticleApi = {
+          field: this.__tdGunParticleField,
+          emitter: this.__tdGunParticleEmitter,
+          range: range,
+          burst: function (count) {
+            var centerX = numericPixels(this.__tdGunParticleField.style.width, this.__tdGunParticleApi.range * 2) * 0.5;
+            var centerY = numericPixels(this.__tdGunParticleField.style.height, this.__tdGunParticleApi.range * 2) * 0.5;
+            return this.__tdGunParticleEmitter.burst(centerX, centerY, count);
+          }.bind(this)
+        };
+      }
+
+      this.__tdGunParticleApi.field = this.__tdGunParticleField;
+      this.__tdGunParticleApi.emitter = this.__tdGunParticleEmitter;
+      this.__tdGunParticleApi.range = range;
+
+      gun.particleField = this.__tdGunParticleField;
+      gun.particleEmitter = this.__tdGunParticleEmitter;
+      gun.particleEffect = this.__tdGunParticleApi;
+
+      ensureGunParticleEffects(this.__tdBoard)[gun.uuid] = this.__tdGunParticleApi;
+    }
+
     render() {
       var gun = this.__tdObject;
       if (!gun) return;
@@ -374,6 +319,7 @@
       var image = setImage(this, "assets/guns/" + gun.type + ".png", "gun");
       image.style.transform = "rotate(" + gun.rotation + "deg)";
       image.style.transitionDuration = "200ms";
+      this.ensureParticleField(gun);
       this.onclick = function () {
         this.__tdBoard.selectGun(gun.id);
       }.bind(this);
@@ -396,9 +342,9 @@
 
       applyBox(this, enemy);
       this.className = "td-entity";
-      this.style.opacity = enemy.opacity;
-      this.style.transform = "rotate(" + enemy.rotation + "deg)";
-      this.style.transitionDuration = enemy.speed + "ms";
+      setStyleValue(this, "opacity", enemy.opacity);
+      setStyleValue(this, "transform", "rotate(" + enemy.rotation + "deg)");
+      setStyleValue(this, "transitionDuration", enemy.speed + "ms");
       setImage(this, "assets/attackers/" + enemy.type + ".png", "enemy");
     }
   }
@@ -413,13 +359,6 @@
       this.render();
     }
 
-    disconnectedCallback() {
-      if (this.__tdParticleController) {
-        this.__tdParticleController.destroy();
-        this.__tdParticleController = null;
-      }
-    }
-
     render() {
       var projectile = this.__tdObject;
       if (!projectile) return;
@@ -428,26 +367,27 @@
       this.qhtmlObject = projectile;
       this.qhtmlObjectUuid = projectile.uuid;
       this.setAttribute("data-qhtml-object", projectile.uuid);
-      this.className = "td-projectile-layer";
+      this.className = "td-projectile";
+      setStyleValue(this, "width", projectile.width);
+      setStyleValue(this, "height", projectile.height);
+      setStyleValue(this, "opacity", projectile.opacity);
+      setStyleValue(this, "transform", "rotate(" + projectile.rotation + "deg)");
+      setImage(this, "assets/projectiles/" + projectile.type + ".png", "projectile");
 
       if (this.__tdProjectileId === projectile.id) {
         return;
       }
 
       this.__tdProjectileId = projectile.id;
-
-      if (this.__tdParticleController) {
-        this.__tdParticleController.destroy();
-      }
-
-      this.__tdParticleController = new ParticleEffectController(this, projectile, particleEffects);
-      this.__tdParticleController.mount();
-    }
-
-    impact() {
-      return this.__tdParticleController
-        ? this.__tdParticleController.impact()
-        : 180;
+      setStyleValue(this, "transitionDuration", "0ms");
+      setStyleValue(this, "left", projectile.startX);
+      setStyleValue(this, "top", projectile.startY);
+      this.offsetWidth;
+      setTimeout(function () {
+        setStyleValue(this, "transitionDuration", projectile.duration + "ms");
+        setStyleValue(this, "left", projectile.targetX);
+        setStyleValue(this, "top", projectile.targetY);
+      }.bind(this), 0);
     }
   }
 
@@ -478,45 +418,6 @@
     });
   }
 
-  function syncProjectileCollection(owner, board, list, map) {
-    var live = {};
-    list = list || [];
-
-    list.forEach(function (object) {
-      live[object.uuid] = true;
-      var element = map[object.uuid];
-
-      if (!element) {
-        element = document.createElement("td-projectile-view");
-        element.board = board;
-        map[object.uuid] = element;
-        owner.appendChild(element);
-      }
-
-      if (element.__tdRemoveTimer) {
-        clearTimeout(element.__tdRemoveTimer);
-        element.__tdRemoveTimer = 0;
-      }
-
-      element.board = board;
-      element.object = object;
-    });
-
-    Object.keys(map).forEach(function (uuid) {
-      var element = map[uuid];
-
-      if (live[uuid] || element.__tdRemoveTimer) {
-        return;
-      }
-
-      var removalDelay = typeof element.impact === "function" ? element.impact() : 180;
-      element.__tdRemoveTimer = setTimeout(function () {
-        element.remove();
-        delete map[uuid];
-      }, Math.max(120, Number(removalDelay) || 180));
-    });
-  }
-
   class TDBoardRenderer extends HTMLElement {
     connectedCallback() {
       ensureStyles();
@@ -530,6 +431,7 @@
       if (board) {
         board.boardRenderer = this;
         this.sync(board);
+        scheduleBoardStart(board);
       }
     }
 
@@ -538,11 +440,12 @@
       syncCollection(this, board, board.tilesList, this.renderedTiles, "td-tile-view");
       syncCollection(this, board, board.gunsList, this.renderedGuns, "td-gun-view");
       syncCollection(this, board, board.enemiesList, this.renderedEnemies, "td-enemy-view");
-      syncProjectileCollection(this, board, board.projectilesList, this.renderedProjectiles);
+      syncCollection(this, board, board.projectilesList, this.renderedProjectiles, "td-projectile-view");
       board.renderedTiles = this.renderedTiles;
       board.renderedGuns = this.renderedGuns;
       board.renderedEnemies = this.renderedEnemies;
       board.renderedProjectiles = this.renderedProjectiles;
+      ensureGunParticleEffects(board);
       runtime.syncStores(board);
     }
   }

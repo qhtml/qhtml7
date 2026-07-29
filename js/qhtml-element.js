@@ -8871,19 +8871,29 @@
     if (!rootElement || !tree) {
       return null;
     }
+    if (activeRegistry.__qhtmlRenderingTree === true || rootElement.__qhtmlRenderingTree === true) {
+      return rootElement;
+    }
 
     const targetUuid = qhtmlNodeUuid(targetNode);
     if (typeof activeRegistry.stopTimers === "function") {
       activeRegistry.stopTimers();
     }
 
-    rootElement.innerHTML = typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
-    bindComponentDomRuntime(rootElement, tree);
-    rootElement.qhtmlDomTree = tree;
-    rootElement.qhtmlDom = tree;
-    rootElement.qhtmlNode = tree;
-    rootElement.__qhtml7Mounted = true;
-    rootElement.setAttribute("ready", "1");
+    activeRegistry.__qhtmlRenderingTree = true;
+    rootElement.__qhtmlRenderingTree = true;
+    try {
+      rootElement.innerHTML = typeof tree.renderHtml === "function" ? tree.renderHtml() : "";
+      bindComponentDomRuntime(rootElement, tree);
+      rootElement.qhtmlDomTree = tree;
+      rootElement.qhtmlDom = tree;
+      rootElement.qhtmlNode = tree;
+      rootElement.__qhtml7Mounted = true;
+      rootElement.setAttribute("ready", "1");
+    } finally {
+      activeRegistry.__qhtmlRenderingTree = false;
+      rootElement.__qhtmlRenderingTree = false;
+    }
 
     const nextRegistry = rootElement.__qhtmlRegistry || rootElement.qhtmlComponentRegistry;
     const renderedTarget = targetNode === tree
@@ -9453,6 +9463,10 @@
       return;
     }
 
+    if (!registry.emittedReadyUuids) {
+      registry.emittedReadyUuids = new Set();
+    }
+
     const readyElements = [];
     const seen = new Set();
     const collect = (domElement) => {
@@ -9472,6 +9486,18 @@
 
     readyElements.forEach((domElement) => {
       const qhtmlNode = domElement.qhtmlNode || null;
+      const readyUuid = qhtmlNode ? qhtmlNodeUuid(qhtmlNode) : "";
+      if (readyUuid) {
+        if (registry.emittedReadyUuids.has(readyUuid)) {
+          return;
+        }
+        registry.emittedReadyUuids.add(readyUuid);
+      } else if (domElement.__qhtmlReadyEmitted === true) {
+        return;
+      } else {
+        domElement.__qhtmlReadyEmitted = true;
+      }
+
       const storedReadySignal = domElement.__qhtmlEventSignals && domElement.__qhtmlEventSignals.ready;
       const storedReadyConnections = storedReadySignal && typeof storedReadySignal.connections === "function"
         ? storedReadySignal.connections().length
@@ -9515,6 +9541,7 @@
       return;
     }
 
+    const previousRegistry = rootElement.__qhtmlRegistry || rootElement.qhtmlComponentRegistry || null;
     const nodesByUuid = indexQHTMLNodes(tree);
     const registry = {
       nodesByUuid,
@@ -9542,6 +9569,9 @@
       scriptActionsByUuid: new Map(),
       paintersByName: new Map(),
       paintersByUuid: new Map(),
+      emittedReadyUuids: previousRegistry && previousRegistry.emittedReadyUuids
+        ? previousRegistry.emittedReadyUuids
+        : new Set(),
       forLoopsByUuid: new Map(),
       styleTargetsByName: new Map(),
       themeScopesByName: new Map(),
@@ -9937,7 +9967,14 @@
 
     set innerHTML(value) {
       if (ELEMENT_INNER_HTML && ELEMENT_INNER_HTML.set) {
-        ELEMENT_INNER_HTML.set.call(this, value);
+        const next = String(value == null ? "" : value);
+        const current = ELEMENT_INNER_HTML.get
+          ? ELEMENT_INNER_HTML.get.call(this)
+          : "";
+        if (current === next) {
+          return;
+        }
+        ELEMENT_INNER_HTML.set.call(this, next);
       }
     }
 

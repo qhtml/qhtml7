@@ -37,6 +37,7 @@ q-component td-board {
   q-property initialized: false
   q-property boardRevision: 0
   q-property inRangeCache: {}
+  q-property gunParticleEffects: {}
   q-signal signal_update_xy_translation(x, y)
 
   td-property-sheet props { }
@@ -46,13 +47,6 @@ q-component td-board {
     running: false
     repeat: true
     ontimeout() { this.gameTick(); }
-  }
-
-  onready {
-    var board = this;
-    document.addEventListener("QHTMLContentLoaded", function() {
-      board.startGame();
-    }, { once: true });
   }
 
   function index(row, col) {
@@ -75,6 +69,9 @@ q-component td-board {
   }
 
   function startGame() {
+    if (this.initialized === true) {
+      return;
+    }
     this.initBoard();
     this.loopTimer.start();
   }
@@ -625,10 +622,21 @@ q-component td-board {
           var enemyCenter = this.center(target);
           gun.rotation = this.angleTo(gunCenter.x, gunCenter.y, enemyCenter.x, enemyCenter.y);
           this.createProjectile(gun, target, now);
+          gunParticleEffects[gun.uuid].burst(this.gunBurstCount(gun));
           gun.nextAllowedFire = now + Number(gun.reload);
         }
       }
     }
+  }
+
+  function gunBurstCount(gun) {
+    if (Number(gun.type) === 2) {
+      return 4;
+    }
+    if (Number(gun.type) === 3) {
+      return 16;
+    }
+    return 10;
   }
 
   function findTarget(gun) {
