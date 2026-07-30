@@ -29,6 +29,8 @@
       ".td-gun.selected{outline:3px solid #fff;}",
       ".td-gun-particle-field{position:absolute;display:block;pointer-events:none;overflow:hidden;z-index:260;}",
       ".td-gun-particle-field particle-emitter{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;}",
+      ".td-enemy-hitbox{position:absolute;display:block;pointer-events:none;overflow:visible;z-index:255;}",
+      ".td-enemy-hitbox particle-emitter{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;}",
       ".td-entity{position:absolute;box-sizing:border-box;z-index:105;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
       ".td-projectile{position:absolute;z-index:300;pointer-events:none;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
       ".td-projectile-layer{position:absolute;inset:0;display:block;z-index:300;pointer-events:none;overflow:visible;}",
@@ -52,6 +54,12 @@
     if (element.style[property] !== next) {
       element.style[property] = next;
     }
+  }
+
+  function setEmitterAttributes(emitter, attributes) {
+    Object.keys(attributes).forEach(function (name) {
+      emitter.setAttribute(name, String(attributes[name]));
+    });
   }
 
   function applyBox(element, model) {
@@ -200,6 +208,217 @@
       }
     }
     return board.__tdGunParticleEffects;
+  }
+
+  function enemyParticleLayer(board) {
+    var renderer = board && board.boardRenderer;
+    if (!renderer) {
+      return null;
+    }
+
+    if (!renderer.__tdEnemyParticleLayer) {
+      renderer.__tdEnemyParticleLayer = document.createElement("div");
+      renderer.__tdEnemyParticleLayer.className = "td-particle-effect";
+      renderer.appendChild(renderer.__tdEnemyParticleLayer);
+    }
+
+    return renderer.__tdEnemyParticleLayer;
+  }
+
+  function createEnemyEffectEmitter(src, config) {
+    var emitter = document.createElement("particle-emitter");
+    setEmitterAttributes(emitter, Object.assign({
+      src: src,
+      running: "false",
+      emitRate: "0",
+      interval: "12",
+      width: "1",
+      height: "1",
+      xVariation: "0",
+      yVariation: "0",
+      xVelocity: "0",
+      yVelocity: "0",
+      xVelocityVariation: "0",
+      yVelocityVariation: "0",
+      xAcceleration: "0",
+      yAcceleration: "0",
+      xAccelerationVariation: "0",
+      yAccelerationVariation: "0",
+      zIndex: "1"
+    }, config));
+    return emitter;
+  }
+
+  function enemyParticleBounds(enemy) {
+    var width = numericPixels(enemy.width, 50);
+    var height = numericPixels(enemy.height, 50);
+    var rotationSafeSize = Math.ceil(Math.sqrt((width * width) + (height * height))) + 10;
+    return {
+      width: rotationSafeSize * 2,
+      height: rotationSafeSize * 3
+    };
+  }
+
+  function enemyParticleCenter(effect) {
+    return {
+      x: numericPixels(effect.element.style.width, effect.width) * 0.5,
+      y: numericPixels(effect.element.style.height, effect.height) * 0.5
+    };
+  }
+
+  function updateEnemyParticlePosition(effect, enemy) {
+    var width = numericPixels(enemy.width, 50);
+    var height = numericPixels(enemy.height, 50);
+    var centerX = numericPixels(enemy.x, 0) + (width * 0.5);
+    var centerY = numericPixels(enemy.y, 0) + (height * 0.5) + (height * 0.33);
+    var bounds = enemyParticleBounds(enemy);
+    effect.width = bounds.width;
+    effect.height = bounds.height;
+    setStyleValue(effect.element, "left", (centerX - (effect.width * 0.5)) + "px");
+    setStyleValue(effect.element, "top", (centerY - (effect.height * 0.5)) + "px");
+    setStyleValue(effect.element, "width", effect.width + "px");
+    setStyleValue(effect.element, "height", effect.height + "px");
+    effect.emitters.forEach(function (emitter) {
+      emitter.setAttribute("x", String(effect.width * 0.5));
+      emitter.setAttribute("y", String(effect.height * 0.5));
+    });
+  }
+
+  function createEnemyParticleDiv(layer) {
+    var element = document.createElement("div");
+
+    var rocket = createEnemyEffectEmitter("assets/particles/rocketbacklit.png", {
+      color: "#f97316",
+      colorOpacity: "0.38",
+      maxActiveParticles: "26",
+      maxActiveParticlesVariation: "5",
+      lifetime: "720",
+      lifetimeVariation: "120",
+      startSize: "20",
+      endSize: "44",
+      startSizeVariation: "6",
+      endSizeVariation: "18",
+      startOpacity: "0.51",
+      endOpacity: "0.01",
+      startOpacityVariation: "0.12",
+      endOpacityVariation: "0.01"
+    });
+    var smoke = createEnemyEffectEmitter("assets/particles/barrelpoof.png", {
+      emitterMask: "assets/particles/barrelpoof.png",
+      color: "#333333",
+      colorOpacity: "0.5",
+      maxActiveParticles: "34",
+      maxActiveParticlesVariation: "6",
+      lifetime: "1000",
+      lifetimeVariation: "350",
+      width: "6",
+      height: "6",
+      xVariation: "3",
+      yVariation: "3",
+      xVelocity: "0.08",
+      yVelocity: "-0.55",
+      xVelocityVariation: "0.22",
+      yVelocityVariation: "0.32",
+      yAcceleration: "-0.0006",
+      startSize: "10",
+      endSize: "30",
+      startSizeVariation: "8",
+      endSizeVariation: "28",
+      startOpacity: "0.48",
+      endOpacity: "0.01",
+      startOpacityVariation: "0.12",
+      endOpacityVariation: "0.02"
+    });
+    var effect = {
+      element: element,
+      emitters: [rocket, smoke],
+      ember: rocket,
+      rocket: rocket,
+      smoke: smoke,
+      width: 1,
+      height: 1,
+      timer: 0
+    };
+
+    element.className = "td-enemy-hitbox";
+    element.style.display = "none";
+
+    element.appendChild(rocket);
+    element.appendChild(smoke);
+    layer.appendChild(element);
+    return effect;
+  }
+
+  function createEnemyParticleManager(board) {
+    return {
+      board: board,
+      activeDivs: [],
+      inactiveDivs: [],
+      ensurePoolSize(count) {
+        var layer = enemyParticleLayer(this.board);
+        if (!layer) {
+          return;
+        }
+        while ((this.activeDivs.length + this.inactiveDivs.length) < count) {
+          this.inactiveDivs.push(createEnemyParticleDiv(layer));
+        }
+      },
+      acquire() {
+        var layer = enemyParticleLayer(this.board);
+        if (!layer) {
+          return null;
+        }
+        if (this.inactiveDivs.length === 0) {
+          this.inactiveDivs.push(createEnemyParticleDiv(layer));
+        }
+        var effect = this.inactiveDivs.pop();
+        this.activeDivs.push(effect);
+        if (effect.timer) {
+          clearTimeout(effect.timer);
+          effect.timer = 0;
+        }
+        effect.element.style.display = "block";
+        return effect;
+      },
+      release(effect) {
+        var index = this.activeDivs.indexOf(effect);
+        if (index >= 0) {
+          this.activeDivs.splice(index, 1);
+        }
+        effect.element.style.display = "none";
+        this.inactiveDivs.push(effect);
+      },
+      enemyKilled(enemy) {
+        var effect = this.acquire();
+        if (!effect) {
+          return;
+        }
+        updateEnemyParticlePosition(effect, enemy);
+        var center = enemyParticleCenter(effect);
+        effect.rocket.burst(center.x, center.y, 14);
+        effect.smoke.burst(center.x, center.y, 22);
+        effect.timer = setTimeout(function () {
+          this.release(effect);
+        }.bind(this), 2300);
+      },
+      enemyExited() {},
+      syncPool() {
+        var guns = this.board.gunsList || [];
+        this.ensurePoolSize(Math.max(4, guns.length + 2));
+      }
+    };
+  }
+
+  function ensureEnemyParticleManager(board) {
+    if (!board.__tdEnemyParticleManager) {
+      board.__tdEnemyParticleManager = createEnemyParticleManager(board);
+      board.enemyParticleManager = board.__tdEnemyParticleManager;
+      if (typeof board.setContextProperty === "function") {
+        board.setContextProperty("enemyParticleManager", board.__tdEnemyParticleManager);
+      }
+    }
+    board.__tdEnemyParticleManager.syncPool();
+    return board.__tdEnemyParticleManager;
   }
 
   function scheduleBoardStart(board) {
@@ -446,6 +665,7 @@
       board.renderedEnemies = this.renderedEnemies;
       board.renderedProjectiles = this.renderedProjectiles;
       ensureGunParticleEffects(board);
+      ensureEnemyParticleManager(board);
       runtime.syncStores(board);
     }
   }
@@ -554,6 +774,14 @@
     Array.prototype.forEach.call(game.querySelectorAll("td-gun-store,td-upgrade-store"), function (store) {
       store.sync(board);
     });
+  };
+
+  runtime.enemyKilled = function (board, enemy) {
+    ensureEnemyParticleManager(board).enemyKilled(enemy);
+  };
+
+  runtime.enemyExited = function (board, enemy) {
+    ensureEnemyParticleManager(board).enemyExited(enemy);
   };
 
   if (!customElements.get("td-board-renderer")) customElements.define("td-board-renderer", TDBoardRenderer);

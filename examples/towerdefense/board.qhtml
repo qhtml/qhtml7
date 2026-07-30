@@ -38,6 +38,7 @@ q-component td-board {
   q-property boardRevision: 0
   q-property inRangeCache: {}
   q-property gunParticleEffects: {}
+  q-property enemyParticleManager: null
   q-signal signal_update_xy_translation(x, y)
 
   td-property-sheet props { }
@@ -569,6 +570,7 @@ q-component td-board {
       if (now >= enemy.nextMoveAt) {
         var nextIndex = Number(enemy.pathIndex) + 1;
         if (nextIndex >= enemy.path.length) {
+          enemyParticleManager.enemyExited(enemy);
           delete this.enemies[keys[i]];
         } else {
           var next = enemy.path[nextIndex];
@@ -710,6 +712,7 @@ q-component td-board {
           enemy.health -= Number(projectile.splashDamage);
         }
         if (enemy.health <= 0) {
+          enemyParticleManager.enemyKilled(enemy);
           this.game.awardDefenders(Number(this.game.level) * 2);
           delete this.enemies[keys[i]];
         }
