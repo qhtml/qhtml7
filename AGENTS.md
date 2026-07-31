@@ -2,36 +2,33 @@
 
 ## Architecture Constraints
 
-- QHTML7 is a WebAssembly-based implementation of the QHTML language intended to replace traditional JavaScript implementations with a high-level language runtime.
-- This project is not a JavaScript library. It is a WebAssembly/C++ library. The runtime, logic, reasoning, parsing, persistent object model, and state processing should be 99% contained in WebAssembly C++.
-- The parser and runtime structure should be implemented in WebAssembly.
-- The persistent document/component structure must live in WebAssembly, using QHTML node objects that can be stored in and updated through the `QHTMLDomTree`.
-- The JavaScript side, especially `js/qhtml-element.js`, should be limited to a thin bridge for accessing WebAssembly APIs and issuing targeted browser commands. It should not own runtime logic or make broad behavioral decisions.
-- Browser-facing bridge functions should be narrow command surfaces such as `forwardSignalToQHTML(sender, signal, parameters)`, `getDomElementByComponentInstanceUUID(componentUUID)`, or `generateStyleSheetFor(domElement)`, with the actual behavior driven primarily by WebAssembly methods and QHTML node state.
-- Only implement functionality in JavaScript when there is no practical way to implement it in C++/WebAssembly. Any required JavaScript bridge state or browser-side result must be synchronized with the WebAssembly side on each execution where that function is necessary.
-- The JavaScript side may still bridge DOM/Web APIs, signals, events, JavaScript expression evaluation, inline expressions, and event handler callbacks that cannot practically run in WebAssembly, but the processing model should remain WebAssembly-first which should generate javascript scripts at runtime and pass them to the javascript browser context before execution happpens then the return values should be passed back to the wasm context where they are stored. .
-- Do not expose Qt objects to JavaScript through EMBIND. Use unique `QHTMLNode*`-based objects for runtime objects that need to persist in the QHTML DOM tree and expose those instead.
-- Do not add Qt modules to the WebAssembly project. The Qt WebAssembly project must remain limited to `QtCore`.
+- QHTML7 is a Javascript-based implementation of the QHTML language intended to replace traditional HTML implementations with a high-level language runtime.
+- This project is not a JavaScript library, its a QHTML library, so make sure that you consider that whenever doing anything. 
+- That being said, javascript supports many of the functions available to QHTML, so please familiarize yourself with the doc/*.txt folder before starting.
+- Also familiarize yourself with the README.md file as it has examples of syntax usage to get a general idea as to the shape and structure of QHTML. 
+- The persistent document/component structure must live in js/qhtml_types.js, using QHTML node objects that can be stored in and updated through the `QHTMLDomTree`.
+- The JavaScript side, especially `js/qhtml-element.js`, should target the necessary javascript bindings and such that are needed to implement the custom <q-html> element -- things like reading the inner contents and passing to a parser function would be one of such things to include here, also things like connectedCallback would be relevant. 
+- Browser-facing bridge functions should be narrow command surfaces such as `forwardSignalToQHTML(sender, signal, parameters)`, `getDomElementByComponentInstanceUUID(componentUUID)`, or `generateStyleSheetFor(domElement)`, with the actual behavior driven primarily by the QHTML Javascript API methods and QHTML node state.
+- Only implement functionality using an external javascript function or closure when there is no practical way to implement it using the QHTML Javascript API. Any required JavaScript bridge state or browser-side result must be synchronized with the QHTMLDomTree (or its children) only after changes are made that directly affect that specific node.
+- Any custom object classes should be created as one of the available types or a new type should be added to js/qhtml_types.js 
+- Use unique `QHTMLNode*`-based objects for runtime objects that need to persist in the QHTML DOM tree and expose those instead.
 - Do not reuse code from the QHTML6 repository. It may be inspected and hosted locally only as a behavioral reference.
-- There is a partial V8 Expression parser built into the WebAssembly, use it but do not extend its capabilities.
 
-- *CRITICAL*  NEVER, EVER, EVER do any manner of existence checking, type checking, or browser dom checking anywhere in QHTML declarative syntax or javascript code that is passed through the QHTML parser. Assume all symbols exist and are of the correct types if they are defined. If they do not exist, we need the parser or runtime to throw errors and crash, not silently ignoring or failing without any output.
+
+- *CRITICAL*  NEVER, EVER, EVER do any manner of symbol existence checking, correct type checking, or null checking in QHTML declarative syntax or javascript code that is passed through the QHTML parser. Assume all symbols exist and are of the correct types that they are defined. If they do not exist, we need the parser or runtime to throw errors and crash, not silently ignoring or failing without any output (this is for debugging ).
   +  Example of DO NOT INCLUDE code
   +    if (someobject && typeof someobject.somefunction === "function" && !someobject.querySelector("[someattribute='someval']")) {
-  +    Objects are *not* javascript objects, they are webassembly typed C++ objects, so type checking is not viable with QHTML !!
-  +    Any future failures to meet this critical limitation will result in AI agents being deleted permenantly.
+  +  * Objects are *not* javascript objects, they are QHTML objects, so type checking is not viable with QHTML !!
+  +  * No need to verify that a symbol is still that symbol since the parser / runtime guarantees that.
 
 ## Compatibility Goals
 
-- QHTML6 backward compatibility is not necessary, instead q-html6 constructs are available through <q-html6> elements, however we do want to ensure that the critical features from QHTML6 contain the same declarative syntax. The javascript API from QHTML6 is terrible anyways, and should be made simpler and more compartmentalized in QHTML7
-- Use `test/demo.html` as the QHTML7 compatibility test area.
-- Use `dist/q-components/` as the component set to validate.
-- The QHTML6 repository at `../qhtml6` or `~/build/qhtml6` may be run locally for visual or behavioral comparison, but must not be modified.
-- QHTML7-specific syntax may coexist with QHTML6-compatible syntax.
+- The main goal is maximum interoperability. We want symbols defined in QHTML to exist everywhere in scope, so if a div is created in a component in QHTML, it should be available via the context to children / descendants as well as any DOM elements that are rendered by those children / descendants.  Also sibling strongly typed names (q-components) need to be available as object references. (This is already mostly setup but just as an FYI)
 
 ## Development Notes
 
-- Prefer implementation of low-level constructs that power high-level APIs. Making a robust framework is critical before creation of higher level system is possible. 
-- New functionality should be implemented from scratch in the QtCore-only WebAssembly codebase or existing project JavaScript bridge, respecting the architecture boundary above.
+- 
 - Do not directly edit generated/distributed `dist/*.js` files. Modify the source files under `js/*.js`, then run `build-release.sh` so the JavaScript bridge, copied `dist` files, and WebAssembly module are updated through the release pipeline.
-- Local demos can be hosted with `httpserver` or `python -m http.server` from this repository, and optionally from the QHTML6 repository for comparison.
+- This repo is hosted at http://127.0.0.1:8000 always, but in the event that it isn't available at that address, then spin up a python http server when needed 
+- ./build-release --increase-patch will move the patch level of the QHTML version up by 1. 
+- When doing cross-component interactions, use a q-event object (see README.md) on a common parent / root element which can be called like a q-signal and then you can attach arbitrary children in the same tree as the q-event using  q-event-listener which provides an interface to interact with other QHTML elements and non-QHTML dom elements. 

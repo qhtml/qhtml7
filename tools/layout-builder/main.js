@@ -422,6 +422,7 @@
   let menuFrozen = false;
   let outlineCollapsed = false;
   const scopedImports = [];
+  const scopedDefinitions = [];
   const collapsedOutlineIds = new Set();
 
   const DEFAULT_QHTML = 'div { padding: "18px"; text { Edit this QHTML content. } }';
@@ -820,12 +821,34 @@
     scopedImports.splice(0, scopedImports.length);
   }
 
+  function addScopedDefinition(source) {
+    const value = String(source || "").trim();
+    if (value && !scopedDefinitions.includes(value)) {
+      scopedDefinitions.push(value);
+    }
+  }
+
+  function clearScopedDefinitions() {
+    scopedDefinitions.splice(0, scopedDefinitions.length);
+  }
+
   function sourceWithScopedImports(source) {
     const body = String(source || "");
-    if (!scopedImports.length) {
+    const header = [];
+    if (scopedImports.length) {
+      scopedImports.forEach((path) => {
+        header.push("q-import { " + path + " }");
+      });
+    }
+    if (scopedDefinitions.length) {
+      scopedDefinitions.forEach((definition) => {
+        header.push(definition);
+      });
+    }
+    if (!header.length) {
       return body;
     }
-    return scopedImports.map((path) => "q-import { " + path + " }").join("\n") + "\n\n" + body;
+    return header.join("\n\n") + "\n\n" + body;
   }
 
   function qhtmlModule() {
@@ -973,6 +996,71 @@
       imports: imports,
       source: output.trim()
     };
+  }
+
+  function splitTopLevelComponentDefinitions(source) {
+    const text = String(source || "");
+    const definitions = [];
+    let output = "";
+    let cursor = 0;
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    const componentRe = /\bq-component\b[^{]*\{/y;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const ch = text[index];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+        continue;
+      }
+      if (ch === "}") {
+        depth = Math.max(0, depth - 1);
+        continue;
+      }
+      if (depth !== 0) {
+        continue;
+      }
+      componentRe.lastIndex = index;
+      const match = componentRe.exec(text);
+      if (!match) {
+        continue;
+      }
+      const open = componentRe.lastIndex - 1;
+      const close = findMatchingBrace(text, open);
+      if (close < 0) {
+        continue;
+      }
+      output += text.slice(cursor, index);
+      definitions.push(text.slice(index, close + 1).trim());
+      cursor = close + 1;
+      index = close;
+    }
+
+    output += text.slice(cursor);
+    return {
+      definitions: definitions,
+      source: output.trim()
+    };
+  }
+
+  function clearScopedSource() {
+    clearScopedImports();
+    clearScopedDefinitions();
   }
 
   function qhtmlAssignmentValue(node, name) {
@@ -1665,6 +1753,9 @@
 
     if (meta && Array.isArray(meta.scopeImports)) {
       meta.scopeImports.forEach(addScopedImport);
+    }
+    if (meta && Array.isArray(meta.scopeDefinitions)) {
+      meta.scopeDefinitions.forEach(addScopedDefinition);
     }
 
     if (target.type === "q-row") {
@@ -2971,7 +3062,7 @@
   function openFile(file) {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
-      clearScopedImports();
+      clearScopedSource();
       const source = normalizeQHTMLThroughDomTree(String(reader.result || ""));
       const parsed = parseLayoutSource(source);
       root = wrapAsBuilderRoot(parsed || buildDefaultUserTree());
@@ -3373,7 +3464,7 @@
 
   function bindToolbar() {
     document.getElementById("lbNew").addEventListener("click", () => {
-      clearScopedImports();
+      clearScopedSource();
       root = buildDefaultTree();
       activeId = firstUserRoot() ? firstUserRoot().id : root.id;
       renderPreview();
@@ -3464,7 +3555,9 @@
     const normalized = normalizeQHTMLThroughDomTree(source);
     const split = splitTopLevelImports(normalized);
     split.imports.forEach(addScopedImport);
-    const layoutSource = split.source;
+    const definitionSplit = splitTopLevelComponentDefinitions(split.source);
+    definitionSplit.definitions.forEach(addScopedDefinition);
+    const layoutSource = definitionSplit.source;
     const cleaned = stripComments(layoutSource);
     const matches = topLevelLayoutMatches(cleaned);
     if (!matches.length) {

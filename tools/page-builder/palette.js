@@ -10,6 +10,8 @@
     topLevelCanvasItems: Object.create(null),
     slotPlacements: Object.create(null),
     pendingSlotMigrations: Object.create(null),
+    customComponents: Object.create(null),
+    newComponentDialog: null,
     pointerDrag: null
   };
 
@@ -125,6 +127,459 @@
     });
   }
 
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function validComponentName(value) {
+    return /^[A-Za-z_][A-Za-z0-9_\/-]*$/.test(String(value || "").trim());
+  }
+
+  function validReferenceName(value) {
+    return /^[A-Za-z_][A-Za-z0-9_\/-]*$/.test(String(value || "").trim());
+  }
+
+  function splitInlineList(value) {
+    return String(value || "").split(/[\n,]+/).map(function (item) {
+      return item.trim();
+    }).filter(Boolean);
+  }
+
+  function listBoxValues(select) {
+    return select ? Array.prototype.map.call(select.options, function (option) {
+      return option.value;
+    }) : [];
+  }
+
+  function setListBoxValues(select, values) {
+    if (!select) return;
+    select.innerHTML = "";
+    values.forEach(function (value) {
+      var option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.appendChild(option);
+    });
+  }
+
+  function addListBoxValue(select, value) {
+    var item = String(value || "").trim();
+    if (!select || !item || listBoxValues(select).indexOf(item) !== -1) return false;
+    var option = document.createElement("option");
+    option.value = item;
+    option.textContent = item;
+    select.appendChild(option);
+    return true;
+  }
+
+  function removeSelectedListBoxValues(select) {
+    if (!select) return [];
+    var removed = [];
+    Array.prototype.slice.call(select.selectedOptions).forEach(function (option) {
+      removed.push(option.value);
+      option.remove();
+    });
+    return removed;
+  }
+
+  function signalSpec(value) {
+    var text = String(value || "").trim();
+    var match = /^([A-Za-z_][A-Za-z0-9_\/-]*)(?:\(([^)]*)\))?$/.exec(text);
+    if (!match) {
+      return null;
+    }
+    return {
+      name: match[1],
+      parameters: String(match[2] || "").trim()
+    };
+  }
+
+  function signalSpecText(spec) {
+    return spec.parameters ? spec.name + "(" + spec.parameters + ")" : spec.name;
+  }
+
+  function componentSignature(name, extendsList) {
+    var header = "q-component " + String(name || "").trim();
+    extendsList.forEach(function (item) {
+      header += " extends " + item;
+    });
+    return header;
+  }
+
+  function sourceForChild(child, indentLevel) {
+    var indent = typeof indentLevel === "number" ? indentLevel : 1;
+    if (!child) return "";
+    if (typeof child.toQHTML === "function") return child.toQHTML(indent);
+    if (typeof child.sourceQHTML === "function") return child.sourceQHTML(indent);
+    return "";
+  }
+
+  function childArray(node) {
+    if (node && typeof node.childList === "function") {
+      return Array.prototype.slice.call(node.childList());
+    }
+    return [];
+  }
+
+  function innerSourceFromDefinition(definition) {
+    var lines = [];
+    childArray(definition).forEach(function (child) {
+      if (qhtmlNodeType(child) === "QHTMLSignal") {
+        return;
+      }
+      var source = sourceForChild(child, 0);
+      if (source) lines.push(source);
+    });
+    return lines.join("\n");
+  }
+
+  function signalsFromDefinition(definition) {
+    return childArray(definition).filter(function (child) {
+      return qhtmlNodeType(child) === "QHTMLSignal";
+    }).map(function (signal) {
+      var parameters = typeof signal.parameters === "function" ? String(signal.parameters() || "") : "";
+      return signalSpecText({
+        name: qhtmlNodeName(signal),
+        parameters: parameters
+      });
+    }).filter(Boolean);
+  }
+
+  function parseComponentSource(source) {
+    var Parser = window.QHTMLParser;
+    if (!Parser) {
+      throw new Error("QHTMLParser is not available");
+    }
+    var parser = new Parser();
+    var tree = parser.parseTree(String(source || ""));
+    var definitions = tree.findChildrenByType("QHTMLComponentDefinition");
+    if (!definitions || !definitions.length) {
+      throw new Error("No q-component definition found");
+    }
+    return {
+      tree: tree,
+      definition: definitions[0]
+    };
+  }
+
+  function componentSourceFromDraft(draft) {
+    var source = componentSignature(draft.name, draft.extendsList) + " {\n";
+    draft.signals.forEach(function (value) {
+      var spec = signalSpec(value);
+      if (spec) {
+        source += "  q-signal " + spec.name + "(" + spec.parameters + ") { }\n";
+      }
+    });
+    var inner = String(draft.innerSource || "").trim();
+    if (inner) {
+      source += inner.split("\n").map(function (line) {
+        return "  " + line;
+      }).join("\n") + "\n";
+    }
+    source += "}";
+    return source;
+  }
+
+  function componentPaletteId(name) {
+    return "builder.custom." + String(name || "component").replace(/[^A-Za-z0-9_\/-]+/g, "-").toLowerCase();
+  }
+
+  function componentInstanceName(name) {
+    var clean = String(name || "component").split(/[\/-]+/).filter(Boolean).pop() || "component";
+    return clean.charAt(0).toLowerCase() + clean.slice(1) + "Instance";
+  }
+
+  function dialogControls(dialogElement) {
+    var dialog = dialogElement || byId("pbNewComponentDialog");
+    return {
+      dialog: dialog,
+      discardDialog: byId("pbDiscardComponentDialog"),
+      name: byId("pbComponentName"),
+      extendsList: byId("pbComponentExtendsList"),
+      extendsInput: byId("pbComponentExtendsInput"),
+      extendsAdd: byId("pbComponentExtendsAdd"),
+      extendsRemove: byId("pbComponentExtendsRemove"),
+      signalsList: byId("pbComponentSignalsList"),
+      signalInput: byId("pbComponentSignalInput"),
+      signalAdd: byId("pbComponentSignalAdd"),
+      signalRemove: byId("pbComponentSignalRemove"),
+      editor: byId("pbComponentCodeEditor"),
+      status: byId("pbComponentCodeStatus"),
+      save: byId("pbNewComponentSave"),
+      cancel: byId("pbNewComponentCancel"),
+      discardConfirm: byId("pbDiscardComponentConfirm"),
+      discardCancel: byId("pbDiscardComponentCancel")
+    };
+  }
+
+  function setStatus(controls, text, isError) {
+    if (!controls.status) return;
+    controls.status.textContent = text;
+    controls.status.classList.toggle("error", Boolean(isError));
+  }
+
+  function validateNameInput(input) {
+    var ok = validComponentName(input ? input.value : "");
+    if (input) {
+      input.borderColor = ok ? "" : "red";
+      input.style.borderColor = ok ? "" : "red";
+    }
+    return ok;
+  }
+
+  function publishComponentDraft(controls, draft) {
+    if (controls.dialog && typeof controls.dialog.setContextProperty === "function") {
+      controls.dialog.setContextProperty("componentDraft", draft);
+      controls.dialog.setContextProperty("generatedComponent", draft.componentNode || null);
+    }
+  }
+
+  function refreshDraftFromLists(controls, draft) {
+    draft.name = String(controls.name.value || "").trim();
+    draft.extendsList = listBoxValues(controls.extendsList);
+    draft.signals = listBoxValues(controls.signalsList);
+  }
+
+  function commitEditorSource(controls, draft, source) {
+    try {
+      var parsed = parseComponentSource(source);
+      var definition = parsed.definition;
+      draft.tree = parsed.tree;
+      draft.componentNode = definition;
+      draft.innerSource = innerSourceFromDefinition(definition);
+      draft.name = qhtmlNodeName(definition) || draft.name;
+      draft.extendsList = typeof definition.extendsList === "function" ? definition.extendsList() : draft.extendsList;
+      draft.signals = signalsFromDefinition(definition);
+      draft.definitionSource = componentSourceFromDraft(draft);
+      setStatus(controls, "Component source is valid", false);
+      publishComponentDraft(controls, draft);
+      return true;
+    } catch (error) {
+      draft.lastError = error;
+      setStatus(controls, error && error.message ? error.message : "Invalid QHTML source", true);
+      return false;
+    }
+  }
+
+  function syncControlsFromDraft(controls, draft) {
+    controls.name.value = draft.name;
+    setListBoxValues(controls.extendsList, draft.extendsList);
+    setListBoxValues(controls.signalsList, draft.signals);
+    validateNameInput(controls.name);
+  }
+
+  function setEditorSource(controls, draft, source) {
+    draft.settingEditor = true;
+    if (controls.editor && typeof controls.editor.setQhtmlSource === "function") {
+      controls.editor.setQhtmlSource(source);
+    } else if (controls.editor) {
+      controls.editor.textContent = source;
+    }
+    draft.settingEditor = false;
+  }
+
+  function rebuildEditorFromControls(controls, draft) {
+    refreshDraftFromLists(controls, draft);
+    if (!validateNameInput(controls.name)) {
+      setStatus(controls, "Component name is invalid", true);
+      return false;
+    }
+    var source = componentSourceFromDraft(draft);
+    setEditorSource(controls, draft, source);
+    return commitEditorSource(controls, draft, source);
+  }
+
+  function currentEditorSource(controls) {
+    if (controls.editor && typeof controls.editor.getQhtmlSource === "function") {
+      return controls.editor.getQhtmlSource();
+    }
+    return controls.editor ? String(controls.editor.textContent || "") : "";
+  }
+
+  function ensureNewComponentDialog(dialogElement) {
+    var controls = dialogControls(dialogElement);
+    if (!controls.dialog || controls.dialog.__qhtmlPageBuilderDialogReady) {
+      return controls;
+    }
+    controls.dialog.__qhtmlPageBuilderDialogReady = true;
+
+    controls.name.addEventListener("input", function () {
+      rebuildEditorFromControls(dialogControls(controls.dialog), state.newComponentDialog);
+    });
+    controls.extendsAdd.addEventListener("click", function () {
+      var current = dialogControls(controls.dialog);
+      splitInlineList(current.extendsInput.value).forEach(function (value) {
+        if (validReferenceName(value)) addListBoxValue(current.extendsList, value);
+      });
+      current.extendsInput.value = "";
+      rebuildEditorFromControls(current, state.newComponentDialog);
+    });
+    controls.extendsRemove.addEventListener("click", function () {
+      var current = dialogControls(controls.dialog);
+      removeSelectedListBoxValues(current.extendsList);
+      rebuildEditorFromControls(current, state.newComponentDialog);
+    });
+    controls.signalAdd.addEventListener("click", function () {
+      var current = dialogControls(controls.dialog);
+      splitInlineList(current.signalInput.value).forEach(function (value) {
+        if (signalSpec(value)) addListBoxValue(current.signalsList, value);
+      });
+      current.signalInput.value = "";
+      rebuildEditorFromControls(current, state.newComponentDialog);
+    });
+    controls.signalRemove.addEventListener("click", function () {
+      var current = dialogControls(controls.dialog);
+      removeSelectedListBoxValues(current.signalsList);
+      rebuildEditorFromControls(current, state.newComponentDialog);
+    });
+    controls.editor.addEventListener("q-editor-output", function () {
+      var current = dialogControls(controls.dialog);
+      var draft = state.newComponentDialog;
+      if (!draft || draft.settingEditor) return;
+      if (commitEditorSource(current, draft, currentEditorSource(current))) {
+        syncControlsFromDraft(current, draft);
+      }
+    });
+    controls.save.addEventListener("click", function () {
+      saveNewComponentDialog();
+    });
+    controls.cancel.addEventListener("click", function () {
+      requestCloseNewComponentDialog();
+    });
+    controls.discardConfirm.addEventListener("click", function () {
+      var current = dialogControls(controls.dialog);
+      if (current.discardDialog.open) current.discardDialog.close();
+      if (current.dialog.open) current.dialog.close();
+    });
+    controls.discardCancel.addEventListener("click", function () {
+      var current = dialogControls(controls.dialog);
+      if (current.discardDialog.open) current.discardDialog.close();
+    });
+    return controls;
+  }
+
+  function createNewComponentDraft() {
+    return {
+      name: "customComponent",
+      extendsList: [],
+      signals: [],
+      innerSource: 'div { padding: "18px" text { New component } }',
+      definitionSource: "",
+      componentNode: null,
+      tree: null,
+      settingEditor: false
+    };
+  }
+
+  function requestCloseNewComponentDialog() {
+    var draft = state.newComponentDialog;
+    var controls = dialogControls(draft ? draft.dialogElement : null);
+    if (controls.discardDialog && typeof controls.discardDialog.showModal === "function") {
+      controls.discardDialog.showModal();
+    } else if (controls.dialog) {
+      controls.dialog.close();
+    }
+  }
+
+  function instantiateCustomPaletteItem(component) {
+    var detail = registerPaletteItem(component);
+    var custom = state.customComponents[detail.paletteId];
+    var instance = {
+      paletteId: detail.paletteId,
+      canvasInstanceId: "pb-instance-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+      definitionName: detail.definitionName,
+      definitionUUID: detail.definitionUUID,
+      paletteDefinitionName: detail.definitionName,
+      paletteDefinition: custom ? custom.componentNode : null,
+      displayName: detail.displayName,
+      category: detail.category,
+      instanceName: detail.instanceName,
+      instanceQHTML: detail.definitionName + " " + detail.instanceName + " { }",
+      slots: custom ? slotsFromDefinition(custom.componentNode) : [],
+      scopeImports: [],
+      scopeDefinitions: custom ? [custom.definitionSource] : []
+    };
+    state.canvasInstances[instance.canvasInstanceId] = {
+      paletteId: instance.paletteId,
+      node: instance,
+      parentLayoutId: ""
+    };
+    emit("qhtml-page-builder-palette-instance-created", instance);
+    return instance;
+  }
+
+  function appendCustomPaletteButton(draft) {
+    var list = byId("pbCustomComponentList");
+    if (!list) return null;
+    var paletteId = componentPaletteId(draft.name);
+    var detail = {
+      paletteId: paletteId,
+      definitionName: draft.name,
+      definitionUUID: draft.componentNode && typeof draft.componentNode.qhtmlUUID === "function" ? draft.componentNode.qhtmlUUID() : "",
+      displayName: draft.name,
+      category: "Custom Components",
+      description: "User component",
+      iconLabel: "N",
+      instanceName: componentInstanceName(draft.name),
+      slotNames: slotsFromDefinition(draft.componentNode).join(","),
+      definitionSource: draft.definitionSource,
+      componentNode: draft.componentNode
+    };
+    state.customComponents[paletteId] = detail;
+    state.paletteDefinitions[paletteId] = {
+      uuid: detail.definitionUUID,
+      name: detail.definitionName,
+      slots: normalizeSlotList(detail.slotNames),
+      definition: draft.componentNode
+    };
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "builder-palette-button";
+    button.setAttribute("data-builder-palette-button", "1");
+    button.setAttribute("data-palette-id", detail.paletteId);
+    button.setAttribute("data-definition-name", detail.definitionName);
+    button.setAttribute("data-definition-uuid", detail.definitionUUID);
+    button.setAttribute("data-slot-names", detail.slotNames);
+    button.innerHTML = '<span class="builder-palette-icon"></span><span class="builder-palette-name"></span><span class="builder-palette-description"></span>';
+    button.querySelector(".builder-palette-icon").textContent = detail.iconLabel;
+    button.querySelector(".builder-palette-name").textContent = detail.displayName;
+    button.querySelector(".builder-palette-description").textContent = detail.description;
+
+    var component = Object.assign(button, detail, {
+      instantiatePaletteItem: function () {
+        return instantiateCustomPaletteItem(component);
+      }
+    });
+    button.__qhtmlPaletteComponent = component;
+    button.addEventListener("pointerdown", function (event) {
+      api.beginButtonPointerDrag(component, event);
+    });
+    button.addEventListener("click", function (event) {
+      api.selectButton(component, event);
+    });
+    list.appendChild(button);
+    registerPaletteItem(component);
+    return button;
+  }
+
+  function saveNewComponentDialog() {
+    var draft = state.newComponentDialog;
+    if (!draft) return false;
+    var controls = dialogControls(draft.dialogElement);
+    if (!commitEditorSource(controls, draft, currentEditorSource(controls)) || !validateNameInput(controls.name)) {
+      setStatus(controls, "Fix the component before saving", true);
+      return false;
+    }
+    appendCustomPaletteButton(draft);
+    if (controls.dialog.open) controls.dialog.close();
+    emit("qhtml-page-builder-component-created", {
+      name: draft.name,
+      source: draft.definitionSource
+    });
+    return true;
+  }
+
   function normalizeSlotList(slots) {
     if (Array.isArray(slots)) return slots.map(String);
     if (typeof slots === "string") return slots.split(/\s*,\s*/).filter(Boolean);
@@ -226,6 +681,23 @@
 
   var api = {
     state: state,
+
+    openNewComponentDialog: function (dialogElement) {
+      var controls = ensureNewComponentDialog(dialogElement);
+      var draft = createNewComponentDraft();
+      draft.dialogElement = controls.dialog;
+      state.newComponentDialog = draft;
+      syncControlsFromDraft(controls, draft);
+      setEditorSource(controls, draft, componentSourceFromDraft(draft));
+      commitEditorSource(controls, draft, currentEditorSource(controls));
+      if (controls.dialog && typeof controls.dialog.showModal === "function") {
+        controls.dialog.showModal();
+      }
+      if (byId("pbNewComponentTabs") && typeof byId("pbNewComponentTabs").buildTabs === "function") {
+        byId("pbNewComponentTabs").buildTabs();
+      }
+      return draft;
+    },
 
     beginDrag: function (component, event) {
       var detail = registerPaletteItem(component);

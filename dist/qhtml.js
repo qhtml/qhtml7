@@ -1,5 +1,5 @@
 (function (globalScope) {
-  const QHTML_VERSION = "7.4.4";
+  const QHTML_VERSION = "7.4.7";
   globalScope.QHTML_VERSION = QHTML_VERSION;
 })(typeof globalThis !== "undefined" ? globalThis : window);
 
@@ -3782,6 +3782,9 @@ try {
         const extendsExpression = trim(nameExpression.slice(match.index + match[0].length)).replace(/,/g, " ");
         nameExpression = trim(nameExpression.slice(0, match.index));
         for (const candidate of extendsExpression.split(/\s+/).filter(Boolean)) {
+          if (candidate.toLowerCase() === "extends") {
+            continue;
+          }
           if (!isTypePathToken(candidate)) {
             return { keyword: "", name: "", extendsNames: [], attributes: {}, valid: false };
           }
