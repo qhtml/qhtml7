@@ -1,0 +1,58 @@
+q-component blockwarsCell {
+  q-property rowNum: 0
+  q-property colNum: 0
+
+  div.blockwars-cell {
+    data-row: rowNum
+    data-col: colNum
+    backgroundColor: "#2563eb"
+    border: "1px solid #93c5fd"
+    color: "#dbeafe"
+    width: "100%"
+    height: "100%"
+    display: "flex"
+    alignItems: "center"
+    justifyContent: "center"
+    fontFamily: "monospace"
+    fontSize: "12px"
+    boxSizing: "border-box"
+    text { ${rowNum},${colNum} }
+  }
+}
+
+q-component boardComponent {
+  q-property rowNumbers: [1,2,3,4,5,6]
+  q-property colNumbers: [1,2,3,4,5,6]
+  q-property spawnDirection: "down"
+
+  q-layout mainLayout {
+    width: 45vh
+    height: 45vh
+    gap: "4px"
+    padding: "8px"
+    backgroundColor: "#111827"
+    position: "relative"
+
+
+    for (rowNum in rowNumbers) {
+      q-row {
+        width: "100%"
+        height: "calc((100% - 20px) / 6)"
+        flex: "0 0 calc((100% - 20px) / 6)"
+        gap: "4px"
+        minHeight: "0"
+        overflow: "hidden"
+
+        for (colNum in colNumbers) {
+          blockwarsCell {
+            display: "block"
+            rowNum: rowNum
+            colNum: colNum
+            width: "calc((100% - 20px) / 6)"
+            height: "100%"
+          }
+        }
+      }
+    }
+  }
+}

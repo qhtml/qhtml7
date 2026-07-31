@@ -234,7 +234,7 @@
         bodyEncoding: "base64"
       });
     }
-    for (const child of node.children()) {
+    for (const child of node.persistentChildren()) {
       out.push(child.toJSON());
     }
     return out;
@@ -302,6 +302,17 @@
       current = current.parent();
     }
     return contextNode || null;
+  }
+
+  function qhtmlNodeIsDescendantOf(node, ancestor) {
+    let current = node || null;
+    while (current) {
+      if (current === ancestor) {
+        return true;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return false;
   }
 
   function qhtmlResolveExpressionValue(expression, contextNode, resolving = new Set(), depth = 0) {
@@ -634,6 +645,9 @@
       this._qhtmlReferenceNames = new Map();
       this.qhtmlContext = new QHTMLContext();
       this.qhtmlLogger = null;
+      this._qhtmlRuntimeGenerated = false;
+      this._qhtmlRuntimeSourceUUID = "";
+      this._qhtmlRuntimeOwnerUUID = "";
     }
 
     parent() { return this.qhtmlParent; }
@@ -651,6 +665,58 @@
     children() { return this.qhtmlChildren.slice(); }
     childList() { return this.children(); }
     childListJs() { return this.childList(); }
+    persistentChildren() { return this.children().filter(child => !child.isRuntimeGenerated()); }
+    persistentChildrenJs() { return this.persistentChildren(); }
+    dynamicChildren() { return this.children().filter(child => child.isRuntimeGenerated()); }
+    dynamicChildrenJs() { return this.dynamicChildren(); }
+    isRuntimeGenerated() { return this._qhtmlRuntimeGenerated === true; }
+    isRuntimeGeneratedJs() { return this.isRuntimeGenerated(); }
+    setRuntimeGenerated(value, sourceUUID = "", ownerUUID = "") {
+      this._qhtmlRuntimeGenerated = value === true;
+      this._qhtmlRuntimeSourceUUID = this._qhtmlRuntimeGenerated ? String(sourceUUID || "") : "";
+      this._qhtmlRuntimeOwnerUUID = this._qhtmlRuntimeGenerated ? String(ownerUUID || "") : "";
+      return this;
+    }
+    setRuntimeGeneratedJs(value, sourceUUID = "", ownerUUID = "") { return this.setRuntimeGenerated(value, sourceUUID, ownerUUID); }
+    runtimeSourceUUID() { return this._qhtmlRuntimeSourceUUID; }
+    runtimeSourceUUIDJs() { return this.runtimeSourceUUID(); }
+    runtimeOwnerUUID() { return this._qhtmlRuntimeOwnerUUID; }
+    runtimeOwnerUUIDJs() { return this.runtimeOwnerUUID(); }
+    markRuntimeGenerated(sourceNode, ownerNode) {
+      const sourceUUID = sourceNode && typeof sourceNode.qhtmlUUID === "function" ? sourceNode.qhtmlUUID() : sourceNode;
+      const ownerUUID = ownerNode && typeof ownerNode.qhtmlUUID === "function" ? ownerNode.qhtmlUUID() : ownerNode;
+      this.setRuntimeGenerated(true, sourceUUID, ownerUUID);
+      for (const child of this.children()) {
+        if (!child.isRuntimeGenerated()) {
+          child.markRuntimeGenerated(sourceUUID, ownerUUID);
+        }
+      }
+      return this;
+    }
+    markRuntimeGeneratedJs(sourceNode, ownerNode) { return this.markRuntimeGenerated(sourceNode, ownerNode); }
+    clearRuntimeGenerated() {
+      this.setRuntimeGenerated(false);
+      for (const child of this.children()) {
+        child.clearRuntimeGenerated();
+      }
+      return this;
+    }
+    clearRuntimeGeneratedJs() { return this.clearRuntimeGenerated(); }
+    removeRuntimeGeneratedChildrenForSource(sourceUUID) {
+      const source = trim(sourceUUID);
+      let removed = 0;
+      for (let index = this.qhtmlChildren.length - 1; index >= 0; index -= 1) {
+        const child = this.qhtmlChildren[index];
+        if (child && child.isRuntimeGenerated() && child.runtimeSourceUUID() === source) {
+          this.qhtmlChildren.splice(index, 1);
+          child.qhtmlParent = null;
+          child.qhtmlContext.setParentContext(null);
+          removed += 1;
+        }
+      }
+      return removed;
+    }
+    removeRuntimeGeneratedChildrenForSourceJs(sourceUUID) { return this.removeRuntimeGeneratedChildrenForSource(sourceUUID); }
     ownedReferenceMembers() { return []; }
     findChildByName(name) { return this.children().find(child => child.qhtmlName() === name) || null; }
     collectChildrenByType(typeName, out) {
@@ -684,6 +750,9 @@
       return this.qhtmlUUID() === trim(uuid) ? this : this.findDescendantByUUID(uuid);
     }
     containsDescendantUUID(uuid) { return this.findDescendantByUUID(uuid) !== null; }
+    childShouldPublishReference(child) {
+      return child && child.qhtmlType && child.qhtmlType() !== "QHTMLEventListener";
+    }
     appendChild(child) {
       child.qhtmlParent = this;
       child.qhtmlContext.setParentContext(this.qhtmlContext);
@@ -692,7 +761,7 @@
       if (this.qhtmlLogger) {
         qhtmlBindLoggerToNode(this.qhtmlLogger, child);
       }
-      if (child.qhtmlName()) {
+      if (child.qhtmlName() && this.childShouldPublishReference(child)) {
         this.updateObjectReference(child.qhtmlName(), child);
         this.addQHTMLReference(child.qhtmlName(), child);
       }
@@ -707,7 +776,7 @@
       if (this.qhtmlLogger) {
         qhtmlBindLoggerToNode(this.qhtmlLogger, child);
       }
-      if (child.qhtmlName()) {
+      if (child.qhtmlName() && this.childShouldPublishReference(child)) {
         this.updateObjectReference(child.qhtmlName(), child);
         this.addQHTMLReference(child.qhtmlName(), child);
       }
@@ -788,6 +857,8 @@
     loggerCategory() {
       const type = this.qhtmlType();
       if (type === "QHTMLSignal") return "QHTMLSignal";
+      if (type === "QHTMLEvent") return "QHTMLEvent";
+      if (type === "QHTMLEventListener") return "QHTMLEventListener";
       if (type === "QHTMLProperty") return "QHTMLProperty";
       if (type === "QHTMLComponentDefinition" || type === "QHTMLComponentInstance") return "QHTMLComponent";
       if (type === "QHTMLComponentSlot" || type === "QHTMLSlot" || type === "QHTMLSlotDefault" || type === "QHTMLComponentInstanceSlot") return "QHTMLSlot";
@@ -889,10 +960,10 @@
       return this.renderHtmlInContext(this);
     }
     renderJs() { return this.render(); }
-    renderHtml() { return this.children().map(child => child.renderHtml()).join(""); }
+    renderHtml() { return this.children().filter(child => !child.isRuntimeGenerated()).map(child => child.renderHtml()).join(""); }
     renderHtmlInContext(contextNode) { return this.renderHtml(); }
     renderHtmlJs() { return this.renderHtml(); }
-    sourceQHTML(indentLevel = 0) { return this.children().map(child => child.sourceQHTML(indentLevel)).join("\n"); }
+    sourceQHTML(indentLevel = 0) { return this.persistentChildren().map(child => child.sourceQHTML(indentLevel)).join("\n"); }
     sourceQHTMLJs() { return this.sourceQHTML(); }
     toQHTML(indentLevel = 0) { return this.sourceQHTML(indentLevel); }
     toQHTMLJs() { return this.toQHTML(); }
@@ -1009,6 +1080,12 @@
           break;
         case "QHTMLSignal":
           node = new QHTMLSignal(name, attributes);
+          break;
+        case "QHTMLEvent":
+          node = new QHTMLEvent(name, attributes, readBody(object));
+          break;
+        case "QHTMLEventListener":
+          node = new QHTMLEventListener(name, attributes, readBody(object));
           break;
         case "QHTMLComponentSlot":
           node = new QHTMLComponentSlot(name, attributes);
@@ -1256,7 +1333,7 @@
         out += " style=\"" + qhtmlEscapeAttribute(style) + "\"";
       }
       out += " qhtml-node=\"" + qhtmlEscapeAttribute(this.qhtmlUUID()) + "\">";
-      out += this.children().map(child => child.renderHtmlInContext(childContext)).join("");
+      out += this.children().filter(child => !child.isRuntimeGenerated()).map(child => child.renderHtmlInContext(childContext)).join("");
       out += "</" + this._tagName + ">";
       return out;
     }
@@ -1276,7 +1353,7 @@
           lines.push(key + ": " + qhtmlSourceQuote(this._attributes[key]));
         }
       }
-      for (const child of this.children()) {
+      for (const child of this.persistentChildren()) {
         lines.push(child.sourceQHTML(0));
       }
       return qhtmlSourceBlock(header, lines.join("\n"), indentLevel);
@@ -1358,7 +1435,7 @@
           lines.push(key + ": " + qhtmlSourceQuote(this._attributes[key]));
         }
       }
-      for (const child of this.children()) {
+      for (const child of this.persistentChildren()) {
         lines.push(child.sourceQHTML(0));
       }
       return qhtmlSourceBlock(header, lines.join("\n"), indentLevel);
@@ -1447,6 +1524,8 @@
       const value = trim(category);
       if (value === "") return "";
       if (value === "q-signal" || value === "signal") return "QHTMLSignal";
+      if (value === "q-event" || value === "event") return "QHTMLEvent";
+      if (value === "q-event-listener" || value === "event-listener" || value === "QHTMLEventListener") return "QHTMLEventListener";
       if (value === "q-property" || value === "property") return "QHTMLProperty";
       if (value === "q-component" || value === "component" || value === "QHTMLComponentDefinition" || value === "QHTMLComponentInstance") return "QHTMLComponent";
       if (value === "q-slot" || value === "slot" || value === "QHTMLComponentSlot" || value === "QHTMLComponentInstanceSlot") return "QHTMLSlot";
@@ -1585,6 +1664,83 @@
     cloneSignal() { const cloned = new QHTMLSignal(this.qhtmlName(), Object.assign({}, this.attributes(), { parameters: this.parameterList() })); cloned.setSignalBus(this._signalBus); return cloned; }
     renderHtml() { return ""; }
     sourceQHTML(indentLevel = 0) { return qhtmlSourceIndent(indentLevel) + "q-signal " + this.qhtmlName() + "(" + this.parameterList() + ")"; }
+  }
+
+  class QHTMLEvent extends QHTMLTypedNode {
+    constructor(name = "", attributes = {}, body = "") {
+      super("q-event", name, attributes);
+      this.setQHTMLType("QHTMLEvent");
+      this.setProperty("kind", "event");
+      this._parameters = parseParameters(attributes.parameters || "");
+      this._body = trim(body);
+      this._lastArguments = [];
+      this._dispatchCount = 0;
+    }
+    parameters() { return this._parameters.slice(); }
+    parameterList() { return this._parameters.join(", "); }
+    parameterListJs() { return this.parameterList(); }
+    setParameters(parameters) { this._parameters = parameters.slice(); this.setAttribute("parameters", this.parameterList()); }
+    setParameterList(parameters) { this.setParameters(parseParameters(parameters)); }
+    setParameterListJs(parameters) { this.setParameterList(parameters); }
+    body() { return this._body; }
+    bodyJs() { return this.body(); }
+    setBody(body) { this._body = trim(body); }
+    setBodyJs(body) { this.setBody(body); }
+    emitEvent(argumentsList = []) {
+      this._lastArguments = (argumentsList || []).slice();
+      this._dispatchCount += 1;
+      this.maybeLog("Event " + this.qhtmlName() + " dispatched with arguments [" + this._lastArguments.join(", ") + "]");
+      return this._dispatchCount;
+    }
+    emitEventJs(argumentList) { return this.emitEvent(parseParameters(argumentList)); }
+    emit(...args) { return this.emitEvent(args); }
+    lastArguments() { return this._lastArguments.slice(); }
+    lastArgumentsJs() { return this.lastArguments(); }
+    dispatchCount() { return this._dispatchCount; }
+    dispatchCountJs() { return this.dispatchCount(); }
+    cloneEvent() { return new QHTMLEvent(this.qhtmlName(), Object.assign({}, this.attributes(), { parameters: this.parameterList() }), this._body); }
+    renderHtml() { return ""; }
+    sourceQHTML(indentLevel = 0) {
+      return qhtmlSourceBlock("q-event " + this.qhtmlName() + "(" + this.parameterList() + ")", this._body, indentLevel);
+    }
+    toJsonObject() {
+      return Object.assign(super.toJsonObject(), bodyJsonFields(this._body), {
+        parameters: this.parameterList()
+      });
+    }
+  }
+
+  class QHTMLEventListener extends QHTMLTypedNode {
+    constructor(name = "", attributes = {}, body = "") {
+      super("q-event-listener", name, attributes);
+      this.setQHTMLType("QHTMLEventListener");
+      this.setProperty("kind", "event-listener");
+      this._parameters = parseParameters(attributes.parameters || "");
+      this._body = trim(body);
+    }
+    eventName() { return this.qhtmlName(); }
+    eventNameJs() { return this.eventName(); }
+    parameters() { return this._parameters.slice(); }
+    parameterList() { return this._parameters.join(", "); }
+    parameterListJs() { return this.parameterList(); }
+    setParameters(parameters) { this._parameters = parameters.slice(); this.setAttribute("parameters", this.parameterList()); }
+    setParameterList(parameters) { this.setParameters(parseParameters(parameters)); }
+    setParameterListJs(parameters) { this.setParameterList(parameters); }
+    body() { return this._body; }
+    bodyJs() { return this.body(); }
+    setBody(body) { this._body = trim(body); }
+    setBodyJs(body) { this.setBody(body); }
+    cloneEventListener() { return new QHTMLEventListener(this.qhtmlName(), Object.assign({}, this.attributes(), { parameters: this.parameterList() }), this._body); }
+    renderHtml() { return ""; }
+    sourceQHTML(indentLevel = 0) {
+      return qhtmlSourceBlock("q-event-listener " + this.qhtmlName() + "(" + this.parameterList() + ")", this._body, indentLevel);
+    }
+    toJsonObject() {
+      return Object.assign(super.toJsonObject(), bodyJsonFields(this._body), {
+        eventName: this.eventName(),
+        parameters: this.parameterList()
+      });
+    }
   }
 
   class QHTMLSignalConnection {
@@ -1748,7 +1904,7 @@
     renderHtmlForContext(contextNode) {
       let out = "<div qhtml-layout=\"" + qhtmlEscapeAttribute(this.keyword()) + "\" qhtml-node=\"" + qhtmlEscapeAttribute(this.qhtmlUUID()) +
         "\" class=\"qhtml-layout\" style=\"" + qhtmlEscapeAttribute(this.layoutInlineStyle(contextNode)) + "\">";
-      for (const child of this.children()) {
+      for (const child of this.children().filter(child => !child.isRuntimeGenerated())) {
         if (child instanceof QHTMLPropertyAssignment || child instanceof QHTMLProperty) {
           continue;
         }
@@ -1790,7 +1946,7 @@
     }
     removeJs(node) { return this.remove(node); }
     childrenJs() { return this.children(); }
-    renderHtml() { return this.children().map(child => child.renderHtml()).join(""); }
+    renderHtml() { return this.children().filter(child => !child.isRuntimeGenerated()).map(child => child.renderHtml()).join(""); }
   }
 
   class QHTMLComponentDefinition extends QHTMLTypedNode {
@@ -1938,15 +2094,20 @@
         return super.renderHtml();
       }
       const tagName = trim(this._definition.qhtmlName());
-      const body = this._definition.children().map(child => {
+      const body = this._definition.children().filter(child => !child.isRuntimeGenerated()).map(child => {
         if (child instanceof QHTMLComponentSlot) {
           return this.renderSlotForOwnedDefinition(child);
         }
-        if (child instanceof QHTMLSlotDefault || child instanceof QHTMLProperty || child instanceof QHTMLFunction || child instanceof QHTMLSignal) {
+        if (child instanceof QHTMLSlotDefault ||
+            child instanceof QHTMLProperty ||
+            child instanceof QHTMLFunction ||
+            child instanceof QHTMLSignal ||
+            child instanceof QHTMLEvent ||
+            child instanceof QHTMLEventListener) {
           return "";
         }
         return renderNodeWithSlotsForInstance(child, this);
-      }).join("") + this.children().filter(child => !(child instanceof QHTMLComponentInstanceSlot) && !(child instanceof QHTMLPropertyAssignment)).map(child => child.renderHtmlInContext(this)).join("");
+      }).join("") + this.children().filter(child => !child.isRuntimeGenerated() && !(child instanceof QHTMLComponentInstanceSlot) && !(child instanceof QHTMLPropertyAssignment)).map(child => child.renderHtmlInContext(this)).join("");
       if (!tagName) {
         return body;
       }
@@ -1979,7 +2140,7 @@
       let header = this._definition ? trim(this._definition.qhtmlName()) : trim(this.keyword());
       if (!header) header = "q-component-instance";
       if (trim(this.qhtmlName())) header += " " + trim(this.qhtmlName());
-      return qhtmlSourceBlock(header, this.children().map(child => child.sourceQHTML(0)).join("\n"), indentLevel);
+      return qhtmlSourceBlock(header, this.persistentChildren().map(child => child.sourceQHTML(0)).join("\n"), indentLevel);
     }
     toJsonObject() {
       return Object.assign(super.toJsonObject(), {
@@ -1994,13 +2155,13 @@
     if (node instanceof QHTMLStyleApplication) {
       return "<q-style-application qhtml-style=\"" + qhtmlEscapeAttribute(node.qhtmlName()) + "\" qhtml-node=\"" +
         qhtmlEscapeAttribute(node.qhtmlUUID()) + "\">" +
-        node.children().map(child => renderNodeWithSlotsForInstance(child, instance)).join("") +
+        node.children().filter(child => !child.isRuntimeGenerated()).map(child => renderNodeWithSlotsForInstance(child, instance)).join("") +
         "</q-style-application>";
     }
     if (node instanceof QHTMLThemeApplication) {
       return "<q-theme-application qhtml-theme=\"" + qhtmlEscapeAttribute(node.qhtmlName()) + "\" qhtml-node=\"" +
         qhtmlEscapeAttribute(node.qhtmlUUID()) + "\">" +
-        node.children().map(child => renderNodeWithSlotsForInstance(child, instance)).join("") +
+        node.children().filter(child => !child.isRuntimeGenerated()).map(child => renderNodeWithSlotsForInstance(child, instance)).join("") +
         "</q-theme-application>";
     }
     if (node instanceof QHTMLDomElement) {
@@ -2011,14 +2172,32 @@
       const style = node.inlineStyleForContext(instance);
       if (style) out += " style=\"" + qhtmlEscapeAttribute(style) + "\"";
       out += " qhtml-node=\"" + qhtmlEscapeAttribute(node.qhtmlUUID()) + "\">";
-      out += node.children().filter(child => !(child instanceof QHTMLPropertyAssignment)).map(child => renderNodeWithSlotsForInstance(child, instance)).join("");
+      out += node.children().filter(child => !child.isRuntimeGenerated() && !(child instanceof QHTMLPropertyAssignment)).map(child => renderNodeWithSlotsForInstance(child, instance)).join("");
       return out + "</" + node.tagName() + ">";
     }
     return node.renderHtmlInContext(instance);
   }
 
   function cloneNode(node) {
-    return QHTMLNode.nodeFromJsonObject(node.toJSON());
+    const cloned = QHTMLNode.nodeFromJsonObject(node.toJSON(), node.parent ? node.parent() : null);
+    restoreClonedComponentDefinitions(node, cloned);
+    return cloned;
+  }
+
+  function restoreClonedComponentDefinitions(source, target) {
+    if (!source || !target) {
+      return;
+    }
+    if (source instanceof QHTMLComponentInstance && target instanceof QHTMLComponentInstance) {
+      target.setDefinition(source.definition());
+    }
+    const count = Math.min(
+      typeof source.childCount === "function" ? source.childCount() : 0,
+      typeof target.childCount === "function" ? target.childCount() : 0
+    );
+    for (let index = 0; index < count; index += 1) {
+      restoreClonedComponentDefinitions(source.childAt(index), target.childAt(index));
+    }
   }
 
   function reassignNodeUUIDs(node) {
@@ -2032,6 +2211,21 @@
     if (typeof node.ownedReferenceMembers === "function") {
       for (const member of node.ownedReferenceMembers()) {
         reassignNodeUUIDs(member);
+      }
+    }
+  }
+
+  function applyContextPropertyToDescendants(node, name, value) {
+    if (!node || typeof node.setContextProperty !== "function") {
+      return;
+    }
+    node.setContextProperty(name, value);
+    for (const child of node.children()) {
+      applyContextPropertyToDescendants(child, name, value);
+    }
+    if (typeof node.ownedReferenceMembers === "function") {
+      for (const member of node.ownedReferenceMembers()) {
+        applyContextPropertyToDescendants(member, name, value);
       }
     }
   }
@@ -2360,13 +2554,24 @@
     bodyJs() { return this.body(); }
     setBody(body) { this._body = trim(body); }
     setBodyJs(body) { this.setBody(body); }
-    renderHtmlInContext(contextNode) {
-      const collectionName = this.collectionExpression();
-      const itemName = this.variableName();
-      const collection = qhtmlResolveExpressionValue(collectionName, contextNode);
-      let values = [];
-      if (Array.isArray(collection)) {
-        values = collection;
+	    renderHtmlInContext(contextNode) {
+	      const collectionName = this.collectionExpression();
+	      const itemName = this.variableName();
+	      const collection = qhtmlResolveExpressionValue(collectionName, contextNode);
+	      const templateParentNode = this.parent();
+	      const componentContextNode = qhtmlComponentThisFor(contextNode);
+	      const componentDefinitionNode = componentContextNode instanceof QHTMLComponentInstance &&
+	        typeof componentContextNode.definition === "function"
+	        ? componentContextNode.definition()
+	        : null;
+	      const parentNode = componentContextNode instanceof QHTMLComponentInstance &&
+	        componentDefinitionNode &&
+	        qhtmlNodeIsDescendantOf(templateParentNode, componentDefinitionNode)
+	        ? componentContextNode
+	        : templateParentNode;
+	      let values = [];
+	      if (Array.isArray(collection)) {
+	        values = collection;
       } else if (collection && typeof collection.valueArray === "function") {
         values = collection.valueArray();
       } else if (collection && typeof collection.valuesLiteral === "function") {
@@ -2375,24 +2580,40 @@
           values = Array.isArray(parsedValues) ? parsedValues : [];
         } catch (error) {
           values = [];
-        }
-      }
-      this._lastRenderedIterationNodes = [];
-      return values.map(item => {
-        const local = new QHTMLNode("QHTMLForIteration", itemName);
-        local.qhtmlContext.setParentContext(contextNode ? contextNode.qhtmlContext : null);
-        local.updateKeywordReference(itemName, typeof item === "object" ? JSON.stringify(item) : String(item));
-        return this.children().map(child => {
-          const cloned = cloneNode(child);
-          reassignNodeUUIDs(cloned);
-          if (cloned instanceof QHTMLComponentInstance && child instanceof QHTMLComponentInstance) {
-            cloned.setDefinition(child.definition());
-          }
-          materializeIterationValue(cloned, itemName, item);
-          local.appendChild(cloned);
-          this._lastRenderedIterationNodes.push(cloned);
-          return cloned.renderHtmlInContext(local);
-        }).join("");
+	        }
+	      }
+	      this._lastRenderedIterationNodes = [];
+	      if (parentNode && typeof parentNode.removeRuntimeGeneratedChildrenForSource === "function") {
+	        parentNode.removeRuntimeGeneratedChildrenForSource(this.qhtmlUUID());
+	      }
+	      const generatedOwnerIsRuntimeInstance = parentNode && parentNode !== templateParentNode;
+	      let insertIndex = parentNode ? parentNode.children().indexOf(this) + 1 : -1;
+	      return values.map(item => {
+	        const local = new QHTMLNode("QHTMLForIteration", itemName);
+	        local.qhtmlContext.setParentContext(contextNode ? contextNode.qhtmlContext : null);
+	        local.setContextProperty(itemName, item);
+	        local.updateKeywordReference(itemName, typeof item === "object" ? JSON.stringify(item) : String(item));
+	        return this.children().map(child => {
+	          const cloned = cloneNode(child);
+	          reassignNodeUUIDs(cloned);
+	          if (cloned instanceof QHTMLComponentInstance && child instanceof QHTMLComponentInstance) {
+	            cloned.setDefinition(child.definition());
+	          }
+	          applyContextPropertyToDescendants(cloned, itemName, item);
+	          materializeIterationValue(cloned, itemName, item);
+	          const rendered = cloned.renderHtmlInContext(local);
+	          cloned.markRuntimeGenerated(this, parentNode || local);
+	          if (parentNode && insertIndex > 0) {
+	            parentNode.insertChild(insertIndex, cloned);
+	            insertIndex += 1;
+	          } else if (generatedOwnerIsRuntimeInstance) {
+	            parentNode.appendChild(cloned);
+	          } else {
+	            local.appendChild(cloned);
+	          }
+	          this._lastRenderedIterationNodes.push(cloned);
+	          return rendered;
+	        }).join("");
       }).join("");
     }
     lastRenderedIterationNodes() { return this._lastRenderedIterationNodes.slice(); }
@@ -2729,6 +2950,7 @@
       node instanceof QHTMLPropertyAssignment ||
       node instanceof QHTMLFunction ||
       node instanceof QHTMLSignal ||
+      node instanceof QHTMLEvent ||
       node instanceof QHTMLComponentInstanceSlot ||
       node instanceof QHTMLTimer ||
       node instanceof QHTMLPropertyAnimation ||
@@ -2936,7 +3158,7 @@
     quickJSAvailableJs() { return this.quickJSAvailable(); }
     compileJavaScript(source) { return this.qhtmlJavaScriptRuntime.compileOnly(source); }
     compileJavaScriptJs(source) { return this.compileJavaScript(source); }
-    renderHtml() { return this.children().map(child => child.renderHtml()).join(""); }
+	    renderHtml() { return this.children().filter(child => !child.isRuntimeGenerated()).map(child => child.renderHtml()).join(""); }
     fromJSON(value) {
       if (Array.isArray(value)) {
         this.clearChildren();
@@ -2962,7 +3184,7 @@
     }
     fromJSONText(json) { return this.fromJSON(JSON.parse(json)); }
     fromJSONTextJs(json) { return this.fromJSONText(json); }
-    toJSON() { return this.children().map(child => child.toJSON()); }
+	    toJSON() { return this.persistentChildren().map(child => child.toJSON()); }
     toJSONJs() { return this.toJSON(); }
     toJSONText() { return JSON.stringify(this.toJSON()); }
     toJSONTextJs() { return this.toJSONText(); }
@@ -3058,6 +3280,8 @@
     QHTMLJavaScriptBlock,
     QHTMLFunction,
     QHTMLSignal,
+    QHTMLEvent,
+    QHTMLEventListener,
     QHTMLSignalConnection,
     QHTMLSignalBus,
     QHTMLComponentSlot,
@@ -3127,6 +3351,9 @@
     qhtmlResolveExpressionValue,
     qhtmlResolvePropertyValue,
     qhtmlResolveCssValueForContext,
+    reassignNodeUUIDs,
+    materializeIterationValue,
+    applyContextPropertyToDescendants,
     qhtmlScriptBody
   };
 

@@ -1336,6 +1336,7 @@ qhtmlResolve() returns the normal browser/runtime representation when available:
 - a QHTMLProperty resolves to its current value;
 - a QHTMLFunction resolves to its callable browser function;
 - a QHTMLSignal resolves to its callable signal function;
+- a QHTMLEvent resolves to its callable event dispatcher function;
 - a QHTMLComponentInstance resolves to its rendered component DOM element;
 - a timer, animation, style, theme, or other browser-bound object resolves to its runtime object;
 - a non-rendered reference such as a slot proxy may resolve to the WASM reference object.
@@ -1363,6 +1364,51 @@ element.childObject
 element.customProperty
 element.widthAnim
 ```
+
+30. q-event and q-event-listener
+
+q-event declares a named event/action object in the current QHTML context. A QHTMLEvent is a QHTML reference-bearing object and is inherited through normal top-down QHTML scope/reference rules. Calling the event by name from QHTML script dispatches a DOM CustomEvent named `qhtml:<EventName>` and records the arguments on the QHTMLEvent node.
+
+Example:
+
+q-component gameRoot {
+  q-event StartGame(playerId, seed) { }
+  q-event SwitchTurns(activePlayer) { }
+
+  q-event-listener StartGame(playerId, seed) {
+    this.startedPlayer = playerId;
+    this.seed = seed;
+  }
+
+  function begin() {
+    StartGame("player", 1234);
+    SwitchTurns("enemy");
+  }
+}
+
+The DOM CustomEvent detail object must contain:
+
+- name and eventName, both set to the QHTML event name;
+- args, an array of positional arguments;
+- parameters, an object mapping declared parameter names to argument values;
+- sender, the DOM/QHTML owner that dispatched the event when known;
+- qhtmlEvent and qhtmlEventUUID, identifying the QHTMLEvent object when dispatched by QHTML.
+
+JavaScript can listen to QHTML events using standard DOM APIs:
+
+document.addEventListener("qhtml:StartGame", function(event) {
+  console.log(event.detail.parameters.playerId);
+});
+
+JavaScript can dispatch into QHTML listeners by dispatching the same DOM event:
+
+document.dispatchEvent(new CustomEvent("qhtml:SwitchTurns", {
+  bubbles: true,
+  composed: true,
+  detail: { args: ["player"] }
+}));
+
+q-event-listener declares a QHTMLEventListener. It resolves the named QHTMLEvent from its current QHTML context and connects to it after the QHTMLDomTree has been fully created and runtime references have been bound. If no QHTMLEvent object exists in scope, it may still listen for the matching DOM `qhtml:<EventName>` CustomEvent. This preserves interoperability between QHTML components and plain browser JavaScript.
 
 Direct aliases are not created for inherited parent members or sibling references. Those remain reachable through qhtmlResolve(), qhtmlReferences, qhtmlParent, and future dot walking.
 

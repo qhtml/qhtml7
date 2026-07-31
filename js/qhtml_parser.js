@@ -12,6 +12,8 @@
     "q-logger",
     "q-property",
     "q-signal",
+    "q-event",
+    "q-event-listener",
     "q-class",
     "q-var",
     "q-callback",
@@ -899,7 +901,7 @@
     astType() { return "QHTMLAstNamedTypeNode"; }
     qhtmlType() { return this.qhtmlKeyword; }
     static isRawScriptBodyKeyword(keyword) {
-      return ["q-event-handler", "function", "q-connect", "q-class", "q-script", "q-script-action", "script"].includes(keyword);
+      return ["q-event-handler", "q-event-listener", "function", "q-connect", "q-class", "q-script", "q-script-action", "script"].includes(keyword);
     }
     createTypedNode() {
       const T = QHTMLTypes;
@@ -910,6 +912,8 @@
         case "q-logger": return new T.QHTMLLogger(this.qhtmlName, this._attributes);
         case "q-property": return new T.QHTMLProperty(this.qhtmlName, this._attributes);
         case "q-signal": return new T.QHTMLSignal(this.qhtmlName, this._attributes);
+        case "q-event": return new T.QHTMLEvent(this.qhtmlName, this._attributes, this.qhtmlContent);
+        case "q-event-listener": return new T.QHTMLEventListener(this.qhtmlName, this._attributes, this.qhtmlContent);
         case "slot":
         case "q-slot": return new T.QHTMLComponentSlot(this.qhtmlName, this._attributes);
         case "q-slot-default": return new T.QHTMLSlotDefault(this.qhtmlName, this._attributes);
@@ -1046,7 +1050,7 @@
     if ([
       "q-array", "q-map", "q-model", "q-logger", "q-layout", "q-row", "q-col", "q-column",
       "q-canvas", "q-property-animation", "q-sequential-animation", "q-parallel-animation",
-      "q-script-action"
+      "q-script-action", "q-event"
     ].includes(trimmedHeader)) {
       return new QHTMLAstNamedTypeNode(trimmedHeader, "", {}, content);
     }
@@ -1116,7 +1120,7 @@
       return new QHTMLAstNamedTypeNode("q-property-assignment", trim(match[1]), { value: trim(match[2]) }, "");
     }
     const typedSignature = parseTypedSignature(text);
-    if (typedSignature.valid && typedSignature.keyword === "q-signal") {
+    if (typedSignature.valid && (typedSignature.keyword === "q-signal" || typedSignature.keyword === "q-event")) {
       return new QHTMLAstNamedTypeNode(typedSignature.keyword, typedSignature.name, typedSignature.attributes, "");
     }
     return null;
@@ -1273,6 +1277,10 @@
       clone = source.cloneFunction();
     } else if (source instanceof QHTMLTypes.QHTMLSignal) {
       clone = source.cloneSignal();
+    } else if (source instanceof QHTMLTypes.QHTMLEvent) {
+      clone = source.cloneEvent();
+    } else if (source instanceof QHTMLTypes.QHTMLEventListener) {
+      clone = source.cloneEventListener();
     } else if (source instanceof QHTMLTypes.QHTMLEventHandler) {
       clone = new QHTMLTypes.QHTMLEventHandler(source.eventName(), Object.assign({}, source.attributes(), {
         parameters: source.parameterList(),
@@ -1312,7 +1320,10 @@
           source instanceof QHTMLTypes.QHTMLComponentInstance) {
         continue;
       }
-      if (source.qhtmlName() && directChildNamed(instance, source.qhtmlName()) && !(source instanceof QHTMLTypes.QHTMLProperty)) {
+      if (source.qhtmlName() &&
+          directChildNamed(instance, source.qhtmlName()) &&
+          !(source instanceof QHTMLTypes.QHTMLProperty) &&
+          !(source instanceof QHTMLTypes.QHTMLEventListener)) {
         continue;
       }
       if (hasClonedDefinitionMember(instance, source)) {

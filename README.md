@@ -546,6 +546,85 @@ signal-card { }
 
 Signals are runtime behavior, not static HTML. They are useful for component-local events and for connecting components together.
 
+### Events And Event Listeners
+
+`q-event` declares a named action/event object in QHTML context. It is callable like a function from QHTML scripts, but it also dispatches a DOM `CustomEvent` named `qhtml:<EventName>`. This makes it useful for game flow, application-level actions, and coordination between components that are not direct parents or children.
+
+```qhtml
+q-component game-root {
+  q-event StartGame(playerId, seed) { }
+  q-event SwitchTurns(activePlayer) { }
+
+  q-event-listener StartGame(playerId, seed) {
+    this.querySelector(".status").textContent = "Player " + playerId + " seed " + seed;
+  }
+
+  q-event-listener SwitchTurns(activePlayer) {
+    this.querySelector(".turn").textContent = activePlayer;
+  }
+
+  button {
+    onclick {
+      StartGame("player", 1234);
+      SwitchTurns("enemy");
+    }
+    text { Start }
+  }
+
+  div.status { text { waiting } }
+  div.turn { text { player } }
+}
+
+game-root { }
+```
+
+Simplified resulting HTML:
+
+```html
+<game-root>
+  <button>Start</button>
+  <div class="status">waiting</div>
+  <div class="turn">player</div>
+</game-root>
+```
+
+The event declarations and listeners do not render DOM of their own. They become runtime objects and script bindings. When `StartGame("player", 1234)` runs, QHTML dispatches:
+
+```js
+new CustomEvent("qhtml:StartGame", {
+  bubbles: true,
+  composed: true,
+  detail: {
+    name: "StartGame",
+    eventName: "StartGame",
+    args: ["player", 1234],
+    parameters: { playerId: "player", seed: 1234 }
+  }
+});
+```
+
+Plain JavaScript can listen to QHTML events:
+
+```js
+document.addEventListener("qhtml:StartGame", (event) => {
+  console.log(event.detail.parameters.playerId);
+});
+```
+
+Plain JavaScript can also dispatch into QHTML:
+
+```js
+document.dispatchEvent(new CustomEvent("qhtml:SwitchTurns", {
+  bubbles: true,
+  composed: true,
+  detail: {
+    args: ["player"]
+  }
+}));
+```
+
+Use `q-signal` when an object/component is announcing something about itself. Use `q-event` when you want a named action bus in context that both QHTML and normal DOM JavaScript can call or observe.
+
 ### Connect Signals To Functions
 
 `q-connect` connects a signal source to a callable target.

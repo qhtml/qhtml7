@@ -591,6 +591,53 @@ Declarative signal with parameters, bus connections, emission, and logging hooks
 - `renderHtml()` — Produces no direct HTML output; this node is metadata/runtime-only. **Observed return:** `string`. **Source:** line 1514.
 - `sourceQHTML(indentLevel = 0)` — Serializes this node to QHTML source with optional indentation. **Observed return:** `string`. **Source:** line 1515.
 
+## `QHTMLEvent`
+Standalone named QHTML event/action object with DOM `CustomEvent` interoperability.
+
+- **Inheritance:** `QHTMLEvent -> QHTMLTypedNode -> QHTMLDomNode -> QHTMLNode -> QHTMLReference`
+- **Constructor:** `new QHTMLEvent(name = "", attributes = {}, body = "")`
+- **QHTML syntax:** `q-event EventName(param1, param2) { }`
+- **Runtime behavior:** resolves as a callable function in QHTML/DOM context. Calling it dispatches `CustomEvent("qhtml:<EventName>")` with `detail.args`, `detail.parameters`, `detail.sender`, `detail.qhtmlEvent`, and `detail.qhtmlEventUUID`.
+
+### Own members
+
+- `parameters()` — Returns the declared parameter names as an array.
+- `parameterList()` / `parameterListJs()` — Returns declared parameters as a comma-separated string.
+- `setParameters(parameters)` — Replaces the parameter list from an array.
+- `setParameterList(parameters)` / `setParameterListJs(parameters)` — Replaces the parameter list from a comma-separated string.
+- `body()` / `bodyJs()` — Returns the stored event body text.
+- `setBody(body)` / `setBodyJs(body)` — Replaces the stored event body text.
+- `emitEvent(argumentsList = [])` / `emitEventJs(argumentList)` — Records dispatch metadata on the QHTML node.
+- `emit(...args)` — Convenience dispatch entry for direct QHTML object usage.
+- `lastArguments()` / `lastArgumentsJs()` — Returns the most recent argument list.
+- `dispatchCount()` / `dispatchCountJs()` — Returns the number of recorded dispatches.
+- `cloneEvent()` — Creates a new event node with matching name, parameters, attributes, and body.
+- `renderHtml()` — Produces no direct HTML output.
+- `sourceQHTML(indentLevel = 0)` — Serializes this node to QHTML source.
+- `toJsonObject()` — Returns this event’s JSON-serializable representation.
+
+## `QHTMLEventListener`
+Declarative listener for a visible `QHTMLEvent` name, backed by a DOM `CustomEvent` listener.
+
+- **Inheritance:** `QHTMLEventListener -> QHTMLTypedNode -> QHTMLDomNode -> QHTMLNode -> QHTMLReference`
+- **Constructor:** `new QHTMLEventListener(name = "", attributes = {}, body = "")`
+- **QHTML syntax:** `q-event-listener EventName(param1, param2) { /* script */ }`
+- **Runtime behavior:** binds after the full QHTML tree is created. If the named event resolves in context, it connects to that event object. If it does not resolve, it still listens for `CustomEvent("qhtml:<EventName>")` on `document`.
+
+### Own members
+
+- `eventName()` / `eventNameJs()` — Returns the event name this listener handles.
+- `parameters()` — Returns the declared parameter names as an array.
+- `parameterList()` / `parameterListJs()` — Returns declared parameters as a comma-separated string.
+- `setParameters(parameters)` — Replaces the parameter list from an array.
+- `setParameterList(parameters)` / `setParameterListJs(parameters)` — Replaces the parameter list from a comma-separated string.
+- `body()` / `bodyJs()` — Returns the script body executed when the event fires.
+- `setBody(body)` / `setBodyJs(body)` — Replaces the script body.
+- `cloneEventListener()` — Creates a new listener node with matching event name, parameters, attributes, and body.
+- `renderHtml()` — Produces no direct HTML output.
+- `sourceQHTML(indentLevel = 0)` — Serializes this node to QHTML source.
+- `toJsonObject()` — Returns this listener’s JSON-serializable representation.
+
 ## `QHTMLSignalConnection`
 Immutable-style record pairing a signal and function receiver.
 
@@ -1680,6 +1727,8 @@ Root document tree with signal bus, JavaScript compile recorder, JSON loading, r
 - `QHTMLJavaScriptBlock` — class
 - `QHTMLFunction` — class
 - `QHTMLSignal` — class
+- `QHTMLEvent` — class
+- `QHTMLEventListener` — class
 - `QHTMLSignalConnection` — class
 - `QHTMLSignalBus` — class
 - `QHTMLComponentSlot` — class
