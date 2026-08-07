@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0">
+  <title>QHTML Poker Slot UI</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+      background: #010805;
+    }
+
+    q-html {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      visibility: hidden;
+    }
+
+    q-html[ready="1"] {
+      visibility: visible;
+    }
+
+    main.rp-screen,
+    section.rp-slot-stage {
+      background-color: transparent !important;
+    }
+
+    section.rp-slot-stage {
+      background: transparent !important;
+    }
+
+    .rp-card-image {
+      display: block;
+      width: min(13.82vw, 11.65vh);
+      height: min(16.9167vh, 20.07vw);
+      max-width: 13.82vw;
+      max-height: 16.9167vh;
+      object-fit: contain;
+      box-sizing: border-box;
+      margin: auto;
+      pointer-events: none;
+    }
+  </style>
+
+  <script src="./game.js"></script>
+  <!-- Adjust this path if qhtml.js is located elsewhere in your project. -->
+  <script src="../../dist/qhtml.js"></script>
+</head>
+<body>
+  <q-html>
+q-import { ./main.qhtml }
+  </q-html>
+</body>
+</html>

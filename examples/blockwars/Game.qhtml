@@ -1,0 +1,58 @@
+q-import { board.qhtml }
+
+q-component Game {
+  q-property boardNumbers: [1,2]
+  q-property completedBoards: []
+  q-property completedActions: {}
+
+  q-event fillBoard(boardNum) { }
+  q-event spawnBlocks(boardNum) { }
+  q-event actionCompleted(boardNum, actionName) { }
+
+  q-event-listener actionCompleted(boardNum, actionName) {
+    window.BlockwarsRuntime.recordActionCompleted(this, boardNum, actionName);
+  }
+
+  q-timer bootTimer {
+    interval: 1
+    repeat: false
+    running: false
+
+    ontimeout {
+      window.BlockwarsRuntime.attachGame(this);
+      this.startFillState();
+    }
+  }
+
+  function startFillState() {
+    this.completedBoards = [];
+    this.completedActions = {};
+    fillBoard(1);
+    fillBoard(2);
+  }
+
+  onready {
+    this.bootTimer.start();
+  }
+
+  div.blockwars-arena {
+    display: "flex"
+    flexDirection: "column"
+    gap: "32px"
+    alignItems: "center"
+    justifyContent: "center"
+    padding: "24px"
+    backgroundColor: "#0f172a"
+    minHeight: "100vh"
+
+    boardComponent playerBoard {
+      boardNumber: 1
+      spawnDirection: "down"
+    }
+
+    boardComponent enemyBoard {
+      boardNumber: 2
+      spawnDirection: "up"
+    }
+  }
+}

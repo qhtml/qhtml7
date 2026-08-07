@@ -23,6 +23,7 @@ q-component td-game {
 
   onready {
     this.board.game = this;
+    this.board.startGame();
   }
 
   function awardDefenders(amount) {

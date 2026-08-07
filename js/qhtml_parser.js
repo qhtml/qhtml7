@@ -171,9 +171,6 @@
         const extendsExpression = trim(nameExpression.slice(match.index + match[0].length)).replace(/,/g, " ");
         nameExpression = trim(nameExpression.slice(0, match.index));
         for (const candidate of extendsExpression.split(/\s+/).filter(Boolean)) {
-          if (candidate.toLowerCase() === "extends") {
-            continue;
-          }
           if (!isTypePathToken(candidate)) {
             return { keyword: "", name: "", extendsNames: [], attributes: {}, valid: false };
           }
@@ -709,6 +706,9 @@
       this.astChildren = [];
       this.astChildrenUUIDs = new Map();
       this.astChildrenUUIDKeywords = new Map();
+      this.isKeywordEnumerationValid = false;
+      this.enumeratedKeywordsCache = [];
+      this.astParent = null;
       this.qhtmlName = "";
       this.qhtmlContent = String(source || "");
       this.qhtmlUUID = createUUID();
@@ -725,10 +725,37 @@
     qhtmlTypeJs() { return this.qhtmlType(); }
     childCount() { return this.astChildren.length; }
     childAt(index) { return this.astChildren[index] || null; }
+    invalidateKeywordEnumeration() {
+      this.isKeywordEnumerationValid = false;
+      this.enumeratedKeywordsCache = [];
+      if (this.astParent) {
+        this.astParent.invalidateKeywordEnumeration();
+      }
+    }
     appendAstChild(node) {
       if (node) {
+        if (node.astParent && node.astParent !== this) {
+          node.astParent.removeAstChild(node);
+        }
+        node.astParent = this;
         this.astChildren.push(node);
+        this.invalidateKeywordEnumeration();
       }
+    }
+    takeAstChildAt(index) {
+      if (index < 0 || index >= this.astChildren.length) {
+        return null;
+      }
+      const node = this.astChildren.splice(index, 1)[0] || null;
+      if (node) {
+        node.astParent = null;
+        this.invalidateKeywordEnumeration();
+      }
+      return node;
+    }
+    removeAstChild(node) {
+      const index = this.astChildren.indexOf(node);
+      return index >= 0 ? this.takeAstChildAt(index) : null;
     }
     uuidForChildIndex(index) { return this.astChildrenUUIDs.get(index) || ""; }
     uuidForChildIndexJs(index) { return this.uuidForChildIndex(index); }
@@ -777,6 +804,12 @@
       }
     }
     enumerateKeywords() {
+      if (this.isKeywordEnumerationValid) {
+        return this.enumeratedKeywordsCache;
+      }
+      this.astChildrenUUIDs.clear();
+      this.astChildrenUUIDKeywords.clear();
+      this.enumeratedKeywordsCache = [];
       this.installDefaultKeywordsDeep();
       for (let i = 0; i < this.astChildren.length; i += 1) {
         const child = this.astChildren[i];
@@ -788,10 +821,17 @@
         }
         this.astChildrenUUIDs.set(i, child.qhtmlUUID);
         this.astChildrenUUIDKeywords.set(child.qhtmlUUID, child.qhtmlType());
+        this.enumeratedKeywordsCache.push({
+          index: i,
+          uuid: child.qhtmlUUID,
+          keyword: child.qhtmlType()
+        });
         child.enumerateKeywords();
       }
       this.applyLocalKeywordDeclarations();
       this.enumerateNamedReferencesDeep();
+      this.isKeywordEnumerationValid = true;
+      return this.enumeratedKeywordsCache;
     }
     scan(source) {
       const cleanedSource = stripComments(source);
@@ -1201,6 +1241,11 @@
   function transformComponentInstances(root) {
     const { definitionsByName } = collectComponentDefinitions(root);
     const visit = (parent) => {
+      if (parent instanceof QHTMLTypes.QHTMLStyle ||
+          parent instanceof QHTMLTypes.QHTMLTheme ||
+          parent instanceof QHTMLTypes.QHTMLTransition) {
+        return;
+      }
       replaceChildren(parent, (owner, child) => {
         let node = child;
         if (child instanceof QHTMLTypes.QHTMLDomElement) {

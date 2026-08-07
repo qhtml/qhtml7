@@ -73,8 +73,14 @@ q-component td-board {
     if (this.initialized === true) {
       return;
     }
+    this.syncBoardGeometry();
     this.initBoard();
     this.loopTimer.start();
+  }
+
+  function syncBoardGeometry() {
+    this.tileWidth = (window.innerWidth - 28) / Number(this.cols);
+    this.tileHeight = (window.innerHeight - 160) / Number(this.rows);
   }
 
   function refreshView() {
@@ -98,13 +104,60 @@ q-component td-board {
           this.placeExit(row, col);
         } else if (row === 0 || row === Number(this.rows) - 1 || col === 0 || col === Number(this.cols) - 1) {
           this.placeWall(row, col);
-        } else if ((((col * Number(this.cols)) + row) % 17) === 0) {
-          this.placeWall(row, col);
         } else {
           this.placeSquare(row, col);
         }
       }
     }
+    this.seedRandomMazeWalls(this.randomMazeWallCount());
+  }
+
+  function randomMazeWallCount() {
+    return 100 + Math.floor(Math.random() * 101);
+  }
+
+  function randomInteriorRow() {
+    return 1 + Math.floor(Math.random() * (Number(this.rows) - 2));
+  }
+
+  function randomInteriorCol() {
+    return 1 + Math.floor(Math.random() * (Number(this.cols) - 2));
+  }
+
+  function reservedMazeTiles() {
+    var reserved = {};
+    for (var i = 0; i < this.entrances.length; i += 1) {
+      reserved[this.index(this.entrances[i].row, this.entrances[i].col)] = true;
+    }
+    for (var e = 0; e < this.exits.length; e += 1) {
+      reserved[this.index(this.exits[e].row, this.exits[e].col)] = true;
+      reserved[this.index(Number(this.exits[e].row) - 4, this.exits[e].col)] = true;
+    }
+    return reserved;
+  }
+
+  function seedRandomMazeWalls(count) {
+    var reserved = this.reservedMazeTiles();
+    var placed = 0;
+    var attempts = 0;
+    while (placed < Number(count) && attempts < Number(count) * 80) {
+      attempts += 1;
+      var row = this.randomInteriorRow();
+      var col = this.randomInteriorCol();
+      var key = this.index(row, col);
+      var previous = this.tiles[key];
+      if (reserved[key] === true || previous.kind !== "square") {
+        continue;
+      }
+      this.tiles[key] = this.makeTile(row, col, "wall", false, false);
+      this.populateEntryPaths();
+      if (this.allPathsOpen() === true) {
+        placed += 1;
+      } else {
+        this.tiles[key] = previous;
+      }
+    }
+    this.populateEntryPaths();
   }
 
   function makeTile(row, col, kind, buildable, walkable) {
@@ -344,9 +397,19 @@ q-component td-board {
     this.placeGun(tile.row, tile.col, type);
   }
 
+  function gunCost(type) {
+    if (Number(type) === 2) {
+      return 150;
+    }
+    if (Number(type) === 3) {
+      return 100;
+    }
+    return 250;
+  }
+
   function placeGun(row, col, type) {
     var gunProperties = props.gunProps(type);
-    var cost = 250;
+    var cost = this.gunCost(type);
     if (Number(this.game.money) < cost) {
       this.placeSquare(row, col);
       return;
@@ -376,8 +439,10 @@ q-component td-board {
       upgradeSpend: 0,
       rangeUpgrades: 0,
       damageUpgrades: 0,
-      rangeUpgradeCost: 300,
+      rangeUpgradeCost: 100,
       damageUpgradeCost: 100,
+      projectilePoolSize: this.projectilePoolSize(type),
+      projectileCursor: 0,
       nextAllowedFire: 0,
       targetId: ""
     };
@@ -519,6 +584,7 @@ q-component td-board {
     var entrance = this.entrances[this.entranceIndex];
     var type = this.entranceIndex !== 0 ? this.entranceIndex : 1;
     var enemyProperties = props.enemyProps(type);
+    var maxHealth = enemyProperties.health * (Number(this.game.level) * 2.25);
     var path = this.paths[this.index(entrance.row, entrance.col)].slice();
     var id = "enemy-" + this.nextEnemyId;
     this.nextEnemyId += 1;
@@ -533,7 +599,8 @@ q-component td-board {
       y: entrance.y,
       width: this.tileWidth + "px",
       height: this.tileHeight + "px",
-      health: enemyProperties.health * (Number(this.game.level) * 2.25),
+      health: maxHealth,
+      maxHealth: maxHealth,
       speed: enemyProperties.speed - (Number(this.game.level) * 5),
       cost: enemyProperties.cost,
       opacity: 1,
@@ -641,6 +708,19 @@ q-component td-board {
     return 10;
   }
 
+  function projectilePoolSize(type) {
+    if (Number(type) === 2) {
+      return 8;
+    }
+    return 1;
+  }
+
+  function nextProjectileSlot(gun) {
+    var slot = Number(gun.projectileCursor);
+    gun.projectileCursor = (slot + 1) % Number(gun.projectilePoolSize);
+    return slot;
+  }
+
   function findTarget(gun) {
     var best = { id: "" };
     var bestDistance = 99999999;
@@ -650,7 +730,7 @@ q-component td-board {
       var enemy = this.enemies[enemyKeys[i]];
       var enemyCenter = this.center(enemy);
       var d = this.distance(gunCenter, enemyCenter);
-      if (enemy.type !== gun.type && d <= gun.range && d < bestDistance) {
+      if (d <= gun.range && d < bestDistance) {
         best = enemy;
         bestDistance = d;
       }
@@ -663,12 +743,17 @@ q-component td-board {
     var enemyCenter = this.center(enemy);
     var d = this.distance(gunCenter, enemyCenter);
     var duration = Math.round(Math.round((d * 0.4) * Number(gun.rate)) * 0.65);
-    var id = "projectile-" + this.nextProjectileId;
+    var slot = this.nextProjectileSlot(gun);
+    var id = "projectile-" + gun.uuid + "-" + slot;
+    var shotId = "shot-" + this.nextProjectileId;
     this.nextProjectileId += 1;
     this.projectiles[id] = {
       id: id,
+      shotId: shotId,
       uuid: id,
       domId: id,
+      gunUuid: gun.uuid,
+      slot: slot,
       type: gun.type,
       x: gunCenter.x + "px",
       y: gunCenter.y + "px",
@@ -704,34 +789,56 @@ q-component td-board {
     var keys = Object.keys(this.enemies);
     for (var i = 0; i < keys.length; i += 1) {
       var enemy = this.enemies[keys[i]];
-      if (enemy.type !== projectile.gunType) {
-        var enemyCenter = this.center(enemy);
-        var d = Math.abs(parseFloat(projectile.targetX) - enemyCenter.x) + Math.abs(parseFloat(projectile.targetY) - enemyCenter.y);
-        if (d <= Number(projectile.splashDistance)) {
-          enemy.health -= Number(projectile.damage);
-          enemy.health -= Number(projectile.splashDamage);
-        }
-        if (enemy.health <= 0) {
-          enemyParticleManager.enemyKilled(enemy);
-          this.game.awardDefenders(Number(this.game.level) * 2);
-          delete this.enemies[keys[i]];
-        }
+      var enemyCenter = this.center(enemy);
+      var d = Math.abs(parseFloat(projectile.targetX) - enemyCenter.x) + Math.abs(parseFloat(projectile.targetY) - enemyCenter.y);
+      if (d <= Number(projectile.splashDistance)) {
+        enemy.health -= this.projectileDamageForEnemy(projectile, enemy);
+      }
+      if (enemy.health <= 0) {
+        enemyParticleManager.enemyKilled(enemy);
+        this.game.awardDefenders(Number(this.game.level) * 2);
+        delete this.enemies[keys[i]];
       }
     }
+  }
+
+  function projectileDamageForEnemy(projectile, enemy) {
+    var damage = Number(projectile.damage) + Number(projectile.splashDamage);
+    if (Number(enemy.type) === Number(projectile.gunType)) {
+      damage += Math.round(damage * 0.5);
+    }
+    return damage;
   }
 
   function upgradeSelectedGunRange() {
     var gun = this.guns[this.selectedGunId];
     var cost = Number(gun.rangeUpgradeCost);
     if (Number(this.game.money) >= cost) {
-      gun.range = Math.round(Number(gun.range) * 1.25);
-      gun.splashDistance = Math.round(Number(gun.splashDistance) * 1.15);
+      gun.range = Math.round(Number(gun.range) + this.rangeUpgradeAmount(gun));
+      gun.splashDistance = Math.round(Number(gun.splashDistance) + this.splashRangeUpgradeAmount(gun));
       gun.rangeUpgrades += 1;
       gun.upgradeSpend += cost;
       gun.rangeUpgradeCost = Math.round(cost * 1.04);
       this.game.awardDefenders(0 - cost);
       this.refreshView();
     }
+  }
+
+  function rangeUpgradeAmount(gun) {
+    if (Number(gun.type) === 2) {
+      return 8;
+    }
+    if (Number(gun.type) === 3) {
+      return 10;
+    }
+    return 12;
+  }
+
+  function splashRangeUpgradeAmount(gun) {
+    if (Number(gun.type) === 2) {
+      return 2;
+    }
+    return 4;
   }
 
   function upgradeSelectedGunDamage() {

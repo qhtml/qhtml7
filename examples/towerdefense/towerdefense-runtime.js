@@ -2,6 +2,7 @@
   "use strict";
 
   var runtime = window.TowerDefenseRuntime || {};
+  var imageCache = {};
 
   function ensureStyles() {
     if (document.getElementById("td-runtime-styles")) {
@@ -11,7 +12,8 @@
     var style = document.createElement("style");
     style.id = "td-runtime-styles";
     style.textContent = [
-      ".td-board-surface{position:relative;width:1500px;height:1000px;background:#000;display:block;overflow:hidden;}",
+      "td-board{display:block;width:100%;height:100%;}",
+      ".td-board-surface{position:relative;width:100%;height:100%;background:#000;display:block;overflow:hidden;}",
       ".td-store{position:fixed;left:14px;right:14px;bottom:14px;z-index:900;align-items:center;gap:12px;min-height:82px;box-sizing:border-box;padding:14px;border:1px solid rgba(10,236,40,.48);background:rgba(5,42,12,.94);color:#d1fae5;}",
       ".td-store-item{display:flex;flex-direction:column;gap:4px;align-items:flex-start;}",
       ".td-store-label{font-size:12px;line-height:1.3;color:#a7f3d0;}",
@@ -32,6 +34,8 @@
       ".td-enemy-hitbox{position:absolute;display:block;pointer-events:none;overflow:visible;z-index:255;}",
       ".td-enemy-hitbox particle-emitter{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;}",
       ".td-entity{position:absolute;box-sizing:border-box;z-index:105;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
+      ".td-healthbar{position:absolute;left:10%;top:-5px;width:80%;height:5px;background:#000;border:1px solid rgba(0,0,0,.85);box-sizing:border-box;z-index:3;pointer-events:none;}",
+      ".td-healthbar-fill{display:block;width:100%;height:100%;background:#dc2626;}",
       ".td-projectile{position:absolute;z-index:300;pointer-events:none;transition-property:left,top,opacity,transform;transition-timing-function:linear;}",
       ".td-projectile-layer{position:absolute;inset:0;display:block;z-index:300;pointer-events:none;overflow:visible;}",
       ".td-particle-effect{position:absolute;inset:0;display:block;pointer-events:none;overflow:hidden;}",
@@ -82,9 +86,50 @@
       element.appendChild(image);
     }
 
-    image.src = src;
+    if (!imageCache[src]) {
+      imageCache[src] = new Image();
+      imageCache[src].src = src;
+    }
+    if (image.getAttribute("data-td-src") !== src) {
+      image.src = imageCache[src].src;
+      image.setAttribute("data-td-src", src);
+    }
     image.alt = alt;
     return image;
+  }
+
+  function preloadImage(src) {
+    if (!imageCache[src]) {
+      imageCache[src] = new Image();
+      imageCache[src].src = src;
+    }
+    return imageCache[src];
+  }
+
+  function projectileSrc(type) {
+    return "assets/projectiles/" + type + ".png";
+  }
+
+  function healthPercent(enemy) {
+    var maxHealth = Number(enemy.maxHealth);
+    if (!Number.isFinite(maxHealth) || maxHealth <= 0) {
+      maxHealth = Number(enemy.health);
+    }
+    var raw = Math.max(0, Math.min(100, (Number(enemy.health) / maxHealth) * 100));
+    return Math.ceil(raw / 5) * 5;
+  }
+
+  function updateEnemyHealthBar(element, enemy) {
+    var bar = element.querySelector(":scope > .td-healthbar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "td-healthbar";
+      var fill = document.createElement("span");
+      fill.className = "td-healthbar-fill";
+      bar.appendChild(fill);
+      element.appendChild(bar);
+    }
+    bar.querySelector(".td-healthbar-fill").style.width = healthPercent(enemy) + "%";
   }
 
   class ParticleEffectProfile {
@@ -421,28 +466,6 @@
     return board.__tdEnemyParticleManager;
   }
 
-  function scheduleBoardStart(board) {
-    if (board.__tdStartScheduled === true) {
-      return;
-    }
-
-    board.__tdStartScheduled = true;
-    setTimeout(function () {
-      board.__tdStartScheduled = false;
-      if (!board.game) {
-        var game = board.closest("td-game");
-        if (game) {
-          board.game = game;
-        }
-      }
-      if (!board.game) {
-        scheduleBoardStart(board);
-        return;
-      }
-      board.startGame();
-    }, 0);
-  }
-
   class TDTileView extends HTMLElement {
     set board(value) { this.__tdBoard = value; }
     set object(value) { this.__tdObject = value; this.render(); }
@@ -562,9 +585,12 @@
       applyBox(this, enemy);
       this.className = "td-entity";
       setStyleValue(this, "opacity", enemy.opacity);
-      setStyleValue(this, "transform", "rotate(" + enemy.rotation + "deg)");
+      setStyleValue(this, "transform", "none");
       setStyleValue(this, "transitionDuration", enemy.speed + "ms");
-      setImage(this, "assets/attackers/" + enemy.type + ".png", "enemy");
+      var image = setImage(this, "assets/attackers/" + enemy.type + ".png", "enemy");
+      image.style.transform = "rotate(" + enemy.rotation + "deg)";
+      image.style.transitionDuration = enemy.speed + "ms";
+      updateEnemyHealthBar(this, enemy);
     }
   }
 
@@ -580,24 +606,28 @@
 
     render() {
       var projectile = this.__tdObject;
-      if (!projectile) return;
+      if (!projectile) {
+        this.style.display = "none";
+        return;
+      }
 
       this.id = projectile.domId;
       this.qhtmlObject = projectile;
       this.qhtmlObjectUuid = projectile.uuid;
       this.setAttribute("data-qhtml-object", projectile.uuid);
       this.className = "td-projectile";
+      this.style.display = "block";
       setStyleValue(this, "width", projectile.width);
       setStyleValue(this, "height", projectile.height);
       setStyleValue(this, "opacity", projectile.opacity);
       setStyleValue(this, "transform", "rotate(" + projectile.rotation + "deg)");
-      setImage(this, "assets/projectiles/" + projectile.type + ".png", "projectile");
+      setImage(this, projectileSrc(projectile.type), "projectile");
 
-      if (this.__tdProjectileId === projectile.id) {
+      if (this.__tdProjectileShotId === projectile.shotId) {
         return;
       }
 
-      this.__tdProjectileId = projectile.id;
+      this.__tdProjectileShotId = projectile.shotId;
       setStyleValue(this, "transitionDuration", "0ms");
       setStyleValue(this, "left", projectile.startX);
       setStyleValue(this, "top", projectile.startY);
@@ -637,6 +667,84 @@
     });
   }
 
+  function projectilePoolSizeForGun(gun) {
+    var size = Number(gun.projectilePoolSize);
+    return Number.isFinite(size) && size > 0 ? size : (Number(gun.type) === 2 ? 8 : 1);
+  }
+
+  function ensureProjectilePool(owner, board, gun, map) {
+    var pool = map[gun.uuid];
+    var size = projectilePoolSizeForGun(gun);
+    var src = projectileSrc(gun.type);
+    preloadImage(src);
+
+    if (!pool) {
+      pool = { gun: gun, elements: [] };
+      map[gun.uuid] = pool;
+    }
+
+    pool.gun = gun;
+    for (var slot = 0; slot < size; slot += 1) {
+      if (!pool.elements[slot]) {
+        var element = document.createElement("td-projectile-view");
+        element.board = board;
+        element.__tdPoolGunUuid = gun.uuid;
+        element.__tdPoolSlot = slot;
+        element.__tdPoolKey = gun.uuid + ":" + slot;
+        element.object = null;
+        pool.elements[slot] = element;
+        owner.appendChild(element);
+      }
+    }
+
+    while (pool.elements.length > size) {
+      var extra = pool.elements.pop();
+      extra.remove();
+    }
+
+    return pool;
+  }
+
+  function syncProjectilePools(owner, board, list, map) {
+    var liveGuns = {};
+    var activeProjectiles = {};
+    list = list || [];
+
+    (board.gunsList || []).forEach(function (gun) {
+      liveGuns[gun.uuid] = true;
+      ensureProjectilePool(owner, board, gun, map);
+    });
+
+    list.forEach(function (projectile) {
+      var gun = board.guns[projectile.gunUuid] || (map[projectile.gunUuid] && map[projectile.gunUuid].gun);
+      if (!gun) {
+        return;
+      }
+      var pool = ensureProjectilePool(owner, board, gun, map);
+      var slot = Number(projectile.slot) || 0;
+      var element = pool.elements[slot];
+      activeProjectiles[element.__tdPoolKey] = true;
+      element.board = board;
+      element.object = projectile;
+    });
+
+    Object.keys(map).forEach(function (gunUuid) {
+      var pool = map[gunUuid];
+      if (!liveGuns[gunUuid]) {
+        pool.elements.forEach(function (element) {
+          element.remove();
+        });
+        delete map[gunUuid];
+        return;
+      }
+      pool.elements.forEach(function (element) {
+        if (!activeProjectiles[element.__tdPoolKey]) {
+          element.object = null;
+        }
+      });
+    });
+  }
+
   class TDBoardRenderer extends HTMLElement {
     connectedCallback() {
       ensureStyles();
@@ -647,11 +755,8 @@
       this.renderedProjectiles = {};
       var board = this.closest("td-board");
 
-      if (board) {
-        board.boardRenderer = this;
-        this.sync(board);
-        scheduleBoardStart(board);
-      }
+      board.boardRenderer = this;
+      this.sync(board);
     }
 
     sync(board) {
@@ -659,7 +764,7 @@
       syncCollection(this, board, board.tilesList, this.renderedTiles, "td-tile-view");
       syncCollection(this, board, board.gunsList, this.renderedGuns, "td-gun-view");
       syncCollection(this, board, board.enemiesList, this.renderedEnemies, "td-enemy-view");
-      syncCollection(this, board, board.projectilesList, this.renderedProjectiles, "td-projectile-view");
+      syncProjectilePools(this, board, board.projectilesList, this.renderedProjectiles);
       board.renderedTiles = this.renderedTiles;
       board.renderedGuns = this.renderedGuns;
       board.renderedEnemies = this.renderedEnemies;
@@ -717,8 +822,8 @@
 
       if (kind === "gun") {
         this.appendChild(button("cannon - $250", function () { this.activeBoard().placeGunOnSelected(1); }.bind(this)));
-        this.appendChild(button("machine gun - $250", function () { this.activeBoard().placeGunOnSelected(2); }.bind(this)));
-        this.appendChild(button("flame tower - $250", function () { this.activeBoard().placeGunOnSelected(3); }.bind(this)));
+        this.appendChild(button("machine gun - $150", function () { this.activeBoard().placeGunOnSelected(2); }.bind(this)));
+        this.appendChild(button("flame tower - $100", function () { this.activeBoard().placeGunOnSelected(3); }.bind(this)));
       } else {
         this.appendChild(upgradeItem("range", function () { this.activeBoard().upgradeSelectedGunRange(); }.bind(this)));
         this.appendChild(upgradeItem("damage", function () { this.activeBoard().upgradeSelectedGunDamage(); }.bind(this)));

@@ -1,8 +1,10 @@
 q-style tdRootStyle {
   width: 100vw
+  height: 100vh
   min-height: 100vh
   box-sizing: border-box
   padding: 14px
+  overflow: hidden
   background: #020403
   color: #0aec28
   font-family: Consolas, "Courier New", monospace
@@ -24,11 +26,9 @@ q-style tdHudStyle {
 
 q-style tdStageStyle {
   position: relative
-  width: 1500px
-  height: 1000px
-  max-width: calc(100vw - 28px)
-  max-height: calc(100vh - 160px)
-  overflow: auto
+  width: calc(100vw - 28px)
+  height: calc(100vh - 160px)
+  overflow: hidden
   background: #000000
   border: 1px solid rgba(10, 236, 40, 0.28)
   transform: perspective(1300px) rotateX(20deg)
@@ -37,8 +37,8 @@ q-style tdStageStyle {
 
 q-style tdBoardSurfaceStyle {
   position: relative
-  width: 1500px
-  height: 1000px
+  width: 100%
+  height: 100%
   background: #000000
 }
 

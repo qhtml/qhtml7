@@ -20,10 +20,154 @@ q-component blockwarsCell {
   }
 }
 
+q-component blockwarsBlock {
+  q-property blockIndex: 0
+  q-property blockId: ""
+  q-property rowNum: 0
+  q-property colNum: 0
+  q-property blockColor: "red"
+  q-property pendingAxes: 0
+
+  q-signal animationStarted(blockId)
+  q-signal animationDone(blockId)
+
+  function applyBlockStyle() {
+    this.style.position = "absolute";
+    this.style.display = "block";
+    this.style.left = "0px";
+    this.style.top = "0px";
+    this.style.width = "10px";
+    this.style.height = "10px";
+    this.style.background = this.blockColor;
+    this.style.border = "2px solid rgba(255,255,255,0.55)";
+    this.style.borderRadius = "6px";
+    this.style.boxSizing = "border-box";
+    this.style.boxShadow = "0 8px 18px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.3)";
+    this.style.pointerEvents = "auto";
+    this.style.zIndex = "5";
+  }
+
+  function prepareAt(nextLeft, nextTop, nextWidth, nextHeight, colorValue) {
+    this.style.left = nextLeft;
+    this.style.top = nextTop;
+    this.style.width = nextWidth;
+    this.style.height = nextHeight;
+    this.style.background = colorValue;
+    this.blockColor = colorValue;
+  }
+
+  function moveTo(nextLeft, nextTop) {
+    this.pendingAxes = 2;
+    this.animationStarted(this.blockId);
+    this.xAnim.from = this.style.left;
+    this.xAnim.to = nextLeft;
+    this.yAnim.from = this.style.top;
+    this.yAnim.to = nextTop;
+    this.xAnim.start();
+    this.yAnim.start();
+  }
+
+  function axisEnded() {
+    this.pendingAxes = this.pendingAxes - 1;
+    if (this.pendingAxes <= 0) {
+      this.animationDone(this.blockId);
+    }
+  }
+
+  q-property-animation xAnim {
+    target: this
+    property: "left"
+    duration: 820
+    steps: 50
+    easing: "linear"
+    repeat: false
+    from: "0px"
+    to: "0px"
+    running: false
+
+    onended {
+      this.axisEnded(); 
+    }
+  }
+
+  q-property-animation yAnim {
+    target: this
+    property: "top"
+    duration: 820
+    steps: 70
+    easing: "linear"
+    repeat: false
+    from: "0px"
+    to: "0px"
+    running: false
+
+    onended {
+      this.axisEnded();
+    }
+  }
+
+  onready {
+    this.yAnim.duration = 800 + (20 * this.rowNum)
+    this.applyBlockStyle();
+  }
+
+  div.blockwars-block-face {
+    width: "100%"
+    height: "100%"
+    borderRadius: "4px"
+  }
+}
+
 q-component boardComponent {
+  q-property boardNumber: 0
   q-property rowNumbers: [1,2,3,4,5,6]
   q-property colNumbers: [1,2,3,4,5,6]
+  q-property blockNumbers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36]
   q-property spawnDirection: "down"
+  q-property animatingBlocks: []
+  q-property boardState: ""
+
+  function trackAnimationStarted(blockId) {
+    window.BlockwarsRuntime.trackAnimationStarted(this, blockId);
+  }
+
+  function trackAnimationDone(blockId) {
+    window.BlockwarsRuntime.trackAnimationDone(this, blockId);
+  }
+
+  q-event-listener fillBoard(boardNum) {
+    if (Number(boardNum) == Number(this.boardNumber)) {
+      this.fillBoardTimer.start();
+      console.log("Filling board",boardNum)
+    }
+  }
+
+  q-event-listener spawnBlocks(boardNum) {
+    if (Number(boardNum) == Number(this.boardNumber)) {
+      this.spawnBlocksTimer.start();
+      console.log("Spawning blocks",boardNum)
+    }
+  }
+
+  q-timer fillBoardTimer {
+    interval: 1
+    repeat: false
+    running: false
+
+    ontimeout {
+      window.BlockwarsRuntime.fillBoard(this);
+    }
+  }
+
+  q-timer spawnBlocksTimer {
+    interval: 1
+    repeat: false
+    running: false
+
+    ontimeout {
+      window.BlockwarsRuntime.spawnBlocks(this);
+    }
+  }
 
   q-layout mainLayout {
     width: 45vh
@@ -51,6 +195,23 @@ q-component boardComponent {
             width: "calc((100% - 20px) / 6)"
             height: "100%"
           }
+        }
+      }
+    }
+
+    div.blockwars-block-layer {
+      position: "absolute"
+      left: "0px"
+      top: "0px"
+      width: "100%"
+      height: "100%"
+      pointerEvents: "none"
+      overflow: "visible"
+      zIndex: "4"
+
+      for (blockNum in blockNumbers) {
+        blockwarsBlock {
+          blockIndex: blockNum
         }
       }
     }

@@ -1,10 +1,13 @@
 (function () {
   "use strict";
 
-  const COLORS = ["red", "green", "blue", "yellow"];
+  const COLORS = ["#ef4444", "#22c55e", "#3b82f6", "#eab308"];
+  const BOARD_ROWS = 6;
+  const controllers = new Map();
+  let gameElement = null;
 
-  function findBoardElements() {
-    return Array.from(document.querySelectorAll("boardComponent, boardcomponent"));
+  function findBoardElements(root) {
+    return Array.from((root || document).querySelectorAll("boardComponent, boardcomponent"));
   }
 
   function findBoardSurface(board) {
@@ -12,182 +15,321 @@
   }
 
   function findCellComponents(board) {
-    return Array.from(board.querySelectorAll("[component-instance]"))
-      .filter((element) => element.querySelector(".blockwars-cell"));
+    return Array.from(board.querySelectorAll("blockwarsCell, blockwarscell"));
   }
 
-  function createBlockLayer(surface) {
-    const existing = surface.querySelector(":scope > .blockwars-block-layer");
-    if (existing) {
-      existing.innerHTML = "";
-      return existing;
+  function findBlockComponents(board) {
+    return Array.from(board.querySelectorAll("blockwarsBlock, blockwarsblock"));
+  }
+
+  function key(row, col) {
+    return Number(row) + "," + Number(col);
+  }
+
+  function numberProperty(element, name, fallback) {
+    const value = Number(element[name] || element.getAttribute(name) || element.getAttribute(name.toLowerCase()));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function stringProperty(element, name, fallback) {
+    return String(element[name] || element.getAttribute(name) || element.getAttribute(name.toLowerCase()) || fallback || "");
+  }
+
+  function cellVisual(cell) {
+    return cell.querySelector(".blockwars-cell");
+  }
+
+  function parseCell(cell) {
+    const visual = cellVisual(cell);
+    return {
+      cell,
+      visual,
+      row: Number(visual.getAttribute("data-row")),
+      col: Number(visual.getAttribute("data-col"))
+    };
+  }
+
+  function cellPosition(surfaceRect, parsedCell) {
+    const rect = parsedCell.visual.getBoundingClientRect();
+    return {
+      x: (rect.left - surfaceRect.left) + "px",
+      y: (rect.top - surfaceRect.top) + "px",
+      width: rect.width + "px",
+      height: rect.height + "px"
+    };
+  }
+
+  function blockIndex(block, fallback) {
+    return Number(block.blockIndex || block.getAttribute("blockIndex") || block.getAttribute("blockindex") || fallback);
+  }
+
+  function setBlockDataset(block, id, row, col) {
+    block.dataset.blockId = id;
+    block.dataset.row = String(row);
+    block.dataset.col = String(col);
+  }
+
+  function connectBlockSignals(controller, block) {
+    if (block.__blockwarsSignalsConnected) {
+      return;
     }
-    const layer = document.createElement("div");
-    layer.className = "blockwars-block-layer";
-    layer.style.position = "absolute";
-    layer.style.left = "0";
-    layer.style.top = "0";
-    layer.style.width = "100%";
-    layer.style.height = "100%";
-    layer.style.pointerEvents = "none";
-    layer.style.zIndex = "4";
-    layer.style.overflow = "visible";
-    surface.appendChild(layer);
-    return layer;
-  }
-
-  function styleBlockElement(element, block, spawnDirection) {
-    element.className = "blockwars-block";
-    element.dataset.blockId = block.blockId;
-    element.dataset.row = String(block.row);
-    element.dataset.col = String(block.col);
-    element.style.position = "absolute";
-    element.style.left = block.spawnX;
-    element.style.top = block.spawnY;
-    element.style.width = block.width;
-    element.style.height = block.height;
-    element.style.background = block.blockColor;
-    element.style.border = "2px solid rgba(255,255,255,0.55)";
-    element.style.borderRadius = "6px";
-    element.style.boxSizing = "border-box";
-    element.style.boxShadow = "0 8px 18px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.3)";
-    element.style.transition = "left 520ms cubic-bezier(0.18, 0.82, 0.22, 1), top 520ms cubic-bezier(0.18, 0.82, 0.22, 1), transform 520ms cubic-bezier(0.18, 0.82, 0.22, 1)";
-    element.style.transform = (spawnDirection === "up" ? "translateY(10px)" : "translateY(-10px)") + " scale(0.92)";
-    element.style.pointerEvents = "auto";
-  }
-
-  function dropBlocksIntoPlace(blocks, spawnDirection) {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const orderedBlocks = blocks.slice().sort((left, right) => {
-          if (left.row !== right.row) {
-            return spawnDirection === "up" ? left.row - right.row : right.row - left.row;
-          }
-          return left.col - right.col;
-        });
-        orderedBlocks.forEach((block, index) => {
-          setTimeout(() => {
-            block.element.style.left = block.x;
-            block.element.style.top = block.y;
-            block.element.style.transform = "translateY(0) scale(1)";
-          }, index * 18);
-        });
-      });
+    block.__blockwarsSignalsConnected = true;
+    block.animationStarted.connect(function (blockId) {
+      controller.board.trackAnimationStarted(blockId);
+    });
+    block.animationDone.connect(function (blockId) {
+      controller.board.trackAnimationDone(blockId);
     });
   }
 
-  function initializeBlocks(board, boardIndex) {
-    if (board.__blockwarsInitialized) {
-      return;
+  function prepareBlock(controller, block, index) {
+    const blockNumber = blockIndex(block, index + 1);
+    block.__blockwarsBoard = controller;
+    block.__blockwarsAssigned = false;
+    block.__blockwarsActive = false;
+    block.__blockwarsMoving = false;
+    block.blockId = "block-" + controller.boardNumber + "-" + blockNumber;
+    block.blockColor = COLORS[(blockNumber - 1) % COLORS.length];
+    block.setContextProperty("blockId", block.blockId);
+    setBlockDataset(block, block.blockId, 0, 0);
+    connectBlockSignals(controller, block);
+  }
+
+  function sortedRows(controller) {
+    return controller.rowNumbers.slice().sort((a, b) => a - b);
+  }
+
+  function sortedCols(controller) {
+    return controller.colNumbers.slice().sort((a, b) => a - b);
+  }
+
+  function fillOrderRows(controller) {
+    const rows = sortedRows(controller);
+    return controller.spawnDirection === "up" ? rows : rows.slice().reverse();
+  }
+
+  function spawnRows(controller) {
+    const rows = sortedRows(controller);
+    return controller.spawnDirection === "up" ? rows.slice().reverse() : rows;
+  }
+
+  function spawnPositionFor(controller, position, spawnSlot) {
+    const rowOffset = controller.rowPitch * 8;
+    const currentY = Number.parseFloat(position.y) || 0;
+    const spawnY = controller.spawnDirection === "up"
+      ? currentY + rowOffset
+      : currentY - rowOffset;
+    return {
+      x: position.x,
+      y: spawnY + "px",
+      width: position.width,
+      height: position.height
+    };
+  }
+
+  function assignBlockToCell(controller, block, row, col, spawnSlot) {
+    const position = controller.positionsByCoord.get(key(row, col));
+    const spawn = spawnPositionFor(controller, position, spawnSlot);
+    block.__blockwarsAssigned = true;
+    block.__blockwarsActive = true;
+    block.__blockwarsRow = Number(row);
+    block.__blockwarsCol = Number(col);
+    block.rowNum = Number(row);
+    block.colNum = Number(col);
+    setBlockDataset(block, block.blockId, row, col);
+    block.prepareAt(spawn.x, spawn.y, spawn.width, spawn.height, block.blockColor);
+    controller.byCoord.set(key(row, col), block);
+    controller.cellByCoord.get(key(row, col)).cell.setContextProperty("currentBlock", block);
+    block.moveTo(position.x, position.y);
+  }
+
+  function moveExistingBlock(controller, block, row, col) {
+    const oldKey = key(block.__blockwarsRow, block.__blockwarsCol);
+    const nextKey = key(row, col);
+    const position = controller.positionsByCoord.get(nextKey);
+    controller.byCoord.delete(oldKey);
+    controller.byCoord.set(nextKey, block);
+    block.__blockwarsRow = Number(row);
+    block.__blockwarsCol = Number(col);
+    block.rowNum = Number(row);
+    block.colNum = Number(col);
+    setBlockDataset(block, block.blockId, row, col);
+    controller.cellByCoord.get(nextKey).cell.setContextProperty("currentBlock", block);
+    block.moveTo(position.x, position.y);
+  }
+
+  function emptyCellContext(controller, row, col) {
+    controller.cellByCoord.get(key(row, col)).cell.setContextProperty("currentBlock", null);
+  }
+
+  function nextInactiveBlock(controller) {
+    const block = controller.blocks.find((candidate) => !candidate.__blockwarsActive);
+    block.__blockwarsActive = true;
+    return block;
+  }
+
+  function completeBoardAction(controller) {
+    const actionName = controller.activeAction;
+    controller.activeAction = "";
+    controller.board.boardState = "";
+    controller.board.animatingBlocks = [];
+    if (gameElement && typeof gameElement.actionCompleted === "function") {
+      gameElement.actionCompleted(controller.boardNumber, actionName);
+    } else if (typeof controller.board.actionCompleted === "function") {
+      controller.board.actionCompleted(controller.boardNumber, actionName);
     }
+  }
+
+  function startBoardAction(controller, actionName) {
+    controller.activeAction = actionName;
+    controller.board.boardState = actionName;
+    controller.animatingBlockIds.clear();
+    controller.board.animatingBlocks = [];
+  }
+
+  function controllerForBoard(board) {
+    if (controllers.has(board)) {
+      return controllers.get(board);
+    }
+
     const surface = findBoardSurface(board);
     surface.style.position = "relative";
-
     const surfaceRect = surface.getBoundingClientRect();
-    const cells = findCellComponents(board);
-    if (cells.length === 0) {
-      return;
-    }
-    board.__blockwarsInitialized = true;
-    const layer = createBlockLayer(surface);
-    const blocks = [];
-    const byCoord = new Map();
+    const parsedCells = findCellComponents(board).map(parseCell);
+    const cellByCoord = new Map();
     const positionsByCoord = new Map();
-    const rowNumbers = Array.from(new Set(cells.map((cell) => Number(cell.querySelector(".blockwars-cell").getAttribute("data-row"))))).sort((a, b) => a - b);
-    const firstColumnCells = rowNumbers
-      .map((row) => cells.find((cell) => Number(cell.querySelector(".blockwars-cell").getAttribute("data-row")) === row))
-      .filter(Boolean);
-    const firstRowRect = firstColumnCells[0].querySelector(".blockwars-cell").getBoundingClientRect();
-    const secondRowRect = firstColumnCells[1] ? firstColumnCells[1].querySelector(".blockwars-cell").getBoundingClientRect() : null;
-    const rowPitch = secondRowRect ? secondRowRect.top - firstRowRect.top : firstRowRect.height;
-    const spawnOffsetY = rowPitch * rowNumbers.length;
-    const defaultDirection = boardIndex % 2 === 1 ? "up" : "down";
-    const spawnDirection = String(
-      board.spawnDirection ||
-      board.getAttribute("spawnDirection") ||
-      board.getAttribute("spawndirection") ||
-      defaultDirection
-    ).toLowerCase();
-
-    cells.forEach((cell, index) => {
-      const cellVisual = cell.querySelector(".blockwars-cell");
-      const row = Number(cellVisual.getAttribute("data-row"));
-      const col = Number(cellVisual.getAttribute("data-col"));
-      const rect = cellVisual.getBoundingClientRect();
-      const position = {
-        x: (rect.left - surfaceRect.left) + "px",
-        y: (rect.top - surfaceRect.top) + "px",
-        width: rect.width + "px",
-        height: rect.height + "px"
-      };
-      const block = {
-        blockId: "block-" + row + "-" + col,
-        blockColor: COLORS[index % COLORS.length],
-        row,
-        col,
-        health: 1,
-        frozen: false,
-        poisoned: false,
-        burning: false,
-        x: position.x,
-        y: position.y,
-        spawnX: position.x,
-        spawnY: ((rect.top - surfaceRect.top) + (spawnDirection === "up" ? spawnOffsetY : -spawnOffsetY)) + "px",
-        width: position.width,
-        height: position.height,
-        element: document.createElement("div")
-      };
-      styleBlockElement(block.element, block, spawnDirection);
-      layer.appendChild(block.element);
-      blocks.push(block);
-      byCoord.set(row + "," + col, block);
-      positionsByCoord.set(row + "," + col, position);
-      QHTML7.setContextProperty(cell, "currentBlock", block);
+    parsedCells.forEach((parsed) => {
+      cellByCoord.set(key(parsed.row, parsed.col), parsed);
+      positionsByCoord.set(key(parsed.row, parsed.col), cellPosition(surfaceRect, parsed));
     });
 
+    const rowNumbers = Array.from(new Set(parsedCells.map((cell) => cell.row))).sort((a, b) => a - b);
+    const colNumbers = Array.from(new Set(parsedCells.map((cell) => cell.col))).sort((a, b) => a - b);
+    const firstColumn = rowNumbers.map((row) => cellByCoord.get(key(row, colNumbers[0]))).filter(Boolean);
+    const firstRect = firstColumn[0].visual.getBoundingClientRect();
+    const secondRect = firstColumn[1] ? firstColumn[1].visual.getBoundingClientRect() : null;
+
     const controller = {
-      blocks,
-      spawnDirection,
+      board,
+      surface,
+      boardNumber: numberProperty(board, "boardNumber", controllers.size + 1),
+      spawnDirection: stringProperty(board, "spawnDirection", controllers.size % 2 === 0 ? "down" : "up").toLowerCase(),
+      rowNumbers,
+      colNumbers,
+      rowPitch: secondRect ? Math.abs(secondRect.top - firstRect.top) : firstRect.height,
+      cellByCoord,
+      positionsByCoord,
+      byCoord: new Map(),
+      blocks: findBlockComponents(board),
+      animatingBlockIds: new Set(),
+      activeAction: "",
       blockAt(row, col) {
-        return byCoord.get(Number(row) + "," + Number(col));
-      },
-      moveBlock(block, row, col) {
-        const target = positionsByCoord.get(Number(row) + "," + Number(col));
-        block.row = Number(row);
-        block.col = Number(col);
-        block.x = target.x;
-        block.y = target.y;
-        block.element.style.left = block.x;
-        block.element.style.top = block.y;
+        return this.byCoord.get(key(row, col)) || null;
       }
     };
 
+    controller.blocks.forEach((block, index) => prepareBlock(controller, block, index));
     board.__blockwars = controller;
-    board.setContextProperty("blocks", blocks);
     board.setContextProperty("blockwars", controller);
+    board.setContextProperty("blocks", controller.blocks);
     board.setContextProperty("blockAt", controller.blockAt.bind(controller));
-    dropBlocksIntoPlace(blocks, spawnDirection);
+    controllers.set(board, controller);
+    return controller;
   }
 
-  function boot() {
-    findBoardElements().forEach((board, index) => initializeBlocks(board, index));
-  }
+  function fillBoard(board) {
+    const controller = controllerForBoard(board);
+    startBoardAction(controller, "fillBoard");
 
-  let bootScheduled = false;
-  function scheduleBootAfterQHTMLContentLoaded() {
-    if (bootScheduled) {
-      return;
+    const rows = fillOrderRows(controller);
+    const newByCoord = new Map();
+    const moves = [];
+
+    sortedCols(controller).forEach((col) => {
+      const existing = rows.map((row) => controller.byCoord.get(key(row, col))).filter(Boolean);
+      rows.forEach((row) => emptyCellContext(controller, row, col));
+      existing.forEach((block, index) => {
+        const targetRow = rows[index];
+        newByCoord.set(key(targetRow, col), block);
+        if (block.__blockwarsRow !== targetRow || block.__blockwarsCol !== col) {
+          moves.push({ block, row: targetRow, col });
+        } else {
+          controller.cellByCoord.get(key(targetRow, col)).cell.setContextProperty("currentBlock", block);
+        }
+      });
+    });
+
+    controller.byCoord = newByCoord;
+
+    moves.forEach((move) => {
+      moveExistingBlock(controller, move.block, move.row, move.col);
+    });
+
+    if (controller.animatingBlockIds.size === 0) {
+      completeBoardAction(controller);
     }
-    bootScheduled = true;
-    setTimeout(() => {
-      requestAnimationFrame(boot);
-    }, 0);
   }
 
-  document.addEventListener("QHTMLContentLoaded", scheduleBootAfterQHTMLContentLoaded, { once: true });
-  window.addEventListener("QHTMLContentLoaded", scheduleBootAfterQHTMLContentLoaded, { once: true });
+  function spawnBlocks(board) {
+    const controller = controllerForBoard(board);
+    startBoardAction(controller, "spawnBlocks");
 
-  if (document.querySelector("q-html[ready='1'], q-html7[ready='1']")) {
-    scheduleBootAfterQHTMLContentLoaded();
+    sortedCols(controller).forEach((col) => {
+      const emptyRows = spawnRows(controller).filter((row) => !controller.byCoord.has(key(row, col)));
+      emptyRows.forEach((row, spawnIndex) => {
+        const block = nextInactiveBlock(controller);
+        assignBlockToCell(controller, block, row, col, spawnIndex + 1);
+      });
+    });
+
+    if (controller.animatingBlockIds.size === 0) {
+      completeBoardAction(controller);
+    }
   }
+
+  function trackAnimationStarted(board, blockId) {
+    const controller = controllerForBoard(board);
+    controller.animatingBlockIds.add(String(blockId));
+    controller.board.animatingBlocks = Array.from(controller.animatingBlockIds);
+  }
+
+  function trackAnimationDone(board, blockId) {
+    const controller = controllerForBoard(board);
+    controller.animatingBlockIds.delete(String(blockId));
+    controller.board.animatingBlocks = Array.from(controller.animatingBlockIds);
+    if (controller.activeAction && controller.animatingBlockIds.size === 0) {
+      completeBoardAction(controller);
+    }
+  }
+
+  function attachGame(game) {
+    gameElement = game;
+    game.setContextProperty("blockwarsControllers", controllers);
+    findBoardElements(game).forEach((board) => controllerForBoard(board));
+  }
+
+  function recordActionCompleted(game, boardNum, actionName) {
+    const completedActions = Object.assign({}, game.completedActions || {});
+    const boardNumber = Number(boardNum);
+    const list = Array.isArray(completedActions[actionName]) ? completedActions[actionName].slice() : [];
+    if (!list.includes(boardNumber)) {
+      list.push(boardNumber);
+    }
+    completedActions[actionName] = list;
+    game.completedActions = completedActions;
+    game.completedBoards = list;
+    if (actionName === "fillBoard") {
+      game.spawnBlocks(boardNumber);
+    }
+  }
+
+  window.BlockwarsRuntime = {
+    attachGame,
+    fillBoard,
+    spawnBlocks,
+    trackAnimationStarted,
+    trackAnimationDone,
+    recordActionCompleted,
+    controllerForBoard
+  };
 })();

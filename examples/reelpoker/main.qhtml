@@ -1,0 +1,615 @@
+q-import { ./poker.qhtml }
+
+q-component rp-payline-button {
+  q-property payline: 0
+
+  q-style rpPaylineButtonStyle {
+    width: 100%;
+    height: 100%;
+    minWidth: 0;
+    minHeight: 0;
+    display: grid;
+    placeItems: center;
+    boxSizing: border-box;
+    padding: 0;
+    border: 0;
+    borderRadius: 0;
+    background: transparent;
+    color: rgba(245,255,248,.92);
+    boxShadow: none;
+    fontFamily: ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    fontSize: clamp(8px,1vw,17px);
+    fontWeight: 800;
+    lineHeight: 1;
+    textAlign: center;
+    cursor: pointer;
+    userSelect: none;
+    appearance: none;
+    outline: none;
+  }
+
+  q-theme rpPaylineButtonTheme {
+    button.rp-payline-control { rpPaylineButtonStyle }
+  }
+
+  onready {
+    this.querySelector("button").setAttribute("data-payline", this.payline);
+    this.querySelector("button").setAttribute("aria-label", "Payline " + this.payline);
+  }
+
+  rpPaylineButtonTheme {
+    button.rp-payline-control {
+      type: "button"
+      text { ${payline} }
+    }
+  }
+}
+
+q-component rp-bet-button {
+  q-property modifyAmount: 0
+  q-property label: ""
+
+  q-style rpBetButtonStyle {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    placeItems: center;
+    boxSizing: border-box;
+    padding: 0;
+    border: 2px solid rgba(246,255,249,.84);
+    borderRadius: 20px;
+    background: linear-gradient(180deg,rgba(10,55,35,.94),rgba(1,20,12,.98));
+    color: white;
+    boxShadow: inset 0 0 0 2px rgba(0,0,0,.6), 0 5px 14px rgba(0,0,0,.52);
+    fontFamily: ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    fontSize: clamp(24px,4.4vw,72px);
+    fontWeight: 500;
+    lineHeight: 1;
+    cursor: pointer;
+    userSelect: none;
+  }
+
+  q-theme rpBetButtonTheme {
+    button.rp-bet-control { rpBetButtonStyle }
+  }
+
+  onready {
+    this.querySelector("button").setAttribute("data-modify-amount", this.modifyAmount);
+    this.querySelector("button").setAttribute("aria-label", "Modify bet by " + this.modifyAmount);
+  }
+
+  rpBetButtonTheme {
+    button.rp-bet-control {
+      type: "button"
+      text { ${label} }
+    }
+  }
+}
+
+q-component rp-spin-button {
+  q-style rpSpinButtonStyle {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    placeItems: center;
+    boxSizing: border-box;
+    padding: 0;
+    border: 0;
+    borderRadius: 50%;
+    background: transparent;
+    color: white;
+    boxShadow: none;
+    fontFamily: ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    fontSize: clamp(20px,3.2vw,54px);
+    fontWeight: 900;
+    letterSpacing: .035em;
+    textTransform: uppercase;
+    cursor: pointer;
+    userSelect: none;
+    appearance: none;
+    outline: none;
+  }
+
+  q-theme rpSpinButtonTheme {
+    button.rp-spin-control { rpSpinButtonStyle }
+  }
+  q-signal spinRequestedSignal()
+  onready {
+    this.querySelector("button").onclick = function() {
+      this.component.parent().spinReels();
+    };
+  }
+  rpSpinButtonTheme {
+    button.rp-spin-control {
+      type: "button"
+      aria-label: "Spin"
+      onclick { this.spinRequestedSignal(); console.log("Spin button pressed")}
+      text { Spin }
+    }
+  }
+}
+
+q-component Reel {
+  q-property reelNumber: 0
+  q-property cardsAnimating: 0
+  q-property currentSpinToken: ""
+  q-property stepDuration: 1000
+
+  q-signal reelStepCompleted(reelNumber, spinToken)
+
+  function cardReachedNextSlot(reelNumber, slotIndex, cardId, spinToken) {
+    this.cardsAnimating = this.cardsAnimating - 1;
+    if (this.cardsAnimating <= 0) {
+      this.finishReelStep(this.currentSpinToken);
+    }
+  }
+
+  function finishReelStep(spinToken) {
+    window.REEL_POKER_GAME.finishReelStep(this, spinToken);
+  }
+
+  function slotTop(slotNumber) {
+    return String((Number(slotNumber) - 4) * 16.9167) + "vh";
+  }
+
+  function layoutCard(cardObject, slotNumber) {
+    cardObject.isSpinning = false;
+    cardObject.currentSlot = slotNumber;
+    cardObject.top = this.slotTop(slotNumber);
+    cardObject.cardFrom = cardObject.top;
+    cardObject.cardTo = this.slotTop(slotNumber + 1);
+    cardObject.cardDuration = this.stepDuration;
+    cardObject.spinAnimation.from = cardObject.cardFrom;
+    cardObject.spinAnimation.to = cardObject.cardTo;
+    cardObject.spinAnimation.duration = cardObject.cardDuration;
+  }
+
+  function durationForSlotToBottom(slotNumber, maxDuration) {
+    return ((9 - Number(slotNumber)) / 8) * maxDuration;
+  }
+
+  function cardElement(slotNumber) {
+    return this.querySelectorAll("rpcard")[slotNumber - 1];
+  }
+
+  function layoutCards() {
+    this.layoutCard(this.cardElement(1), 1);
+    this.layoutCard(this.cardElement(2), 2);
+    this.layoutCard(this.cardElement(3), 3);
+    this.layoutCard(this.cardElement(4), 4);
+    this.layoutCard(this.cardElement(5), 5);
+    this.layoutCard(this.cardElement(6), 6);
+    this.layoutCard(this.cardElement(7), 7);
+    this.layoutCard(this.cardElement(8), 8);
+    this.layoutCard(this.cardElement(9), 9);
+  }
+
+  function startCardSpin(cardObject, slotNumber, duration) {
+    var cardDuration = this.durationForSlotToBottom(slotNumber, duration);
+    cardObject.currentSlot = slotNumber;
+    cardObject.prepareSpin(this.slotTop(slotNumber), this.slotTop(9), cardDuration);
+    if (cardDuration <= 0) {
+      this.cardReachedNextSlot(this.reelNumber, slotNumber, cardObject.cardId, this.currentSpinToken);
+    } else {
+      cardObject.startSpin();
+    }
+  }
+
+  function rotateReel(spinToken, duration) {
+    this.currentSpinToken = spinToken;
+    this.cardsAnimating = 9;
+    this.stepDuration = duration;
+    this.startCardSpin(this.cardElement(1), 1, duration);
+    this.startCardSpin(this.cardElement(2), 2, duration);
+    this.startCardSpin(this.cardElement(3), 3, duration);
+    this.startCardSpin(this.cardElement(4), 4, duration);
+    this.startCardSpin(this.cardElement(5), 5, duration);
+    this.startCardSpin(this.cardElement(6), 6, duration);
+    this.startCardSpin(this.cardElement(7), 7, duration);
+    this.startCardSpin(this.cardElement(8), 8, duration);
+    this.startCardSpin(this.cardElement(9), 9, duration);
+  }
+
+  function assignCardSlot(slotIndex, rank, suit, cardId) {
+    var cardObject = this.cardElement(slotIndex);
+    cardObject.rank = String(rank);
+    cardObject.suit = String(suit);
+    cardObject.cardId = String(cardId);
+    cardObject.setAttribute("data-card-id", cardObject.cardId);
+    cardObject.querySelector("img").setAttribute("src", "cards/" + cardObject.cardId + ".svg");
+    cardObject.querySelector("img").setAttribute("alt", cardObject.cardId);
+  }
+
+  function loadCards(cards) {
+    this.assignCardSlot(1, cards[0].rank, cards[0].suit, cards[0].id);
+    this.assignCardSlot(2, cards[1].rank, cards[1].suit, cards[1].id);
+    this.assignCardSlot(3, cards[2].rank, cards[2].suit, cards[2].id);
+    this.assignCardSlot(4, cards[3].rank, cards[3].suit, cards[3].id);
+    this.assignCardSlot(5, cards[4].rank, cards[4].suit, cards[4].id);
+    this.assignCardSlot(6, cards[5].rank, cards[5].suit, cards[5].id);
+    this.assignCardSlot(7, cards[6].rank, cards[6].suit, cards[6].id);
+    this.assignCardSlot(8, cards[7].rank, cards[7].suit, cards[7].id);
+    this.assignCardSlot(9, cards[8].rank, cards[8].suit, cards[8].id);
+    this.layoutCards();
+  }
+
+  onready {
+    this.querySelector(".rp-reel-window").setAttribute("data-reel", this.reelNumber);
+    this.layoutCards();
+  }
+
+  q-style rpReelWindowStyle {
+    position: relative;
+    width: 13.82vw;
+    height: 50.75vh;
+    overflow: hidden;
+    boxSizing: border-box;
+  }
+
+  q-theme rpReelTheme {
+    div.rp-reel-window { rpReelWindowStyle }
+  }
+
+  rpReelTheme {
+    div.rp-reel-window {
+      rpCard card1 {
+        currentSlot: 1
+        top: "-50.7501vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card2 {
+        currentSlot: 2
+        top: "-33.8334vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card3 {
+        currentSlot: 3
+        top: "-16.9167vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card4 {
+        currentSlot: 4
+        top: "0vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card5 {
+        currentSlot: 5
+        top: "16.9167vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card6 {
+        currentSlot: 6
+        top: "33.8334vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card7 {
+        currentSlot: 7
+        top: "50.7501vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card8 {
+        currentSlot: 8
+        top: "67.6668vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+      rpCard card9 {
+        currentSlot: 9
+        top: "84.5835vh"
+        oncardSpinCycleEnded(reelNumber, slotIndex, cardId) {
+          this.parent().cardReachedNextSlot(reelNumber, slotIndex, cardId, this.parent().currentSpinToken);
+        }
+      }
+    }
+  }
+}
+
+q-component rp-poker-slot-ui {
+  q-property spinning: false
+  q-property spinStep: 0
+  q-property spinSteps: 4
+  q-property spinDuration: 4000
+  q-property spinStepDuration: 1000
+  q-property spinTokenBase: ""
+  q-property reelsAnimating: 0
+  q-logger { function q-signal q-property }
+
+  function spinReels() {
+    if (this.spinning) {
+      return;
+    }
+    this.spinning = true;
+    this.spinStep = 0;
+    this.spinSteps = 4;
+    this.spinDuration = 4000;
+    this.spinStepDuration = this.spinDuration / this.spinSteps;
+    this.spinTokenBase = String(Date.now()) + "-" + String(Math.random()).replace(".", "");
+    this.querySelector(".rp-spin-control").disabled = true;
+    this.spinNextStep();
+  }
+
+  function spinNextStep() {
+    if (this.spinStep >= this.spinSteps) {
+      this.spinning = false;
+      this.querySelector(".rp-spin-control").disabled = false;
+      window.REEL_POKER_GAME.finalizeSpinRender();
+      return;
+    }
+    var currentStep = this.spinStep;
+    this.spinStep = this.spinStep + 1;
+    this.reelsAnimating = 5;
+    this.reelElement(1).rotateReel(this.spinTokenBase + "-1-" + currentStep, this.spinStepDuration);
+    this.reelElement(2).rotateReel(this.spinTokenBase + "-2-" + currentStep, this.spinStepDuration);
+    this.reelElement(3).rotateReel(this.spinTokenBase + "-3-" + currentStep, this.spinStepDuration);
+    this.reelElement(4).rotateReel(this.spinTokenBase + "-4-" + currentStep, this.spinStepDuration);
+    this.reelElement(5).rotateReel(this.spinTokenBase + "-5-" + currentStep, this.spinStepDuration);
+  }
+
+  function handleReelStepCompleted(reelNumber, spinToken) {
+    this.reelsAnimating = this.reelsAnimating - 1;
+    if (this.reelsAnimating <= 0) {
+      window.REEL_POKER_GAME.applySpinStepComplete();
+      this.spinNextStep();
+    }
+  }
+
+  function loadReelPokerState(state) {
+    this.reelElement(1).loadCards(state.reels[0]);
+    this.reelElement(2).loadCards(state.reels[1]);
+    this.reelElement(3).loadCards(state.reels[2]);
+    this.reelElement(4).loadCards(state.reels[3]);
+    this.reelElement(5).loadCards(state.reels[4]);
+  }
+
+  function updateReelCards(reelNumber) {
+    this.reelElement(reelNumber).loadCards(window.REEL_DATA[reelNumber - 1]);
+  }
+
+  function layoutAllReels() {
+    this.reelElement(1).layoutCards();
+    this.reelElement(2).layoutCards();
+    this.reelElement(3).layoutCards();
+    this.reelElement(4).layoutCards();
+    this.reelElement(5).layoutCards();
+  }
+
+  function reelElement(reelNumber) {
+    return this.querySelectorAll("reel")[reelNumber - 1];
+  }
+
+  q-style rpScreenStyle {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    backgroundColor: transparent;
+  }
+
+  q-style rpStageStyle {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    backgroundColor: transparent;
+  }
+
+  q-style rpBackgroundFrameStyle {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: url("./background.png") center / 100% 100% no-repeat;
+    pointerEvents: none;
+    zIndex: 2;
+  }
+
+  q-style rpPaylineColumnStyle {
+    position: absolute;
+    top: 22.72vh;
+    width: 6.75vw;
+    height: 48.35vh;
+    display: flex;
+    flexDirection: column;
+    gap: 2.05%;
+    boxSizing: border-box;
+    padding: 0.15% 0.22%;
+    zIndex: 3;
+  }
+
+  q-style rpPaylineItemHostStyle {
+    display: block;
+    width: 100%;
+    height: calc((100% - 18.45%) / 10);
+    flex: 0 0 calc((100% - 18.45%) / 10);
+    minWidth: 0;
+    minHeight: 0;
+    boxSizing: border-box;
+  }
+
+  q-style rpLeftPaylineColumnStyle {
+    left: 2.95vw;
+  }
+
+  q-style rpRightPaylineColumnStyle {
+    right: 2.95vw;
+  }
+
+  q-style rpControlPositionStyle {
+    position: absolute;
+    display: block;
+    zIndex: 3;
+  }
+
+  q-style rpReelSpaceStyle {
+    position: absolute;
+    left: 15.45vw;
+    top: 22.25vh;
+    width: 69.1vw;
+    height: 50.75vh;
+    display: flex;
+    flexDirection: row;
+    overflow: hidden;
+    boxSizing: border-box;
+    pointerEvents: none;
+    zIndex: 1;
+  }
+
+  q-style rpReelHostStyle {
+    display: block;
+    width: 20%;
+    height: 100%;
+    flex: 0 0 20%;
+    minWidth: 0;
+    minHeight: 0;
+    overflow: visible;
+    boxSizing: border-box;
+  }
+
+  q-theme rpPokerSlotTheme {
+    main.rp-screen { rpScreenStyle }
+    section.rp-slot-stage { rpStageStyle }
+    div.rp-reel-space { rpReelSpaceStyle }
+    div.rp-background-frame { rpBackgroundFrameStyle }
+    reel { rpReelHostStyle }
+    nav.rp-paylines-left { rpPaylineColumnStyle rpLeftPaylineColumnStyle }
+    nav.rp-paylines-right { rpPaylineColumnStyle rpRightPaylineColumnStyle }
+    rp-payline-button { rpPaylineItemHostStyle }
+    div.rp-bet-decrease { rpControlPositionStyle }
+    div.rp-bet-increase { rpControlPositionStyle }
+    div.rp-spin-position { rpControlPositionStyle }
+  }
+
+  rpPokerSlotTheme {
+    main.rp-screen {
+      section.rp-slot-stage {
+      aria-label: "Poker slot machine controls"
+
+      div.rp-reel-space {
+        aria-label: "Poker reels"
+        Reel reel1 {
+          reelNumber: 1
+          onreelStepCompleted(reelNumber, spinToken) {
+            this.parent().handleReelStepCompleted(reelNumber, spinToken);
+          }
+        }
+        Reel reel2 {
+          reelNumber: 2
+          onreelStepCompleted(reelNumber, spinToken) {
+            this.parent().handleReelStepCompleted(reelNumber, spinToken);
+          }
+        }
+        Reel reel3 {
+          reelNumber: 3
+          onreelStepCompleted(reelNumber, spinToken) {
+            this.parent().handleReelStepCompleted(reelNumber, spinToken);
+          }
+        }
+        Reel reel4 {
+          reelNumber: 4
+          onreelStepCompleted(reelNumber, spinToken) {
+            this.parent().handleReelStepCompleted(reelNumber, spinToken);
+          }
+        }
+        Reel reel5 {
+          reelNumber: 5
+          onreelStepCompleted(reelNumber, spinToken) {
+            this.parent().handleReelStepCompleted(reelNumber, spinToken);
+          }
+        }
+      }
+
+      div.rp-background-frame {
+        aria-hidden: "true"
+      }
+
+      nav.rp-paylines-left {
+        aria-label: "Paylines 1 through 10"
+        q-col {
+          width: "100%"
+          height: "100%"
+          gap: "2.05%"
+          rp-payline-button { payline: 1 }
+          rp-payline-button { payline: 2 }
+          rp-payline-button { payline: 3 }
+          rp-payline-button { payline: 4 }
+          rp-payline-button { payline: 5 }
+          rp-payline-button { payline: 6 }
+          rp-payline-button { payline: 7 }
+          rp-payline-button { payline: 8 }
+          rp-payline-button { payline: 9 }
+          rp-payline-button { payline: 10 }
+        }
+      }
+
+      nav.rp-paylines-right {
+        aria-label: "Paylines 11 through 20"
+        q-col {
+          width: "100%"
+          height: "100%"
+          gap: "2.05%"
+          rp-payline-button { payline: 11 }
+          rp-payline-button { payline: 12 }
+          rp-payline-button { payline: 13 }
+          rp-payline-button { payline: 14 }
+          rp-payline-button { payline: 15 }
+          rp-payline-button { payline: 16 }
+          rp-payline-button { payline: 17 }
+          rp-payline-button { payline: 18 }
+          rp-payline-button { payline: 19 }
+          rp-payline-button { payline: 20 }
+        }
+      }
+
+      div.rp-bet-decrease {
+        left: 5.15vw;
+        top: 83.1vh;
+        width: 11.45vw;
+        height: 10.2vh;
+        rp-bet-button {
+          modifyAmount: -1
+          label: "-"
+        }
+      }
+
+      div.rp-bet-increase {
+        left: 19.25vw;
+        top: 83.1vh;
+        width: 11.45vw;
+        height: 10.2vh;
+        rp-bet-button {
+          modifyAmount: 1
+          label: "+"
+        }
+      }
+
+      div.rp-spin-position {
+        left: 61.2vw;
+        top: 76.0vh;
+        width: 16.2vw;
+        height: 21.5vh;
+        rp-spin-button spinButton { onSpinRequestedSignal { console.log("Got Spin Requested signal", this.parent()); this.parent().spinReels(); }}
+
+      }
+    }
+  }
+  }
+}
+
+rp-poker-slot-ui mainUI { }

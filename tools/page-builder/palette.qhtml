@@ -680,11 +680,6 @@ q-component builderLogoStrip {
 }
 
 q-component pageBuilderPalette {
-  function openNewComponentDialog() {
-    this.setContextProperty("newComponentDialog", document.getElementById("pbNewComponentDialog"));
-    window.QHTMLPageBuilderPalette.openNewComponentDialog(this.newComponentDialog);
-  }
-
   aside.page-builder-palette {
     header.page-builder-palette-header {
       h2 { text { Palette } }
@@ -701,11 +696,7 @@ q-component pageBuilderPalette {
         height: "inherit"
 
         section.page-builder-palette-group {
-          button.pb-new-component-button {
-            type: "button"
-            onclick { event.stopPropagation(); this.component.openNewComponentDialog(); }
-            text { New Component }
-          }
+          h3 { text { Sections } }
           builderPaletteButton decoratedHeadlinePaletteButton {
             paletteId: "builder.decorated-headline"
             definitionName: "builderDecoratedHeadline"
@@ -848,11 +839,6 @@ q-component pageBuilderPalette {
           }
         }
 
-        section#pbCustomComponentGroup.page-builder-palette-group {
-          h3 { text { Custom Components } }
-          div#pbCustomComponentList { }
-        }
-
         section.page-builder-palette-group {
           h3 { text { Trust } }
           builderPaletteButton reviewPaletteButton {
@@ -879,122 +865,6 @@ q-component pageBuilderPalette {
             slotNames: "logoStripLabel,logoOne,logoTwo,logoThree,logoFour"
             function instantiatePaletteItem() { return this.createInstanceFromType(builderLogoStripPaletteItem); }
           }
-        }
-      }
-    }
-
-    dialog#pbNewComponentDialog.pb-component-dialog {
-      div.pb-component-dialog-shell {
-        header.pb-component-dialog-header {
-          div {
-            h2 { text { New Component } }
-            p { text { Define a reusable QHTML component and add it to this palette. } }
-          }
-          div.pb-component-dialog-actions {
-            button#pbNewComponentSave.lb-button.primary {
-              type: "button"
-              text { Save }
-            }
-            button#pbNewComponentCancel.lb-button {
-              type: "button"
-              text { Cancel }
-            }
-          }
-        }
-
-        div.pb-component-dialog-body {
-          q-tabs pbNewComponentTabs {
-            id: "pbNewComponentTabs"
-            q-tab {
-              name { text { General } }
-              body {
-                div.pb-component-form-grid {
-                  div.pb-component-field {
-                    label { for: "pbComponentName" text { Component name } }
-                    input#pbComponentName {
-                      type: "text"
-                      autocomplete: "off"
-                      value: "customComponent"
-                    }
-                  }
-
-                  div.pb-component-list-editor {
-                    label { for: "pbComponentExtendsList" text { Extra extends } }
-                    select#pbComponentExtendsList {
-                      size: "8"
-                    }
-                    div.pb-component-list-row {
-                      input#pbComponentExtendsInput {
-                        type: "text"
-                        placeholder: "baseComponent"
-                      }
-                      button#pbComponentExtendsAdd.lb-button {
-                        type: "button"
-                        text { + }
-                      }
-                      button#pbComponentExtendsRemove.lb-button {
-                        type: "button"
-                        text { - }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            q-tab {
-              name { text { Signals } }
-              body {
-                div.pb-component-list-editor {
-                  label { for: "pbComponentSignalsList" text { Signals } }
-                  select#pbComponentSignalsList {
-                    size: "10"
-                  }
-                  div.pb-component-list-row {
-                    input#pbComponentSignalInput {
-                      type: "text"
-                      placeholder: "signalName(value)"
-                    }
-                    button#pbComponentSignalAdd.lb-button {
-                      type: "button"
-                      text { + }
-                    }
-                    button#pbComponentSignalRemove.lb-button {
-                      type: "button"
-                      text { - }
-                    }
-                  }
-                }
-              }
-            }
-
-            q-tab {
-              name { text { Code } }
-              body {
-                div.pb-component-code {
-                  q-editor#pbComponentCodeEditor { }
-                  div#pbComponentCodeStatus.pb-component-status { text { Ready } }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    dialog#pbDiscardComponentDialog.pb-discard-dialog {
-      div.pb-discard-dialog-body {
-        h3 { text { Discard changes? } }
-        p { text { Unsaved component changes will be lost. } }
-      }
-      div.pb-discard-dialog-actions {
-        button#pbDiscardComponentCancel.lb-button {
-          type: "button"
-          text { Cancel }
-        }
-        button#pbDiscardComponentConfirm.lb-button.primary {
-          type: "button"
-          text { Discard }
         }
       }
     }
