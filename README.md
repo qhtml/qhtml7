@@ -6,6 +6,49 @@ Language design, specifications, and tests created by humans; implementation by 
 
 ## What's New
 
+### Reactive interpolation, CSS-unit properties, and simpler animations
+
+Interpolated values now install hidden property-change bindings. Text, HTML, attributes, CSS shortcut assignments, `q-style`, and inline `q-style` blocks inside `q-theme` are re-evaluated when the referenced QHTML property changes.
+
+```qhtml
+q-component color-card {
+  q-property bgColor: blue
+
+  q-theme card-theme {
+    div { q-style { backgroundColor: ${this.bgColor} } }
+  }
+
+  card-theme {
+    div {
+      text { Current color: ${this.bgColor} }
+    }
+  }
+
+  button {
+    onclick { this.bgColor = "red"; }
+    text { Change color }
+  }
+}
+
+color-card card1 { }
+```
+
+CSS-unit `q-property` values keep their unit during normal arithmetic. If `amount` is `40%`, then `amount = amount + 10` becomes `50%`; if it is `40vw`, the same operation becomes `50vw`.
+
+`q-property-animation` can now target a property directly:
+
+```qhtml
+q-property-animation growAmount {
+  target: card1.amount
+  from: 10%
+  to: 70%
+  duration: 9000
+  running: true
+  emitInterpolatedValues: false
+}
+```
+
+`emitInterpolatedValues` defaults to `false`, which suppresses target property-change handlers during each animation frame and emits the final target property change when the animation completes. Set it to `true` when handlers/interpolations should update continuously during the animation.
 
 ### No more WebAssembly -- too clunky and slow. 
 While it would have been nice to have a clean assembly based library, it was much too slow and over-complicated. So, QHTML7 now ships as a native JavaScript runtime. The earlier WebAssembly backing system was accurate, but large QHTML scripts had too much startup and interaction lag under WASM, and the distributable package was larger than necessary. The runtime was redesigned as native JavaScript while retaining the QHTMLDomTree object model, the QHTML node classes, and the QHTML7 syntax shortcuts used by the WASM version.
@@ -295,9 +338,14 @@ Use `q-property` inside a component definition:
 ```qhtml
 q-component badge {
   q-property label: "New"
+  q-property widthAmount: 40%
 
   span.badge {
     text { ${label} }
+  }
+
+  onwidthAmountchanged(value) {
+    this.querySelector(".badge").style.width = value;
   }
 }
 
@@ -350,6 +398,8 @@ Simplified resulting HTML:
   <div class="target">Copied title</div>
 </target-box>
 ```
+
+Simple property references on the right-hand side are live bindings. If `source1.title` changes later, `target-box.copiedTitle` is updated until `copiedTitle` is assigned directly.
 
 Inside a component, `this` refers to the nearest parent component instance in JavaScript handlers, functions, property handlers, signal handlers, animations, and event blocks:
 
@@ -767,10 +817,28 @@ article-theme {
 ### Anonymous Styles In Themes
 
 ```qhtml
-q-theme card-theme {
-  h3 { q-style { color: #1d4ed8 } }
-  .summary { q-style { color: #334155 } }
+q-component themed-panel {
+  q-property accentColor: #1d4ed8
+
+  q-theme card-theme {
+    h3 { q-style { color: ${this.accentColor} } }
+    .summary { q-style { color: #334155 } }
+  }
+
+  card-theme {
+    section {
+      h3 { text { Dynamic theme color } }
+      p.summary { text { Theme values react to q-property changes. } }
+    }
+  }
+
+  button {
+    onclick { this.accentColor = "#dc2626"; }
+    text { Change accent }
+  }
 }
+
+themed-panel panel1 { }
 ```
 
 ### `q-default-theme`
@@ -820,6 +888,55 @@ q-transition fade-in {
 
 q-style panel-style {
   q-style-transition { fade-in }
+}
+```
+
+### `q-property-animation`
+
+`q-property-animation` animates a QHTML or DOM property. The compact form puts the target object and target property in the same expression:
+
+```qhtml
+q-component progressBar {
+  q-property amount: 40%
+
+  onamountchanged(value) {
+    this.querySelector(".fill").style.width = value;
+  }
+
+  div.track {
+    width: "120px"
+    height: "12px"
+    backgroundColor: "black"
+
+    div.fill {
+      width: "40%"
+      height: "12px"
+      backgroundColor: "orange"
+    }
+  }
+}
+
+progressBar bar1 { amount: 10% }
+
+q-property-animation growBar {
+  target: bar1.amount
+  from: 10%
+  to: 75%
+  duration: 900
+  steps: 30
+  running: true
+  emitInterpolatedValues: true
+}
+```
+
+The older split form is still valid:
+
+```qhtml
+q-property-animation growBar {
+  target: bar1
+  property: "amount"
+  from: 10%
+  to: 75%
 }
 ```
 
@@ -979,7 +1096,7 @@ button {
 
 Use normal DOM APIs from the component instance when you need browser output, for example `this.querySelector(...)`, `this.setAttribute(...)`, or CSS shortcut properties.
 
-### SetContextProperty for inline  Expressions
+### Interpolation And `setContextProperty`
 
 `${expression}` evaluates inside text/attribute strings.
 
@@ -990,14 +1107,16 @@ You can call object1.setContextProperty(propertyName, object2) as long as object
 - Critical for dynamically building objects using QHTML with mixed javascript code that already exists, this makes it easy to integrate. 
 
 ```qhtml 
-
-
-
-div#mydiv { title: "Current user: ${currentUser}" text { Hello ${currentUser} }
-
+div#mydiv {
+  title: "Current user: ${currentUser}"
+  text { Hello ${currentUser} }
+}
 ```
 
-Expressions are evaluated when the final string is rendered. They are not automatic watchers by themselves. 
+Interpolated values are reactive when they reference QHTML properties such as `${label}`, `${this.label}`, or `${objectName.label}`. QHTML installs a hidden handler for the referenced property-change signal and re-renders the affected text/html/attribute/style value.
+
+Plain JavaScript context values supplied by `setContextProperty()` still require `render()` after changing the context pointer.
+
 ```javascript 
 
 document.querySelector("#mydiv").setContextProperty("currentUser", "myUserA")
@@ -1009,7 +1128,7 @@ The result is
 ```
 <div id="mydiv" title="Current User: myUserA">Hello myUserA</div>
 
-````
+```
 
 ## 8. Paint And Houdini
 

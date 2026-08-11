@@ -1,4 +1,5 @@
 # QHTML7 Project Notes
+- First and foremost, real all files from the `doc/` folder before doing anything so that you can be fully aware of the Javascript API and all of the QHTML declarative use cases
 
 ## Architecture Constraints
 

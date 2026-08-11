@@ -2083,10 +2083,78 @@
     renderTemplateHtmlJs() { return this.renderTemplateHtml(); }
     extendsList() {
       const value = trim(this.attribute("extends")).replace(/,/g, " ");
-      return value ? value.split(/\s+/) : [];
+      return value ? value.split(/\s+/).filter(item => item.toLowerCase() !== "extends") : [];
     }
     extendsListJs() { return this.extendsList().join(", "); }
     hasExtends() { return this.extendsList().length > 0; }
+  }
+
+  function qhtmlDefinitionByNameFromRoot(rootNode, name) {
+    const wanted = trim(name);
+    let found = null;
+    function walk(node) {
+      if (!node || found) {
+        return;
+      }
+      if (node instanceof QHTMLComponentDefinition && node.qhtmlName() === wanted) {
+        found = node;
+        return;
+      }
+      for (const child of node.children()) {
+        walk(child);
+      }
+    }
+    walk(rootNode);
+    return found;
+  }
+
+  function qhtmlInheritedComponentDefinitionChild(node) {
+    return node instanceof QHTMLProperty ||
+      node instanceof QHTMLFunction ||
+      node instanceof QHTMLSignal;
+  }
+
+  function qhtmlInheritedComponentDefinitionChildKey(node) {
+    return qhtmlInheritedComponentDefinitionChild(node)
+      ? node.qhtmlType() + ":" + node.qhtmlName()
+      : "";
+  }
+
+  function qhtmlEffectiveComponentDefinitionChildren(definitionNode, visited = new Set(), inheritedOnly = false) {
+    if (!(definitionNode instanceof QHTMLComponentDefinition)) {
+      return [];
+    }
+    const uuid = definitionNode.qhtmlUUID();
+    if (visited.has(uuid)) {
+      return [];
+    }
+    visited.add(uuid);
+
+    const out = [];
+    const append = function (child) {
+      if (inheritedOnly && !qhtmlInheritedComponentDefinitionChild(child)) {
+        return;
+      }
+      const key = qhtmlInheritedComponentDefinitionChildKey(child);
+      if (key) {
+        for (let index = out.length - 1; index >= 0; index -= 1) {
+          if (qhtmlInheritedComponentDefinitionChildKey(out[index]) === key) {
+            out.splice(index, 1);
+          }
+        }
+      }
+      out.push(child);
+    };
+    const root = definitionNode.rootNode();
+    for (const baseName of definitionNode.extendsList()) {
+      const baseDefinition = qhtmlDefinitionByNameFromRoot(root, baseName);
+      if (baseDefinition) {
+        qhtmlEffectiveComponentDefinitionChildren(baseDefinition, visited, true).forEach(append);
+      }
+    }
+    definitionNode.children().forEach(append);
+    visited.delete(uuid);
+    return out;
   }
 
   class QHTMLComponentInstance extends QHTMLTypedNode {
@@ -2163,7 +2231,7 @@
         return current;
       }
       this.clearMaterializedDefinitionMembers();
-      for (const child of this._definition.children().filter(child => !child.isRuntimeGenerated())) {
+      for (const child of qhtmlEffectiveComponentDefinitionChildren(this._definition).filter(child => !child.isRuntimeGenerated())) {
         if (child instanceof QHTMLComponentDefinition) {
           continue;
         }
@@ -2183,7 +2251,7 @@
         if (node instanceof QHTMLComponentSlot) out.push(node);
         for (const child of node.children()) walk(child);
       }
-      walk(this._definition);
+      qhtmlEffectiveComponentDefinitionChildren(this._definition).forEach(walk);
       return out;
     }
     slotCount() { return this.collectSlots().length; }
@@ -2219,7 +2287,14 @@
     }
     slotDefault(slotName) {
       if (!this._definition) return null;
-      return this._definition.findChildrenByType("QHTMLSlotDefault").find(item => item.qhtmlName() === slotName) || null;
+      const defaults = [];
+      function walk(node) {
+        if (!node) return;
+        if (node instanceof QHTMLSlotDefault) defaults.push(node);
+        for (const child of node.children()) walk(child);
+      }
+      qhtmlEffectiveComponentDefinitionChildren(this._definition).forEach(walk);
+      return defaults.find(item => item.qhtmlName() === slotName) || null;
     }
     slotDefaultJs(slotName) { return this.slotDefault(slotName); }
     slotOverride(slotName) {
@@ -3642,6 +3717,7 @@
     qhtmlResolveExpressionValue,
     qhtmlResolvePropertyValue,
     qhtmlResolveCssValueForContext,
+    qhtmlEffectiveComponentDefinitionChildren,
     reassignNodeUUIDs,
     materializeIterationValue,
     applyContextPropertyToDescendants,

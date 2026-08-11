@@ -1,0 +1,17 @@
+q-import { ./card.qhtml }
+
+q-component Reel {
+  q-property reelNumber: 0
+
+  div.rp-reel-track {
+    Card card1 { }
+    Card card2 { }
+    Card card3 { }
+    Card card4 { }
+    Card card5 { }
+    Card card6 { }
+    Card card7 { }
+    Card card8 { }
+    Card card9 { }
+  }
+}

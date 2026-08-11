@@ -568,7 +568,7 @@
       minWidth: "75vw",
       minHeight: "75vh",
       padding: BUILDER_ROOT_PADDING,
-      gap: "12px",
+      gap: "0px",
       overflow: "visible",
       "data-lb-builder-root": "1"
     });
@@ -1877,7 +1877,7 @@
     const text = String(value || "").trim();
     const match = /^(-?(?:\d+|\d*\.\d+))(px|%|vw|vh|vmin|vmax|rem|em)?$/i.exec(text);
     if (!match) {
-      return null;
+      return "inherit";
     }
     return {
       number: Number(match[1]),
@@ -1991,8 +1991,8 @@
     });
     if (!descendants.length) {
       return {
-        width: Math.max(RESIZE_MINIMUM_PIXELS, own.width),
-        height: Math.max(RESIZE_MINIMUM_PIXELS, own.height)
+        width: Math.max(RESIZE_MINIMUM_PIXELS, element.parent.getBoundingClientRect().width),
+        height: Math.max(RESIZE_MINIMUM_PIXELS, parent.getBoundingClientRect().height)
       };
     }
 

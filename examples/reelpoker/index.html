@@ -5,19 +5,34 @@
   <meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0">
   <title>QHTML Poker Slot UI</title>
   <link rel="icon" href="data:,">
+
   <style>
-    html, body {
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body,
+    q-html,
+    rp-poker-slot-ui,
+    .rp-screen,
+    .rp-slot-stage {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    html,
+    body {
       width: 100vw;
       height: 100vh;
-      margin: 0;
       overflow: hidden;
       background: #010805;
+      font-family: Arial, sans-serif;
     }
 
     q-html {
       display: block;
-      width: 100vw;
-      height: 100vh;
       visibility: hidden;
     }
 
@@ -25,30 +40,306 @@
       visibility: visible;
     }
 
-    main.rp-screen,
-    section.rp-slot-stage {
-      background-color: transparent !important;
+    rp-poker-slot-ui,
+    rp-payline-button,
+    rp-bet-button,
+    rp-spin-button,
+    reel,
+    card {
+      display: block;
     }
 
-    section.rp-slot-stage {
-      background: transparent !important;
+    .rp-screen,
+    .rp-slot-stage {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .rp-reel-space {
+      position: absolute;
+      left: 15.45vw;
+      top: 22.25vh;
+      width: 69.1vw;
+      height: 50.75vh;
+      display: flex;
+      overflow: hidden;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    reel {
+      position: relative;
+      width: 20%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .rp-reel-track {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    card {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 33.333333%;
+      padding: 1.5% 8%;
+      will-change: top;
+    }
+
+    .rp-card-face,
+    .rp-card-image {
+      width: 100%;
+      height: 100%;
+    }
+
+    .rp-card-face {
+      overflow: hidden;
     }
 
     .rp-card-image {
       display: block;
-      width: min(13.82vw, 11.65vh);
-      height: min(16.9167vh, 20.07vw);
-      max-width: 13.82vw;
-      max-height: 16.9167vh;
       object-fit: contain;
-      box-sizing: border-box;
-      margin: auto;
+      user-select: none;
       pointer-events: none;
+    }
+
+    /* The active winning payline outlines all five cards. */
+    card.win-payline-card {
+      z-index: 10;
+    }
+
+    card.win-payline-card .rp-card-face {
+      border: clamp(2px, 0.22vw, 4px) solid #ffe600;
+      border-radius: 0.55vw;
+      animation: win-border-blink 350ms steps(2, end) infinite;
+    }
+
+    /* Only the cards that actually make the poker hand do the 3D wiggle. */
+    card.win-matching-card {
+      z-index: 11;
+      transform-origin: center center;
+      transform-style: preserve-3d;
+      animation: win-card-wiggle 950ms ease-in-out 2;
+    }
+
+    @keyframes win-border-blink {
+      0%,
+      100% {
+        border-color: #fff06a;
+        box-shadow: 0 0 5px #fff, 0 0 12px #ffe600, 0 0 22px #ffbf00;
+      }
+
+      50% {
+        border-color: #ffb800;
+        box-shadow: 0 0 2px #ffe600, 0 0 7px #ffb800;
+      }
+    }
+
+    @keyframes win-card-wiggle {
+      0%,
+      100% {
+        transform: perspective(700px) rotateY(0deg) rotateZ(0deg);
+      }
+
+      25% {
+        transform: perspective(700px) rotateY(30deg) rotateZ(30deg);
+      }
+
+      50% {
+        transform: perspective(700px) rotateY(0deg) rotateZ(0deg);
+      }
+
+      75% {
+        transform: perspective(700px) rotateY(-30deg) rotateZ(-30deg);
+      }
+    }
+
+    .rp-background-frame {
+      position: absolute;
+      inset: 0;
+      background: url("./background.png") center / 100% 100% no-repeat;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .rp-credits-display,
+    .rp-win-display,
+    .rp-bet-display {
+      position: absolute;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65em;
+      color: white;
+      text-align: center;
+      text-shadow: 0 1px 3px black;
+      pointer-events: none;
+    }
+
+    .rp-credits-display {
+      left: 14.55vw;
+      top: 5.35vh;
+      width: 22.45vw;
+      height: 9.25vh;
+    }
+
+    .rp-win-display {
+      left: 63.05vw;
+      top: 5.35vh;
+      width: 22.45vw;
+      height: 9.25vh;
+    }
+
+    .rp-bet-display {
+      left: 33.95vw;
+      top: 83.1vh;
+      width: 11.45vw;
+      height: 10.2vh;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .rp-display-label {
+      font: 700 clamp(9px, 1.15vw, 20px) / 1 Arial, sans-serif;
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+
+    .rp-credits-value,
+    .rp-win-value {
+      font: 900 clamp(18px, 2.35vw, 40px) / 1 Arial, sans-serif;
+    }
+
+    .rp-bet-value {
+      font: 900 clamp(22px, 3.2vw, 52px) / 1 Arial, sans-serif;
+    }
+
+    .rp-paylines-left,
+    .rp-paylines-right {
+      position: absolute;
+      top: 22.72vh;
+      width: 6.75vw;
+      height: 48.35vh;
+      display: flex;
+      flex-direction: column;
+      gap: 2.05%;
+      padding: 0.15% 0.22%;
+      z-index: 4;
+    }
+
+    .rp-paylines-left {
+      left: 2.95vw;
+    }
+
+    .rp-paylines-right {
+      right: 2.95vw;
+    }
+
+    rp-payline-button {
+      width: 100%;
+      height: calc((100% - 18.45%) / 10);
+      flex: 0 0 calc((100% - 18.45%) / 10);
+    }
+
+    .rp-payline-control {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: white;
+      font: 800 clamp(8px, 1vw, 17px) / 1 Arial, sans-serif;
+      cursor: default;
+      transition: color 120ms ease, text-shadow 120ms ease;
+    }
+
+    .rp-payline-control.winning {
+      color: #fff49a;
+      text-shadow:
+        0 0 4px #fff,
+        0 0 9px #ffe85a,
+        0 0 16px #ffb300;
+    }
+
+    .rp-payline-control.current-winning {
+      color: #fff;
+      text-shadow:
+        0 0 5px #fff,
+        0 0 12px #ffe600,
+        0 0 24px #ffb300;
+    }
+
+    .rp-bet-decrease,
+    .rp-bet-increase,
+    .rp-spin-position {
+      position: absolute;
+      z-index: 4;
+    }
+
+    .rp-bet-decrease {
+      left: 5.15vw;
+      top: 83.1vh;
+      width: 11.45vw;
+      height: 10.2vh;
+    }
+
+    .rp-bet-increase {
+      left: 19.25vw;
+      top: 83.1vh;
+      width: 11.45vw;
+      height: 10.2vh;
+    }
+
+    .rp-bet-control {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: white;
+      font: 500 clamp(24px, 4.4vw, 72px) / 1 Arial, sans-serif;
+      cursor: pointer;
+    }
+
+    .rp-bet-control:disabled,
+    .rp-spin-control:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .rp-spin-position {
+      left: 61.2vw;
+      top: 76vh;
+      width: 16.2vw;
+      height: 21.5vh;
+    }
+
+    .rp-spin-position rp-spin-button,
+    .rp-spin-control {
+      width: 100%;
+      height: 100%;
+    }
+
+    .rp-spin-control {
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: white;
+      font: 900 clamp(20px, 3.2vw, 54px) / 1 Arial, sans-serif;
+      text-transform: uppercase;
+      cursor: pointer;
     }
   </style>
 
   <script src="./game.js"></script>
-  <!-- Adjust this path if qhtml.js is located elsewhere in your project. -->
   <script src="../../dist/qhtml.js"></script>
 </head>
 <body>

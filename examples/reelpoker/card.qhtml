@@ -1,0 +1,11 @@
+q-component Card {
+  q-property cardId: "2D"
+
+  div.rp-card-face {
+    img.rp-card-image {
+      src: "cards/2D.svg"
+      alt: "Playing card"
+      draggable: "false"
+    }
+  }
+}

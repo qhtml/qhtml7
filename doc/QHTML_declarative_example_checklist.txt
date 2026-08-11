@@ -1,0 +1,1583 @@
+QHTML DECLARATIVE EXAMPLE CHECKLIST
+==================================
+
+Purpose
+-------
+Provide one small, working QHTML example for each construct below.
+
+These examples will be used as canonical demonstrations for an AI coding model.
+The goal is to teach the model HOW QHTML expresses common programming concepts
+declaratively so that it does not fall back to ordinary JavaScript, DOM APIs,
+React/Vue patterns, or invented syntax.
+
+For each item, ideally provide:
+- A minimal working QHTML snippet.
+- Only the QHTML needed to demonstrate the concept.
+- Any JavaScript only where QHTML explicitly permits/requires it.
+- The preferred/native QHTML pattern rather than a workaround.
+- If there are multiple valid QHTML approaches, show the preferred one first.
+
+
+======================================================================
+A. BASIC QHTML STRUCTURE
+======================================================================
+
+1. Simplest valid QHTML document/component
+   Show the smallest useful piece of valid QHTML.
+
+ ```text { helllo world }```
+
+2. Create a normal DOM element
+   Example: div, span, button, input, etc.
+
+   ``` div,span,button { text { click here } }
+       p,input { type: "number" }
+
+       html { <a href="/">hello link 1</a> }
+       a { href: "/2.html" text { hello link 2 } }```
+
+3. Nest elements
+   Show parent/child declarative structure.
+
+   ```
+   div {
+        span {
+           a { href: "/"button
+              text { button text }
+           }
+        }
+    }
+     ```
+
+4. Set an ordinary HTML attribute
+   Example: id, title, type, placeholder, src, href.
+
+   ```
+    div#id {
+       input {
+          title: "some title"
+          type: "text"
+          placeholder: "Enter title"
+        }
+        a {
+           href: "/"
+           text { go back }
+        }
+    }
+    ```
+
+5. Set CSS classes
+   Show the normal QHTML way to assign one or more classes.
+   ```
+   div.class1 {
+     span.class2.class3.class4 {
+        text { some text }
+     }
+   }
+   ```
+
+6. Set element text/content
+   Show static text inside an element.
+   ```
+   span,text { hello world }
+
+   span { text { hello world } }
+   ```
+
+7. Set inline/declarative element properties
+   Show QHTML property-assignment syntax on a DOM element.
+
+   ```
+   q-component somecomponent {
+      q-property customProperty: 5
+      div#mydiv {
+
+     }
+   }
+   somecomponent obj2 { customProperty: 10 }
+   ```
+
+   -- then from elsewhere on the page --
+
+   ```
+   button {
+     onclick {
+         document.querySelector("somecomponent").customProperty = 35
+     }
+     text { click here }
+   }
+   ```
+
+8. Reference an element by name
+   Show how one QHTML object refers to another named QHTML object.
+   ```
+   q-component component1 {
+      q-property prop1: 5
+      function getOtherProperty() { return obj2.prop2 }
+   }
+
+   q-component component2 {
+      q-property prop2: 10
+      function getOtherProperty() { return obj1.prop1 }
+   }
+
+   component1 obj1 { }
+   component2 obj2 { }
+
+   button {
+      onclick {
+         var var1 = obj1.getOtherProperty()
+         var var2 = obj2.getOtherProperty()
+         console.log(var1,var2) /* returns 10 5 */
+      }
+   }
+   ```
+
+
+======================================================================
+B. COMPONENTS
+======================================================================
+
+9. Declare a reusable q-component
+   Minimal reusable component definition.
+
+   ```
+   q-component component1 { div,span,text { hello world } }
+   ```
+
+10. Instantiate a q-component
+    Show how a declared component is used.
+
+    ```
+    div {
+      component1 object1 { }
+    }
+
+    ```
+    - output is -
+
+    ``` <div>
+          <div><span>hello world</span></div>
+       </div>
+    ```
+
+11. Instantiate the same component multiple times
+    Demonstrate independent component instances.
+    ```
+    div {
+      component1 object1 { }
+      component1 object2 { }
+      component1 object3 { }
+    }
+    ```
+
+    - output is -
+
+    ``` <div>
+          <div><span>hello world</span></div>
+          <div><span>hello world</span></div>
+          <div><span>hello world</span></div>
+       </div>
+    ```
+
+12. Component with child DOM elements
+    Show a component containing its own UI structure.
+    ```
+    q-component somecomponent {
+      div,span,h1 {
+         slot title {  }
+      }
+    }
+
+    somecomponent object4 {
+      title { text { custom heading } }
+    }
+    ```
+
+13. Component with default property values
+    Demonstrate component configuration defaults.
+    ```
+    q-component mycomp {
+       q-property myprop: "default"
+    }
+    ```
+
+14. Override component properties at instantiation
+    Show declarative per-instance configuration.
+    ```
+    q-component mycomp3 {
+       q-property someprop: 5
+    }
+
+    mycomp myobj1 { someprop: 10 }
+    /* myobj1.someprop == 10 */
+    ```
+
+15. Component with a public function
+    Show how a callable component function is declared.
+    ```
+    q-component mycomp4 {
+        function makeMsg(msg) { return "New Message: " + msg; }
+        function somefunc(param2) { alert(this.makeMsg(param2)) }
+    }
+    mycomp4 obj5 { }
+
+    /* call from outside */
+    button {
+        onclick { obj5.somefunc("hello world")  }
+        text { Click here! }
+    }
+    ```
+
+16. Call a component function from another QHTML object
+    Demonstrate direct QHTML object interaction.
+    ```
+    q-component comp1 {
+        function somefunc() { alert("hello world") }
+    }
+    q-component comp2 {
+         comp1 obj1 { }
+         button {
+               text { click here }
+               onclick { this.obj1.somefunc() }
+        }
+    }
+    ```
+
+17. Component lifecycle / ready handler
+    Show the canonical initialization mechanism.
+    ```
+    q-component mycomp {
+        onready { alert("hello world") }
+    }
+    mycomp obj2 { }
+    ```
+
+18. Anonymous component instance
+    If supported, show a component instance without a named reference.
+    ```
+
+    /* anonymous components are the same as named ones, but they do not have an associated name binding  in the QHTML system */
+    q-component mycomp {
+       div,span,text { hello world }
+       function sendAlert() { alert("hello world") }
+    }
+    mycomp { }
+
+    /* cannot access the mycomp component by name but it still renders in place */
+    /* can still access using the regular javascript DOM API */
+    button {
+      text { click here }
+      onclick { document.querySelector("mycomp").sendAlert(); }
+    }
+    ```
+
+19. Nested component instances
+    Component containing another reusable QHTML component.
+    ```
+    q-component comp1 {
+            div,span,text { hello world }
+    }
+
+    q-component comp2 {
+         div,h1,text { hello }
+         comp1 obj1 { }
+     }
+     ```
+
+20. Component inheritance/extension
+    If QHTML supports it, show the canonical pattern.
+    If not supported, explicitly mark this item unsupported.
+    ```
+    q-component mycomp1 {
+        function doThing() { alert("hello world") }
+    }
+
+    q-component mycomp2 extends mycomp1 {
+        onready { this.doThing(); }
+    }
+    mycomp2 obj1 { }
+    ```
+
+======================================================================
+C. PROPERTIES AND STATE
+
+  * NOTE: Assume all previous declarations are declared in this section *
+======================================================================
+
+21. Declare q-property
+    Minimal property declaration.
+    ```
+    q-component mycomp1 {
+        q-property myprop: 5
+    }
+    mycomp1 obj1 { }
+    ```
+
+22. Read a q-property
+    Show property access from QHTML code.
+    ```
+    q-component mycomp1 {
+        q-property myprop: 5
+    }
+    mycomp1 obj1 { }
+
+    button {
+       text { click here }
+       onclick { obj1.myprop = 10; alert(obj1.myprop); }
+
+    }
+    ```
+23. Write/change a q-property
+    Show runtime property mutation.
+    ```
+    q-component mycomp1 {
+        q-property myprop: 5
+    }
+    mycomp1 obj1 { }
+
+    button {
+       text { click here }
+       onclick { obj1.myprop = 10; }
+
+    }
+    ```
+
+24. Property used in visible text
+    Demonstrate interpolation/binding.
+    ```
+    q-component mycomp1 {
+        q-property myprop: 5
+    }
+    mycomp1 obj1 { }
+
+    button {
+       text { click here ${obj1.myprop} }
+       onclick { obj1.myprop = 10; alert("myprop is " + obj1.myprop); }
+
+    }
+    ```
+
+25. Property used in another property
+    Example: width or label derived from another property.
+    ```
+    q-component mycomp1 {
+        q-property myprop: 15vh
+    }
+    mycomp1 obj1 { }
+
+    q-component mycomp2 {
+        q-property myprop2: obj1.myprop
+        div {
+            width: this.myprop2
+            text { Width: ${this.myprop2} }
+        }
+    }
+    mycomp2 obj2 {  }
+    ```
+
+26. Property override on child/component instance
+    Show configuration from a parent or caller.
+    ```
+    /* base component */
+     q-component comp1 {
+        q-property someprop: 24px
+     }
+
+     /* inherit */
+     q-component comp2 extends comp1 {
+
+     }
+
+     /* override */
+     q-component comp3 extends comp1 {
+        q-property someprop: "34px"
+     }
+
+
+     comp1 obj1 { }
+     comp2 obj2 {  }
+     comp3 obj3 {  }
+     onready { alert(obj1.someprop + " " + obj2.someprop + " " + obj3.someprop) }
+
+    ```
+
+
+27. Property change notification
+    Show the canonical QHTML property-changed signal/event mechanism.
+    ```
+    q-component mycomp {
+        q-property myprop: 24px
+
+        onmypropChanged(val) {
+            alert("new value is " + val)
+        }
+
+    }
+    mycomp obj1 { }
+
+    button { onclick { obj1.myprop = "34px" } text { Click to Change } }
+    ```
+
+28. React to a property changing
+    Show how dependent behavior is attached to a property update.
+      ```
+    q-component mycomp {
+        q-property myprop: 24px
+
+        onmypropChanged(val) {
+            alert("new value is " + val)
+        }
+
+    }
+    mycomp obj1 { }
+
+    button { onclick { obj1.myprop = "34px" } text { Click to Change } }
+    ```
+
+29. Parent property visible to descendants
+    Demonstrate QHTML context/property resolution.
+    ```
+    q-component mycomp {
+        q-property myprop: 34%
+
+        div,span { text { ${this.parent().otherprop} } } /* access parent using this.parent() */
+    }
+
+    q-component mycomp2 {
+        q-property otherprop: 90%
+
+        mycomp obj1 { onready { alert(this.parent().otherprop) } }
+    }
+
+    mycomp2 obj2 {  }
+    ```
+
+30. Child/local property shadowing or precedence
+    If relevant, demonstrate how similarly named properties resolve.
+    ```
+    q-component comp1 {
+        q-property someprop: 24
+    }
+
+    comp1 obj1 { }
+
+    q-component comp2 {
+        /* obj1 is shadowed / overwritten in comp2, obj1.someprop == 34px */
+        comp1 obj1 { someprop: 34px }
+
+    }
+
+    /* in obj2, obj1 only refers to its child named obj1 */
+    comp2 obj2 {
+        /* here obj1.someprop == 34px */
+        onready { alert(obj1.someprop + " ") }
+    }
+
+    /* here obj1.someprop == 24 */
+    onready { alert(obj1.someprop) }
+
+    ```
+
+31. Property containing an object
+    Show an arbitrary JavaScript object used as a QHTML property value.
+
+    ```
+    q-component mycomp {
+        q-property myobj: obj2
+    }
+
+    q-component mycomp2 {
+        q-property myprop: {a: 1, b: 2}
+    }
+
+    mycomp obj1 { }
+    mycomp2 obj2 { }
+
+
+    onready { alert(obj1.myobj.myprop.a)  } /* 1 */
+    ```
+
+32. Property containing an array
+    Show list/array data stored in QHTML.
+    ```
+    q-component mycomp {
+        q-property myobj: obj2
+    }
+
+    q-component mycomp2 {
+        q-property myprop: [1,2,3,4,5]
+    }
+
+    mycomp obj1 { }
+    mycomp2 obj2 { }
+
+
+    onready { alert(obj1.myobj.myprop)  } /* [1,2,3,4,5]
+    ```
+
+33. Property containing a function
+    If supported, demonstrate function-valued properties.
+    ```
+    q-component mycomp {
+        q-property myprop: myfunc()
+        function myfunc() { alert("hello world") }
+    }
+    mycomp obj1 { }
+    onready { alert(obj1.myprop) }
+    ```
+
+======================================================================
+D. SIGNALS AND CONNECTIONS
+======================================================================
+
+34. Declare q-signal
+    Minimal custom signal declaration.
+    ```
+    q-component mycomp {
+       q-signal mysignal()
+    }
+    ```
+
+35. Emit/send a q-signal
+    Show the canonical signal invocation.
+     ```
+    q-component mycomp {
+       q-signal mysignal()
+       onready { this.mysignal() }
+    }
+    mycomp obj1 { }
+
+    /* also can use object directly */
+    onready { obj1.mysignal() }
+    ```
+
+36. Signal with arguments/data
+    Demonstrate passing values through a signal.
+      ```
+    q-component mycomp {
+       q-signal mysignal(val)
+       onready { this.mysignal("test") }
+    }
+    mycomp obj1 { }
+
+    /* also can use object directly */
+    onready { obj1.mysignal("other test") }
+    ```
+
+37. Handle a signal locally
+    Show a component responding to its own/custom signal.
+      ```
+    q-component mycomp {
+       q-signal mysignal()
+       onmysignal() {
+            alert("got signal")
+       }
+       onready { this.mysignal() }
+    }
+    mycomp obj1 { }
+
+    /* also can use object directly */
+    onready { obj1.mysignal() }
+    ```
+
+38. q-connect between two named objects
+    Minimal signal-to-handler/function connection.
+    ```
+
+    q-component mycomp {
+       q-signal mysignal()
+
+    }
+    q-component comp2 {
+        function receiveSignal() { alert("Received Signal") }
+    }
+
+    mycomp obj1 { }
+    comp2 obj2 { }
+
+    onready { obj1.mysignal.connect(obj2.receiveSignal); obj1.mysignal(); }
+    ```
+
+39. Connect one component signal to another component function
+    Canonical component communication example.
+    ```
+    /* Same as example 38  */
+    ```
+
+40. Multiple listeners for one signal
+    If supported, demonstrate fan-out.
+    ```
+    /* Just add more .connect statements */
+    ```
+
+41. One receiver handling multiple signals
+    Demonstrate multiple declarative connections.
+    ```
+    /* connect to the same function with .connect */
+    ```
+
+42. Disconnect/remove a connection
+    If supported declaratively or through QHTML API, show the canonical method.
+    ```
+    /* use .disconnect with the same parameters */
+    ```
+
+======================================================================
+E. EVENTS
+======================================================================
+
+43. Handle a button click
+    Native QHTML event-handler example.
+    ```
+    button {
+        onclick { alert("duh") }
+        text { Click here }
+    }
+    ```
+
+44. Handle input/change event
+    Example with an input element.
+    ```
+    input {
+       type: "text"
+       onchange { alert("changed text") }
+
+    }
+    ```
+
+45. Handle keyboard event
+    Show the canonical QHTML keyboard-event pattern.
+    ```
+    input {
+        onkeydown(event) {
+            console.log(event.key);
+        }
+
+        onkeyup(event) {
+            console.log(event.key, this.value);
+        }
+  }
+
+
+  ```
+
+46. Handle mouse/pointer event
+    Show a basic pointer/mouse interaction.
+    ```
+      div {
+    onclick {
+      console.log("clicked", event.clientX, event.clientY);
+    }
+
+    onmouseenter {
+      this.backgroundColor = "orange";
+    }
+
+    onmouseleave {
+      this.backgroundColor = "transparent";
+    }
+
+    onmousemove {
+      console.log(event.offsetX, event.offsetY);
+    }
+  }
+
+  ```
+
+47. Access the event object
+    Demonstrate event data inside a QHTML event handler.
+    ```
+       div {
+        onclick {
+            console.log("clicked", event.clientX, event.clientY);
+        }
+
+        onmouseenter {
+            this.backgroundColor = "orange";
+        }
+
+        onmouseleave {
+            this.backgroundColor = "transparent";
+        }
+
+        onmousemove {
+            console.log(event.offsetX, event.offsetY);
+        }
+    }
+    ```
+
+48. Call a component function from an event handler
+    Example: button click -> component method.
+    ```
+    q-component mycomp {
+        button {
+            onclick { this.myfunction() }
+
+            }
+        }
+        function myfunction() { alert("hello world") }
+    }
+    ```
+
+49. Change a q-property from an event handler
+    Example: click toggles a property.
+    ```
+    q-component toggleBox {
+      q-property active: false
+
+      button {
+        onclick { this.active = !this.active; }
+        text { Toggle }
+      }
+
+      onactivechanged(value) {
+        this.querySelector(".status").textContent = value ? "on" : "off";
+      }
+
+      div.status { text { off } }
+    }
+
+    toggleBox box1 { }
+    ```
+
+50. Emit a q-signal from an event handler
+    Example: click -> custom signal.
+    ```
+    q-component signalButton {
+      q-signal pressed(message)
+
+      button {
+        onclick { this.pressed("button clicked"); }
+        text { Send signal }
+      }
+
+      onpressed(message) {
+        console.log(message);
+      }
+    }
+
+    signalButton button1 { }
+    ```
+
+
+======================================================================
+F. FUNCTIONS AND SCRIPTING
+======================================================================
+
+51. Declare a QHTML function
+    Minimal function declaration.
+    ```
+    q-component greeter {
+      function sayHello() {
+        console.log("hello");
+      }
+
+      onready { this.sayHello(); }
+    }
+
+    greeter greeting1 { }
+    ```
+
+52. Function with parameters
+    Demonstrate argument passing.
+    ```
+    q-component greeter {
+      function greet(name) {
+        console.log("hello " + name);
+      }
+
+      onready { this.greet("QHTML"); }
+    }
+
+    greeter greeting1 { }
+    ```
+
+53. Function with return value
+    Demonstrate returned data.
+    ```
+    q-component calculator {
+      function doubled(value) {
+        return value * 2;
+      }
+
+      onready {
+        console.log(this.doubled(21));
+      }
+    }
+
+    calculator calc1 { }
+    ```
+
+54. Function calling another function
+    Show normal QHTML function composition.
+    ```
+    q-component formatter {
+      function baseText() {
+        return "QHTML";
+      }
+
+      function titleText() {
+        return "Hello " + this.baseText();
+      }
+
+      onready {
+        console.log(this.titleText());
+      }
+    }
+
+    formatter formatter1 { }
+    ```
+
+55. Function reading q-properties
+    Demonstrate component/context access.
+
+56. Function modifying q-properties
+    Demonstrate controlled state mutation.
+
+57. Function accessing a named child object
+    Show object resolution without document.querySelector.
+
+58. JavaScript block inside QHTML
+    Show exactly where arbitrary JavaScript is allowed.
+    ```
+   q-class myclass {
+        myclass() { this.myprop = "hello world" }
+        runThing() {
+            alert(this.myprop)
+        }
+    }
+
+    myclass someobj { }
+
+    onready { someobj.runThing(); }
+    ```
+
+59. Local variables inside QHTML script/function
+    Demonstrate normal local computation.
+    ```
+    /* this is the same as a javascript `class myclass` declaration
+        only difference is that super() is replaced by a constructor myclass() which allows
+        more flexibility than traditional ES classes.
+    */
+     q-class myclass {
+        myclass() { this.myprop = 42 }
+        /* runThing() can contain any arbitrary javascript code including dynamic object creation and event listeners
+           and whatever other javascript nightmare you can come up with all encapsulated into myclass obejct */
+        runThing() {
+            this.myprop *= 96 + 42 + 32
+            alert(this.myprop)
+        }
+    }
+
+    myclass someobj { }
+
+    onready { someobj.runThing(); }
+    ```
+
+60. Access `this` inside QHTML code
+    Show exactly what `this` refers to in the canonical execution context.
+    ```
+    /* inside of a q-component instance, `this` refers to the q-component instance itself that `this` is part of */
+
+    q-component comp2 { }
+    q-component mycomp {
+        q-property myprop: 42
+        onready {
+            alert(this.myprop)
+        }
+        /* no matter how many descendant elements you have, `this` is always still a pointer to `obj1` */
+        button {
+            onclick { alert(this.myprop) } /* 42 */
+            text { click ehre }
+        }
+
+        /* when a new q-component instance is declared, `this` becomes the new instance from within this component */
+        comp2 obj2 {
+          onready { alert(this.myprop) } /* undefined */
+
+        }
+
+    }
+    mycomp obj1 { }
+    ```
+
+
+======================================================================
+G. DATA BINDING / INTERPOLATION
+======================================================================
+
+61. Basic ${...} text interpolation
+    Minimal dynamic text example.
+    ```
+    q-component helloBox {
+      q-property name: "QHTML"
+
+      div {
+        text { Hello ${name} }
+      }
+    }
+
+    helloBox box1 { }
+    ```
+
+62. Interpolate a q-property into text
+    Example: "Count: ${count}".
+    ```
+    q-component counterText {
+      q-property count: 3
+
+      div {
+        text { Count: ${count} }
+      }
+    }
+
+    counterText counter1 { }
+    ```
+
+63. Interpolate a computed expression
+    If supported, show a simple expression.
+    ```
+    q-component totalText {
+      q-property price: 7
+      q-property quantity: 4
+
+      div {
+        text { Total: ${price * quantity} }
+      }
+    }
+
+    totalText total1 { }
+    ```
+
+64. Interpolate into an attribute/property
+    If supported, show the proper syntax.
+    ```
+    q-component titledLink {
+      q-property pageTitle: "Documentation"
+      q-property pageHref: "/docs.html"
+
+      a {
+        href: pageHref
+        title: "Open ${pageTitle}"
+        text { ${pageTitle} }
+      }
+    }
+
+    titledLink link1 { }
+    ```
+
+65. Dynamic style/property based on q-property
+    Example: width, visibility, or text changes based on state.
+    ```
+    q-component progressBar {
+      q-property amount: 40%
+
+      onamountchanged(value) {
+        this.querySelector(".fill").style.width = value
+      }
+
+      div.track {
+        width: "120px"
+        height: "12px"
+        backgroundColor: "black"
+
+        div.fill {
+          width: "40%"
+          height: "12px"
+          backgroundColor: "orange"
+        }
+      }
+    }
+
+    progressBar bar1 { amount: 75% }
+    ```
+
+66. Update UI automatically when property changes
+    Demonstrate whether interpolation/binding updates reactively or requires render/sync.
+    ```
+    q-component liveLabel {
+      q-property label: "ready"
+
+      onlabelchanged(value) {
+        this.querySelector(".label").textContent = value;
+      }
+
+      button {
+        onclick { this.label = "clicked"; }
+        text { Change label }
+      }
+
+      div.label { text { ready } }
+    }
+
+    liveLabel label1 { }
+    ```
+
+
+======================================================================
+H. STYLING
+======================================================================
+
+67. Basic q-style
+    Minimal component/element styling example.
+
+    ```
+    q-style redBackgroundStyle {
+        backgroundColor: red;
+        color: white;
+        paddingLeft: 4px;
+        paddingRight: 12px;
+        fontSize: 24px
+    }
+    q-style paddingTopBottomStyle {
+        paddingTop: 12px;
+        paddingBottom: 6px;
+        fontSize: 64px
+    }
+
+    q-theme mainTheme  {
+        .heading { redBackgroundStyle paddingTopBottomStyle }
+        .subtitle { redBackgroundStyle }
+    }
+    mainTheme {
+     div.heading,text { Hello world }
+     div.subtitle,text { testing }
+    }
+    ```
+
+68. Style a specific element
+    Show selector/reference syntax.
+    ```
+      q-theme mainTheme  {
+        .heading { redBackgroundStyle paddingTopBottomStyle }
+        .subtitle { redBackgroundStyle }
+    }
+    mainTheme {
+     div.heading,text { Hello world }
+     div.subtitle,text { testing }
+    }
+    ```
+
+69. Style child elements
+    Demonstrate scoped styling.
+    ```
+q-style redBackgroundStyle {
+  backgroundColor: red;
+  color: white;
+  paddingLeft: 4px;
+  paddingRight: 12px;
+  fontSize: 24px
+
+}
+q-style paddingTopBottomStyle {
+  paddingTop: 12px;
+  paddingBottom: 6px;
+  fontSize: 64px
+}
+
+
+q-style blueBackgroundStyle {
+  backgroundColor: blue;
+  color: white;
+  paddingLeft: 4px;
+  paddingRight: 12px;
+  fontSize: 24px
+}
+q-theme mainTheme  {
+  .heading { redBackgroundStyle paddingTopBottomStyle }
+  .subtitle { redBackgroundStyle }
+}
+
+q-theme secondTheme  {
+  mainTheme { }
+  .heading,span:hover { blueBackgroundStyle  }
+}
+
+mainTheme {
+  div.heading {
+    secondTheme {
+      span,text { testing }
+    }
+    div.subtitle,text { testing }
+  }
+}
+
+    ```
+
+70. Component-scoped q-style
+    Show styles belonging to a reusable component.
+    ```
+    q-component mycomp {
+        q-style mystyle {
+            backgroundColor: green;
+        }
+        q-theme mytheme {
+            div { mystyle }
+        }
+        mytheme,div,span,text { hello world }
+    }
+    mycomp obj1 { }
+    ```
+
+71. q-theme
+    Minimal theme declaration/use.
+    ```
+      q-theme mytheme {
+            div { q-style { backgroundColor: red; } }
+        }
+      mytheme,div,span,text { hello world }
+    ```
+
+72. Apply/use theme values
+    Show how theme-defined values reach elements/components.
+     ```
+      q-theme mytheme {
+            div { q-style { backgroundColor: red; } }
+        }
+      mytheme,div,span,text { hello world }
+    ```
+
+73. Dynamic style controlled by q-property
+    Show the preferred QHTML pattern.
+    ```
+    q-component mycomp {
+    q-property bgColor: blue
+        q-theme mytheme {
+            div { q-style { backgroundColor: ${this.bgColor} } }
+        }
+      mytheme {
+         div,span,text { hello world }
+      }
+      button {
+        onclick { this.bgColor = "red" }
+        text { click here }
+      }
+    }
+    ```
+
+74. Multiple classes / conditional classes
+    If QHTML has a native mechanism, demonstrate it.
+
+
+======================================================================
+I. SLOTS / CONTENT COMPOSITION
+======================================================================
+
+75. Declare a default slot
+    Minimal reusable component with child-content insertion.
+
+76. Fill a default slot
+    Show caller-provided content.
+
+77. Declare a named slot
+    If supported.
+
+78. Fill a named slot
+    Show caller-side syntax.
+
+79. Default/fallback slot content
+    If supported.
+
+80. Component wrapping arbitrary child content
+    Canonical composition example.
+
+
+======================================================================
+J. REFERENCES / CONTEXT
+======================================================================
+
+81. Named reference lookup
+    Show how qhtmlName/named references are used from QHTML.
+
+82. Parent accessing named child
+    Canonical reference path.
+
+83. Child accessing ancestor context
+    Demonstrate inherited QHTML context.
+
+84. Sibling component communication
+    Show the preferred native pattern.
+
+85. setContextProperty()
+    Show exposing an external JavaScript value/object to a QHTML tree.
+
+86. setContextProperty() with JavaScript object
+    Example using a class instance or plain object.
+
+87. setContextProperty() with JavaScript function
+    Show callable external context.
+
+88. setContextProperty() with DOM/QHTML object
+    If supported, demonstrate the proper form.
+
+89. Late-bound context property
+    Set context after creation and demonstrate how/when it becomes visible.
+
+90. Context precedence/resolution
+    Show what happens when the same name exists at different scopes.
+
+
+======================================================================
+K. CONDITIONAL / DYNAMIC UI
+======================================================================
+
+91. Conditionally show/hide an element
+    Preferred native QHTML mechanism.
+
+92. Conditionally change text
+    Based on q-property.
+
+93. Conditionally change style/class
+    Preferred declarative pattern.
+
+94. Toggle state
+    Example: boolean property controlled by click.
+
+95. Dynamic child creation
+    Show the native QHTML way if one exists.
+    Explicitly distinguish it from document.createElement.
+
+96. Dynamic child removal
+    Native QHTML pattern if supported.
+
+97. Re-render/update after data changes
+    Show when render(), sync(), repaint(), etc. is appropriate.
+
+
+======================================================================
+L. REPEATED / COLLECTION UI
+======================================================================
+
+98. Render a list/collection
+    If QHTML provides a declarative repeat/iteration mechanism, demonstrate it.
+
+99. Access current list item
+    Show item context.
+
+100. Access list index
+     If supported.
+
+101. Update a collection and refresh UI
+     Canonical pattern.
+
+102. Create repeated component instances from data
+     Preferred QHTML implementation.
+
+If QHTML does NOT have a native declarative repetition construct, explicitly
+document the preferred QHTML-compatible solution instead of inventing one.
+
+
+======================================================================
+M. IMPORTS / MULTI-FILE QHTML
+======================================================================
+
+103. q-import a .qhtml file
+     Minimal import example.
+
+104. Use a component defined in an imported file
+     Show complete two-file relationship.
+
+105. Import multiple QHTML files
+     Demonstrate syntax/order if relevant.
+
+106. Main HTML shell loading QHTML
+     Show the canonical minimal .html + q-import setup.
+
+107. Component library file
+     Show a file containing multiple reusable component definitions.
+
+
+======================================================================
+N. TIMERS / ASYNC BEHAVIOR
+======================================================================
+
+108. q-timer
+     Minimal timer example.
+
+109. Repeating timer
+     If supported.
+
+110. One-shot timer
+     If supported.
+
+111. Timer calling a component function
+     Canonical pattern.
+
+112. Timer modifying a q-property
+     Demonstrate state update.
+
+113. Promise/async function usage
+     If QHTML allows async JavaScript in functions/handlers, show correct usage.
+
+114. Await external JavaScript operation
+     If supported, show the correct execution context.
+
+
+======================================================================
+O. DOM INTEROP -- ONLY WHEN ACTUALLY NEEDED
+======================================================================
+
+These examples are important because GPT models otherwise tend to use DOM APIs
+for everything.
+
+115. Access the underlying DOM element from QHTML
+     Show the approved/native bridge if one exists.
+
+116. Change a DOM property through QHTML
+     Demonstrate the QHTML-native route instead of querySelector.
+
+117. Call a native DOM method when genuinely necessary
+     Example where QHTML intentionally exposes the DOM object.
+
+118. Integrate an existing JavaScript class
+     Show the preferred context/binding mechanism.
+
+119. Integrate an external JavaScript library
+     Minimal example that keeps QHTML responsible for structure/state.
+
+120. Explicit example of when document.querySelector IS appropriate
+     Only if such a case exists. Otherwise state that it should generally not be used.
+
+
+======================================================================
+P. CUSTOM QHTML / DOM TYPES
+======================================================================
+
+121. Use a registered custom element from QHTML
+     Show declarative use of an existing HTMLElement/custom element.
+
+122. Bind QHTML behavior/properties to a custom element
+     Demonstrate interaction without rebuilding the element in JavaScript.
+
+123. Define/use a QHTML-specific custom type
+     If QHTML supports custom declarative types beyond q-component.
+
+124. Access methods exposed by a custom element
+     Preferred native object-reference mechanism.
+
+
+======================================================================
+Q. GRAPHICS / SPECIAL QHTML TYPES
+======================================================================
+
+Only include these if they are part of the normal documented QHTML API.
+
+125. q-graphics-scene
+     Minimal scene creation.
+
+126. q-graphics-item
+     Minimal item creation.
+
+127. Configure graphics item properties declaratively
+
+128. Reference a graphics item from QHTML code
+
+129. Repaint/update a graphics item
+
+130. Graphics item event or animation example
+
+
+======================================================================
+R. ERROR-PRONE PATTERNS / CONTRASTIVE EXAMPLES
+======================================================================
+
+For these, provide BOTH:
+    WRONG / unnecessary JavaScript approach
+    CORRECT native QHTML approach
+
+These are especially useful for model training/context.
+
+131. Button click
+     WRONG: addEventListener
+     RIGHT: QHTML event handler
+
+132. Finding a child
+     WRONG: document.querySelector
+     RIGHT: QHTML named reference
+
+133. Component communication
+     WRONG: CustomEvent/manual DOM event bus
+     RIGHT: q-signal + q-connect
+
+134. Reusable UI
+     WRONG: JavaScript HTMLElement class
+     RIGHT: q-component
+
+135. State storage
+     WRONG: arbitrary JS state object plus manual DOM sync
+     RIGHT: q-property
+
+136. State-to-text update
+     WRONG: element.textContent = ...
+     RIGHT: interpolation/binding
+
+137. Initialization
+     WRONG: DOMContentLoaded/manual setup
+     RIGHT: QHTML lifecycle/onready
+
+138. Styling
+     WRONG: JavaScript style mutations for static styles
+     RIGHT: q-style/q-theme
+
+139. External object access
+     WRONG: placing random objects on window/global scope
+     RIGHT: setContextProperty()
+
+140. Dynamic component invocation
+     WRONG: search DOM and invoke ad-hoc methods
+     RIGHT: named QHTML object/function/reference mechanism
+
+141. Component composition
+     WRONG: manually appendChild generated DOM
+     RIGHT: slots/component composition
+
+142. QHTML parser error
+     WRONG: move failed code into JavaScript to bypass QHTML
+     RIGHT: correct the QHTML syntax/API usage
+
+
+======================================================================
+S. COMPLETE MICRO-EXAMPLES
+======================================================================
+
+These should each be small but complete enough to show architectural intent.
+
+143. Counter component
+     Button increments q-property; visible count updates.
+
+144. Toggle component
+     Button toggles visible state.
+
+145. Input/display binding
+     Input changes a property; another element displays it.
+
+146. Parent/child property example
+     Parent configuration reaches child.
+
+147. Parent/child signal example
+     Child emits; parent responds.
+
+148. Sibling communication example
+     One child causes another child to update through the preferred QHTML mechanism.
+
+149. Reusable dialog component
+     Properties + slots + close signal.
+
+150. Tabs example
+     Tab buttons signal a tab container to change visible content.
+
+151. External-object example
+     JavaScript creates an object, setContextProperty exposes it, QHTML uses it.
+
+152. Imported component example
+     main.qhtml imports/uses another QHTML component file.
+
+153. Styled reusable component
+     q-component + q-property + q-style.
+
+154. Theme-aware component
+     q-theme usage in a component.
+
+155. Timer-driven component
+     q-timer updates state through QHTML.
+
+156. Small application composed entirely from QHTML components
+     Demonstrate the intended overall declarative architecture with minimal JS.
+
+
+======================================================================
+T. SEMANTIC QUESTIONS THE EXAMPLES SHOULD ANSWER
+======================================================================
+
+Along with the snippets, the corpus should make these rules unambiguous:
+
+157. What exactly is `this` inside:
+     - q-component function
+     - event handler
+     - onready
+     - signal handler
+     - JavaScript block
+
+158. How are names resolved?
+
+159. How are parent/ancestor properties resolved?
+
+160. How are component instance properties overridden?
+
+161. When does interpolation evaluate?
+
+162. Does interpolation update automatically after a property mutation?
+
+163. What causes render()/sync() if either is required?
+
+164. What is the difference between a QHTML node/object and its underlying DOM element?
+
+165. How should one QHTML component access another?
+
+166. Which objects/functions are automatically available in execution context?
+
+167. Which QHTML constructs are declarative versus imperative?
+
+168. Where is ordinary JavaScript explicitly allowed?
+
+169. When should JavaScript be preferred over native QHTML?
+
+170. What common JavaScript/DOM patterns should NEVER be used when a QHTML equivalent exists?
+
+
+======================================================================
+RECOMMENDED EXAMPLE FORMAT
+======================================================================
+
+For each example, this format would be ideal:
+
+----------------------------------------------------------------------
+CONSTRUCT: q-signal + q-connect
+
+PURPOSE:
+Allow one QHTML component to notify another.
+
+QHTML:
+<working example here>
+
+KEY RULE:
+Use QHTML signals/connections for component communication instead of creating
+a JavaScript CustomEvent or manually wiring DOM event listeners.
+
+DO NOT SUBSTITUTE:
+- CustomEvent
+- addEventListener
+- document.querySelector
+----------------------------------------------------------------------
+
+
+======================================================================
+PRIORITY
+======================================================================
+
+If producing all examples is too large initially, start with these first:
+
+1. q-component declaration and instantiation
+2. q-property declaration/read/write
+3. property interpolation
+4. onready
+5. functions
+6. native DOM event handlers
+7. q-signal
+8. q-connect
+9. named references
+10. parent/ancestor context
+11. slots
+12. q-style
+13. q-theme
+14. q-import
+15. setContextProperty()
+16. q-timer
+17. custom element interaction
+18. dynamic state/UI update
+19. component-to-component communication
+20. WRONG JavaScript vs RIGHT QHTML contrastive examples
+
+Those twenty areas will probably eliminate the majority of generic-model
+JavaScript fallback behavior.

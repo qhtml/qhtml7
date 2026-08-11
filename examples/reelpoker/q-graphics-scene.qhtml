@@ -1,0 +1,215 @@
+q-component q-graphics-scene {
+  function sceneElement() {
+    return this.querySelector("graphics-scene");
+  }
+
+  function createItem(options) {
+    return this.sceneElement().createItem(options);
+  }
+
+  function addItem(graphicsItem) {
+    return this.sceneElement().addItem(graphicsItem);
+  }
+
+  function removeItem(graphicsItem) {
+    return this.sceneElement().removeItem(graphicsItem);
+  }
+
+  function listItems() {
+    return this.sceneElement().listItems();
+  }
+
+  function itemByUUID(uuid) {
+    return this.sceneElement().itemByUUID(uuid);
+  }
+
+  function clearItems() {
+    return this.sceneElement().clearItems();
+  }
+
+  function requestRepaint() {
+    return this.sceneElement().requestRepaint();
+  }
+
+  function repaint() {
+    return this.sceneElement().repaint();
+  }
+
+  function sceneToJSON() {
+    return this.sceneElement().toJSON();
+  }
+
+  function sceneFromJSON(value) {
+    return this.sceneElement().fromJSON(value);
+  }
+
+  graphics-scene.qhtml-graphics-scene-surface {
+    slot { default }
+  }
+}
+
+q-component q-graphics-item {
+  q-property graphicsUUID: ""
+  q-property x: 0
+  q-property y: 0
+  q-property width: 0
+  q-property height: 0
+  q-property opacity: 1
+  q-property rotation: 0
+  q-property scaleX: 1
+  q-property scaleY: 1
+  q-property transformOriginX: 0
+  q-property transformOriginY: 0
+  q-property visible: true
+  q-property maskEnabled: false
+
+  function paint(ctx, scene) {
+    void ctx;
+    void scene;
+  }
+
+  function mask(ctx, scene) {
+    void scene;
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  function initializeGraphicsItem() {
+    this.graphicsItem = new QHTMLGraphicsItem({
+      uuid: this.graphicsUUID,
+      x: this.x,
+      y: this.y,
+      width: this.width,
+      height: this.height,
+      opacity: this.opacity,
+      rotation: this.rotation,
+      scaleX: this.scaleX,
+      scaleY: this.scaleY,
+      transformOriginX: this.transformOriginX,
+      transformOriginY: this.transformOriginY,
+      visible: this.visible
+    });
+    this.graphicsItem.setPainter(this.paint);
+    if (this.maskEnabled) {
+      this.graphicsItem.setMasker(this.mask);
+    }
+    this.parentComponent().addItem(this.graphicsItem);
+    return this.graphicsItem;
+  }
+
+  function addItem(graphicsItem) {
+    return this.graphicsItem.addItem(graphicsItem);
+  }
+
+  function removeItem(graphicsItem) {
+    return this.graphicsItem.removeItem(graphicsItem);
+  }
+
+  function listItems() {
+    return this.graphicsItem.listItems();
+  }
+
+  function setX(value) {
+    this.x = value;
+    return this.graphicsItem;
+  }
+
+  function setY(value) {
+    this.y = value;
+    return this.graphicsItem;
+  }
+
+  function setPosition(x, y) {
+    this.x = x;
+    this.y = y;
+    return this.graphicsItem;
+  }
+
+  function setWidth(value) {
+    this.width = value;
+    return this.graphicsItem;
+  }
+
+  function setHeight(value) {
+    this.height = value;
+    return this.graphicsItem;
+  }
+
+  function setSize(width, height) {
+    this.width = width;
+    this.height = height;
+    return this.graphicsItem;
+  }
+
+  function setOpacity(value) {
+    this.opacity = value;
+    return this.graphicsItem;
+  }
+
+  function setRotation(value) {
+    this.rotation = value;
+    return this.graphicsItem;
+  }
+
+  function setScale(scaleX, scaleY) {
+    this.scaleX = scaleX;
+    this.scaleY = scaleY;
+    return this.graphicsItem;
+  }
+
+  function setTransformOrigin(originX, originY) {
+    this.transformOriginX = originX;
+    this.transformOriginY = originY;
+    return this.graphicsItem;
+  }
+
+  function setVisible(value) {
+    this.visible = value;
+    return this.graphicsItem;
+  }
+
+  function setPainter(painterFunction) {
+    return this.graphicsItem.setPainter(painterFunction);
+  }
+
+  function setMasker(maskerFunction) {
+    return this.graphicsItem.setMasker(maskerFunction);
+  }
+
+  function clearMasker() {
+    return this.graphicsItem.clearMasker();
+  }
+
+  function paintItem() {
+    return this.graphicsItem.paint();
+  }
+
+  onxchanged { this.graphicsItem.setX(this.x); }
+  onychanged { this.graphicsItem.setY(this.y); }
+  onwidthchanged { this.graphicsItem.setWidth(this.width); }
+  onheightchanged { this.graphicsItem.setHeight(this.height); }
+  onopacitychanged { this.graphicsItem.setOpacity(this.opacity); }
+  onrotationchanged { this.graphicsItem.setRotation(this.rotation); }
+  onscaleXchanged { this.graphicsItem.setScale(this.scaleX, this.scaleY); }
+  onscaleYchanged { this.graphicsItem.setScale(this.scaleX, this.scaleY); }
+  ontransformOriginXchanged {
+    this.graphicsItem.setTransformOrigin(this.transformOriginX, this.transformOriginY);
+  }
+  ontransformOriginYchanged {
+    this.graphicsItem.setTransformOrigin(this.transformOriginX, this.transformOriginY);
+  }
+  onvisiblechanged { this.graphicsItem.setVisible(this.visible); }
+  onmaskEnabledchanged {
+    if (this.maskEnabled) {
+      this.graphicsItem.setMasker(this.mask);
+    } else {
+      this.graphicsItem.clearMasker();
+    }
+  }
+
+  onready {
+    this.initializeGraphicsItem();
+  }
+
+  slot { default }
+}
