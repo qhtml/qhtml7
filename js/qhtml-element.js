@@ -4073,6 +4073,86 @@
     domElement[functionName] = boundFunction;
   }
 
+  function connectRuntimeSignalTarget(connections, target) {
+    if (!target) {
+      return false;
+    }
+    if (!connections.includes(target)) {
+      connections.push(target);
+    }
+    return true;
+  }
+
+  function disconnectRuntimeSignalTarget(connections, target) {
+    const index = connections.indexOf(target);
+    if (index < 0) {
+      return false;
+    }
+    connections.splice(index, 1);
+    return true;
+  }
+
+  function disconnectQHTMLSignalNodeTarget(signalNode, target) {
+    if (signalNode &&
+        target &&
+        target.__qhtmlFunctionNode &&
+        typeof signalNode.disconnect === "function") {
+      return signalNode.disconnect(target.__qhtmlFunctionNode);
+    }
+    return false;
+  }
+
+  function disconnectQHTMLSignalNodeAll(signalNode) {
+    if (signalNode && typeof signalNode.disconnectAll === "function") {
+      return signalNode.disconnectAll();
+    }
+    return false;
+  }
+
+  function qhtmlSignalParameters(signalNode) {
+    if (!signalNode || typeof signalNode.parameters !== "function") {
+      return [];
+    }
+    const parameters = signalNode.parameters();
+    return Array.isArray(parameters) ? parameters : splitList(parameters);
+  }
+
+  function normalizedQHTMLSignalArguments(signalNode, args) {
+    const values = Array.isArray(args) ? args.slice() : [];
+    const parameters = qhtmlSignalParameters(signalNode);
+    while (values.length < parameters.length) {
+      values.push("");
+    }
+    return values;
+  }
+
+  function qhtmlSignalSenderNode(owner) {
+    if (!owner) {
+      return null;
+    }
+    if (owner.qhtmlNode) {
+      return owner.qhtmlNode;
+    }
+    if (owner.node) {
+      return owner.node;
+    }
+    return null;
+  }
+
+  function emitQHTMLSignalNode(signalNode, owner, args) {
+    if (!signalNode) {
+      return 0;
+    }
+    const values = normalizedQHTMLSignalArguments(signalNode, args);
+    if (typeof signalNode.emitSignal === "function") {
+      return signalNode.emitSignal(values.map((arg) => String(arg)), qhtmlSignalSenderNode(owner));
+    }
+    if (typeof signalNode.emit === "function") {
+      return signalNode.emit(...values.map((arg) => String(arg)));
+    }
+    return 0;
+  }
+
   function createDomSignal(domElement, signalName, signalNode) {
     if (!domElement || !signalName) {
       return null;
@@ -4086,13 +4166,12 @@
       if (qhtmlSignalsBlocked(domElement)) {
         return [];
       }
+      const signalArgs = normalizedQHTMLSignalArguments(signalNode, args);
       const transactionId = activePropertyTransactionId || signalFunction.__qhtmlPendingTransactionId || "";
       signalFunction.__qhtmlLastTransactionId = transactionId;
       signalFunction.__qhtmlPendingTransactionId = "";
-      const serializedArgs = args.map((arg) => String(arg)).join(", ");
-      if (typeof signalNode.emit === "function") {
-        signalNode.emit(serializedArgs);
-      }
+      const serializedArgs = signalArgs.map((arg) => String(arg)).join(", ");
+      emitQHTMLSignalNode(signalNode, domElement, signalArgs);
       logQHTMLRuntime(
         domElement.__qhtmlRegistry,
         "QHTMLSignal",
@@ -4102,38 +4181,29 @@
       if (typeof domElement.dispatchEvent === "function" && typeof CustomEvent === "function") {
         domElement.dispatchEvent(new CustomEvent("QHTMLSignal", {
           bubbles: true,
-          detail: { signal: signalName, signalNode, sender: domElement, args, transactionId }
+          detail: { signal: signalName, signalNode, sender: domElement, args: signalArgs, transactionId }
         }));
       }
       const invokeConnections = () => connections.map((target) => {
         if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
-          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: domElement, transactionId });
+          return target.__qhtmlInvokeFromSignal(signalArgs, { signal: signalNode, sender: domElement, transactionId });
         }
-        return typeof target === "function" ? target.apply(domElement, args) : undefined;
+        return typeof target === "function" ? target.apply(domElement, signalArgs) : undefined;
       });
       return transactionId ? withPropertyTransaction(transactionId, invokeConnections) : invokeConnections();
     };
 
     signalFunction.connect = function (target) {
-      if (!target) {
-        return false;
-      }
-      if (target.__qhtmlFunctionNode && typeof signalNode.connect === "function") {
-        signalNode.connect(target.__qhtmlFunctionNode);
-      }
-      connections.push(target);
-      return true;
+      return connectRuntimeSignalTarget(connections, target);
     };
     signalFunction.disconnectAll = function () {
       connections.length = 0;
+      disconnectQHTMLSignalNodeAll(signalNode);
     };
     signalFunction.disconnect = function (target) {
-      const index = connections.indexOf(target);
-      if (index < 0) {
-        return false;
-      }
-      connections.splice(index, 1);
-      return true;
+      const removedRuntimeConnection = disconnectRuntimeSignalTarget(connections, target);
+      const removedModelConnection = disconnectQHTMLSignalNodeTarget(signalNode, target);
+      return removedRuntimeConnection || removedModelConnection;
     };
     signalFunction.connections = function () {
       return connections.slice();
@@ -4266,16 +4336,10 @@
     };
 
     eventFunction.connect = function (target) {
-      connections.push(target);
-      return true;
+      return connectRuntimeSignalTarget(connections, target);
     };
     eventFunction.disconnect = function (target) {
-      const index = connections.indexOf(target);
-      if (index < 0) {
-        return false;
-      }
-      connections.splice(index, 1);
-      return true;
+      return disconnectRuntimeSignalTarget(connections, target);
     };
     eventFunction.disconnectAll = function () {
       connections.length = 0;
@@ -4946,14 +5010,13 @@
       return [];
     };
     signalFunction.connect = function (target) {
-      if (!target) {
-        return false;
-      }
       if (!registry.futurePropertySignalConnections.has(key)) {
         registry.futurePropertySignalConnections.set(key, []);
       }
-      registry.futurePropertySignalConnections.get(key).push(target);
-      return true;
+      return connectRuntimeSignalTarget(registry.futurePropertySignalConnections.get(key), target);
+    };
+    signalFunction.disconnect = function (target) {
+      return disconnectRuntimeSignalTarget(registry.futurePropertySignalConnections.get(key) || [], target);
     };
     signalFunction.disconnectAll = function () {
       registry.futurePropertySignalConnections.set(key, []);
@@ -5702,32 +5765,30 @@
   function createTimerSignal(timerObject, signalNode, ownerElement) {
     const connections = [];
     const signalFunction = function (...args) {
-      if (signalNode && typeof signalNode.emit === "function") {
-        signalNode.emit(args.map((arg) => String(arg)).join(", "));
-      }
+      const signalArgs = normalizedQHTMLSignalArguments(signalNode, args);
+      emitQHTMLSignalNode(signalNode, timerObject, signalArgs);
       ownerElement.dispatchEvent(new CustomEvent("QHTMLTimerTimeout", {
         bubbles: true,
-        detail: { timer: timerObject, signalNode, args }
+        detail: { timer: timerObject, signalNode, args: signalArgs }
       }));
       return connections.map((target) => {
         if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
-          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: timerObject });
+          return target.__qhtmlInvokeFromSignal(signalArgs, { signal: signalNode, sender: timerObject });
         }
-        return typeof target === "function" ? target.apply(ownerElement, args) : undefined;
+        return typeof target === "function" ? target.apply(ownerElement, signalArgs) : undefined;
       });
     };
     signalFunction.connect = function (target) {
-      if (!target) {
-        return false;
-      }
-      if (target.__qhtmlFunctionNode && signalNode && typeof signalNode.connect === "function") {
-        signalNode.connect(target.__qhtmlFunctionNode);
-      }
-      connections.push(target);
-      return true;
+      return connectRuntimeSignalTarget(connections, target);
+    };
+    signalFunction.disconnect = function (target) {
+      const removedRuntimeConnection = disconnectRuntimeSignalTarget(connections, target);
+      const removedModelConnection = disconnectQHTMLSignalNodeTarget(signalNode, target);
+      return removedRuntimeConnection || removedModelConnection;
     };
     signalFunction.disconnectAll = function () {
       connections.length = 0;
+      disconnectQHTMLSignalNodeAll(signalNode);
     };
     signalFunction.connections = function () {
       return connections.slice();
@@ -5888,25 +5949,26 @@
       if (qhtmlSignalsBlocked(ownerObject)) {
         return [];
       }
-      if (signalNode && typeof signalNode.emit === "function") {
-        signalNode.emit(args.map((arg) => String(arg)).join(", "));
-      }
+      const signalArgs = normalizedQHTMLSignalArguments(signalNode, args);
+      emitQHTMLSignalNode(signalNode, ownerObject, signalArgs);
       return connections.map((target) => {
         if (target && typeof target.__qhtmlInvokeFromSignal === "function") {
-          return target.__qhtmlInvokeFromSignal(args, { signal: signalNode, sender: ownerObject });
+          return target.__qhtmlInvokeFromSignal(signalArgs, { signal: signalNode, sender: ownerObject });
         }
-        return typeof target === "function" ? target.apply(ownerObject, args) : undefined;
+        return typeof target === "function" ? target.apply(ownerObject, signalArgs) : undefined;
       });
     };
     signalFunction.connect = function (target) {
-      if (!target) {
-        return false;
-      }
-      connections.push(target);
-      return true;
+      return connectRuntimeSignalTarget(connections, target);
+    };
+    signalFunction.disconnect = function (target) {
+      const removedRuntimeConnection = disconnectRuntimeSignalTarget(connections, target);
+      const removedModelConnection = disconnectQHTMLSignalNodeTarget(signalNode, target);
+      return removedRuntimeConnection || removedModelConnection;
     };
     signalFunction.disconnectAll = function () {
       connections.length = 0;
+      disconnectQHTMLSignalNodeAll(signalNode);
     };
     signalFunction.connections = function () {
       return connections.slice();
@@ -10409,11 +10471,14 @@
       const readySignal = storedReadyConnections > directReadyConnections
         ? storedReadySignal
         : (typeof domElement.ready === "function" ? domElement.ready : storedReadySignal);
+      const readyEventBridgeInstalled = domElement.__qhtmlBoundDomEvents &&
+        domElement.__qhtmlBoundDomEvents.has(eventNameForDom("ready"));
       domElement.dispatchEvent(new CustomEvent("ready", {
         bubbles: false,
         detail: { qhtmlNode, qhtmlDom: registry.tree || null }
       }));
-      if (typeof readySignal === "function") {
+      if (typeof readySignal === "function" &&
+          (readySignal !== storedReadySignal || !readyEventBridgeInstalled)) {
         readySignal();
       }
       domElement.dispatchEvent(new CustomEvent("QHTMLNodeReady", {

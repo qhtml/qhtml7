@@ -608,7 +608,27 @@ D. SIGNALS AND CONNECTIONS
 40. Multiple listeners for one signal
     If supported, demonstrate fan-out.
     ```
-    /* Just add more .connect statements */
+    q-component comp1 {
+           q-signal mysignal()
+     }
+    q-component comp2 {
+        function func1() { alert("hello world #1"); }
+    }
+    q-component comp3 {
+        function func2() { alert("hello world #2"); }
+    }
+    comp1 obj1 { }
+    comp2 obj2 {
+        onready { obj1.mysignal.connect(this.func1); }
+    }
+    comp3 obj3 {
+        onready { obj1.mysignal.connect(this.func2);  }
+    }
+
+    button {
+        onclick { obj1.mysignal() }
+        text { click here }
+    }
     ```
 
 41. One receiver handling multiple signals

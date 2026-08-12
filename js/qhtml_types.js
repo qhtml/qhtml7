@@ -1734,8 +1734,8 @@
       this._lastSenderUUID = sender ? sender.qhtmlUUID() : "";
       this._lastSignalUUID = signal ? signal.qhtmlUUID() : "";
       this._callCount += 1;
-      for (let i = 0; i < this._parameters.length && i < args.length; i += 1) {
-        this.qhtmlContext.updateKeywordReference(this._parameters[i], args[i]);
+      for (let i = 0; i < this._parameters.length; i += 1) {
+        this.qhtmlContext.updateKeywordReference(this._parameters[i], i < args.length ? args[i] : "");
       }
       return this._body;
     }
@@ -1770,6 +1770,8 @@
     setParameterList(parameters) { this.setParameters(parseParameters(parameters)); }
     setParameterListJs(parameters) { this.setParameterList(parameters); }
     connect(functionNode) { return this._signalBus ? this._signalBus.connect(this, functionNode) : false; }
+    disconnect(functionNode) { return this._signalBus ? this._signalBus.disconnect(this, functionNode) : false; }
+    disconnectAll() { return this._signalBus ? this._signalBus.disconnectAll(this) : false; }
     connections() { return this._signalBus ? (this._signalBus._connections.get(this.qhtmlUUID()) || []).slice() : []; }
     onMaybeLog(callback) { this._maybeLogListeners.push(callback); }
     emitSignal(argumentsList = [], sender = null) {
@@ -1899,6 +1901,23 @@
       return true;
     }
     connectJs(signal, functionNode) { return this.connect(signal, functionNode); }
+    disconnect(signal, functionNode) {
+      const key = signal.qhtmlUUID();
+      const list = this._connections.get(key) || [];
+      const next = list.filter(connection => connection.function() !== functionNode);
+      this._connections.set(key, next);
+      return next.length !== list.length;
+    }
+    disconnectJs(signal, functionNode) { return this.disconnect(signal, functionNode); }
+    disconnectAll(signal) {
+      if (!signal) {
+        this._connections.clear();
+        return true;
+      }
+      this._connections.set(signal.qhtmlUUID(), []);
+      return true;
+    }
+    disconnectAllJs(signal) { return this.disconnectAll(signal); }
     emitSignal(signal, sender, argumentsList) {
       this._lastSignalUUID = signal.qhtmlUUID();
       this._lastSenderUUID = sender ? sender.qhtmlUUID() : "";
