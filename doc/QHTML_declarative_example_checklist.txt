@@ -634,13 +634,39 @@ D. SIGNALS AND CONNECTIONS
 41. One receiver handling multiple signals
     Demonstrate multiple declarative connections.
     ```
-    /* connect to the same function with .connect */
+     q-component comp1 {
+        q-signal mysignal1()
+     }
+    q-component comp2 {
+        q-signal mysignal2()
+    }
+    q-component comp3 {
+        function func2() { alert("hello world somewhere"); }
+    }
+    comp1 obj1 { }
+    comp2 obj2 { }
+    comp3 obj3 {
+        onready {
+            obj1.mysignal1.connect(this.func2)
+            obj2.mysignal2.connect(this.func2)
+            obj1.mysignal1()
+            obj2.mysignal2()
+        }
+    }
     ```
 
 42. Disconnect/remove a connection
     If supported declaratively or through QHTML API, show the canonical method.
     ```
-    /* use .disconnect with the same parameters */
+    ...
+    comp3 obj3 {
+        onready {
+            obj1.mysignal1.connect(this.func2)
+            obj2.mysignal2.connect(this.func2)
+            obj1.mysignal1.disconnect(this.func2)
+            obj2.mysignal2()
+        }
+    }
     ```
 
 ======================================================================
@@ -851,12 +877,39 @@ F. FUNCTIONS AND SCRIPTING
 
 55. Function reading q-properties
     Demonstrate component/context access.
+    ```
+    q-component mycomp {
+        q-property myprop: 42
+        function myfunc() { alert (this.myprop) }
+    }
+    mycomp obj1 { onready { this.myfunc() } }
+    ```
 
 56. Function modifying q-properties
     Demonstrate controlled state mutation.
+    ```
+    q-component mycomp {
+        q-property myprop: 62
+        q-property amount: 20
+        div,text { Property Value: ${this.myprop} }
+        button { onclick { this.myprop += 20; this.amount *= 2;  } text { click here to increase by ${this.amount} } }
+    }
+    mycomp obj1 { }
+    ```
 
 57. Function accessing a named child object
     Show object resolution without document.querySelector.
+    ```
+    q-component mycomp1 {
+        q-property myprop1: "hello world"
+    }
+    q-component mycomp2 {
+        mycomp1 obj1 { }
+        function getChildProp() { return obj1.myprop1 }
+        onready { alert(this.getChildProp() ) }
+    }
+    mycomp2 obj2 { }
+    ```
 
 58. JavaScript block inside QHTML
     Show exactly where arbitrary JavaScript is allowed.
@@ -882,8 +935,8 @@ F. FUNCTIONS AND SCRIPTING
     */
      q-class myclass {
         myclass() { this.myprop = 42 }
-        /* runThing() can contain any arbitrary javascript code including dynamic object creation and event listeners
-           and whatever other javascript nightmare you can come up with all encapsulated into myclass obejct */
+        /* runThing() can contain any arbitrary javascript code including dynamic object creation, event listeners
+           and whatever other javascript nightmare you can come up with, all encapsulated into myclass obejct */
         runThing() {
             this.myprop *= 96 + 42 + 32
             alert(this.myprop)
@@ -1179,6 +1232,27 @@ mainTheme {
 74. Multiple classes / conditional classes
     If QHTML has a native mechanism, demonstrate it.
 
+    ```
+    <style>
+    .class1:hover { border: 2px solid black; }
+    .class2:hover { background: blue; }
+    </style>
+
+    <q-html>
+    q-style mystyle {
+      q-style-class { class1 class2 }
+    }
+    q-theme mytheme { div { mystyle } }
+    mytheme,div,text { hello world }
+    </q-html>
+
+    ```
+    or
+
+    ```
+    div.class1.class2,text { hello world }
+    ```
+
 
 ======================================================================
 I. SLOTS / CONTENT COMPOSITION
@@ -1186,22 +1260,100 @@ I. SLOTS / CONTENT COMPOSITION
 
 75. Declare a default slot
     Minimal reusable component with child-content insertion.
+    ```
+    q-component mycomp {
+      slot myslot { text { default text } }
+    }
+    mycomp obj1 { }
+
+    /*  output is "default text" */
+    ```
 
 76. Fill a default slot
     Show caller-provided content.
+    ```
+        q-component mycomp {
+      slot myslot { text { some default text } }
+    }
+    mycomp obj1 {
+      myslot { div,span,text { hello world } }
+    }
+
+    /* output is div, span  with "hello world" */
+    ```
 
 77. Declare a named slot
     If supported.
+    ```
+    q-component mycomp {
+      slot myslot { text { default text } }
+    }
+    ```
 
 78. Fill a named slot
     Show caller-side syntax.
+    ```
+    mycomp obj1 {
+     myslot { text { filled in text }}
+    }
+    ```
 
 79. Default/fallback slot content
     If supported.
+    ```
+    q-component mycomp {
+      slot myslot { text { default text } }
+    }
+    ```
 
 80. Component wrapping arbitrary child content
     Canonical composition example.
 
+    ```
+    /* slot definitions are owned by the nearest q-component definition direct parent / the nearest q-component instance deppending on if they are slot definitions or slot declarations */
+    q-component mycomp {
+        div,span {
+            slot myslot { text { default text } } /* still part of mycomp - slot definition */
+        }
+    }
+    q-component comp2 {
+        mycomp obj3 {
+            myslot {   /* slot declaration which is owned by obj3 since its the closest QHTMLComponentInstance */
+
+            /* slot definitions still belong to `comp2` since its the closest QHTMLComponentDefinition */
+               slot comp2slot { text { text sent to child from parent slot } }
+            }
+        }
+    }
+    mycomp obj1 {
+        myslot { h1 { text { hello world } } }
+    }
+
+    comp2 obj2 {
+      comp2slot { /* slot declaration owned by obj2 */
+        text { This is directly sent into the myslot slot of obj3 via the comp2slot of obj2 }
+      }
+    }
+    ```
+
+81. Using a single slot to make simpler content embedding without declaring a slot each time
+
+    ```
+    /* when there is only one slot definition then that allows for passing of all child elements directly into that slot */
+    q-component mycomp {
+        q-property myprop: 5
+        div,span {
+            text { ${this.myprop} }
+            slot myslot { }
+        }
+    }
+
+    /* no need to declare `myslot { }` for all children defintions passed -- property assignments/event handlers do not get passed to the slot but instead are passed to the object normally */
+    mycomp obj1 { h1,text { hello world } }
+
+    mycomp obj2 { myprop: 10 h1,span,text { hello world } }
+
+    ```
 
 ======================================================================
 J. REFERENCES / CONTEXT

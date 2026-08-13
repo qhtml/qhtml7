@@ -1957,8 +1957,9 @@
       this.setProperty("kind", "component-slot");
     }
     renderHtmlInContext(contextNode) {
-      if (contextNode instanceof QHTMLComponentInstance) {
-        return contextNode.renderSlotForOwnedDefinition(this);
+      const owner = qhtmlSlotOwnerInstanceFor(this, contextNode);
+      if (owner) {
+        return owner.renderSlotForOwnedDefinition(this);
       }
       return super.renderHtml();
     }
@@ -2176,6 +2177,112 @@
     return out;
   }
 
+  function qhtmlSlotsOwnedByDefinition(definitionNode) {
+    if (!(definitionNode instanceof QHTMLComponentDefinition)) {
+      return [];
+    }
+    const out = [];
+    const walk = function (node) {
+      if (!node) {
+        return;
+      }
+      if (node instanceof QHTMLComponentDefinition) {
+        return;
+      }
+      if (node instanceof QHTMLComponentSlot) {
+        out.push(node);
+      }
+      for (const child of node.children()) {
+        walk(child);
+      }
+    };
+    qhtmlEffectiveComponentDefinitionChildren(definitionNode).forEach(walk);
+    return out;
+  }
+
+  function qhtmlSlotDefaultsOwnedByDefinition(definitionNode) {
+    if (!(definitionNode instanceof QHTMLComponentDefinition)) {
+      return [];
+    }
+    const out = [];
+    const walk = function (node) {
+      if (!node) {
+        return;
+      }
+      if (node instanceof QHTMLComponentDefinition) {
+        return;
+      }
+      if (node instanceof QHTMLSlotDefault) {
+        out.push(node);
+      }
+      for (const child of node.children()) {
+        walk(child);
+      }
+    };
+    qhtmlEffectiveComponentDefinitionChildren(definitionNode).forEach(walk);
+    return out;
+  }
+
+  function qhtmlParentComponentInstance(node) {
+    let current = node && typeof node.parent === "function" ? node.parent() : null;
+    while (current) {
+      if (current instanceof QHTMLComponentInstance) {
+        return current;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return null;
+  }
+
+  function qhtmlComponentInstanceDeclaresSlot(instance, slotName) {
+    return instance instanceof QHTMLComponentInstance &&
+      instance.collectSlots().some(slot => slot.qhtmlName() === slotName);
+  }
+
+  function qhtmlSlotOwnerInstanceFor(slotNode, contextNode) {
+    const slotName = slotNode && typeof slotNode.qhtmlName === "function" ? slotNode.qhtmlName() : "";
+    let current = contextNode instanceof QHTMLComponentInstance
+      ? contextNode
+      : qhtmlParentComponentInstance(contextNode);
+    while (current) {
+      if (qhtmlComponentInstanceDeclaresSlot(current, slotName)) {
+        return current;
+      }
+      current = qhtmlParentComponentInstance(current);
+    }
+    return null;
+  }
+
+  function qhtmlDirectPropertyOverride(instance, propertyName) {
+    if (!(instance instanceof QHTMLComponentInstance)) {
+      return null;
+    }
+    const wanted = trim(propertyName).toLowerCase();
+    for (const child of instance.children()) {
+      if ((child instanceof QHTMLPropertyAssignment || child instanceof QHTMLProperty) &&
+          child.qhtmlName().toLowerCase() === wanted) {
+        return child;
+      }
+    }
+    const attributes = instance.attributes();
+    const key = Object.keys(attributes).find(item => item.toLowerCase() === wanted);
+    return key
+      ? new QHTMLPropertyAssignment(propertyName, { value: attributes[key] })
+      : null;
+  }
+
+  function qhtmlCloneDefinitionMemberForInstance(child, instance) {
+    if (child instanceof QHTMLProperty) {
+      const clone = child.cloneProperty();
+      const override = qhtmlDirectPropertyOverride(instance, child.qhtmlName());
+      if (override && typeof override.value === "function") {
+        clone.setValue(override.value());
+      }
+      return clone;
+    }
+    return cloneTemplateNode(child);
+  }
+
   class QHTMLComponentInstance extends QHTMLTypedNode {
     constructor(name = "", attributes = {}, definition = null) {
       if (name instanceof QHTMLComponentDefinition) {
@@ -2254,7 +2361,7 @@
         if (child instanceof QHTMLComponentDefinition) {
           continue;
         }
-        const cloned = cloneTemplateNode(child);
+        const cloned = qhtmlCloneDefinitionMemberForInstance(child, this);
         reassignNodeUUIDs(cloned);
         markDefinitionInstanceMember(cloned);
         this.appendReferenceMember(cloned);
@@ -2264,14 +2371,7 @@
     }
     materializedDefinitionMembersJs() { return this.materializeDefinitionMembers(); }
     collectSlots() {
-      const out = [];
-      function walk(node) {
-        if (!node) return;
-        if (node instanceof QHTMLComponentSlot) out.push(node);
-        for (const child of node.children()) walk(child);
-      }
-      qhtmlEffectiveComponentDefinitionChildren(this._definition).forEach(walk);
-      return out;
+      return qhtmlSlotsOwnedByDefinition(this._definition);
     }
     slotCount() { return this.collectSlots().length; }
     slotsJs() { this.ensureSlotViews(); return this._slotViews.slice(); }
@@ -2306,13 +2406,7 @@
     }
     slotDefault(slotName) {
       if (!this._definition) return null;
-      const defaults = [];
-      function walk(node) {
-        if (!node) return;
-        if (node instanceof QHTMLSlotDefault) defaults.push(node);
-        for (const child of node.children()) walk(child);
-      }
-      qhtmlEffectiveComponentDefinitionChildren(this._definition).forEach(walk);
+      const defaults = qhtmlSlotDefaultsOwnedByDefinition(this._definition);
       return defaults.find(item => item.qhtmlName() === slotName) || null;
     }
     slotDefaultJs(slotName) { return this.slotDefault(slotName); }
@@ -2402,7 +2496,10 @@
   }
 
   function renderNodeWithSlotsForInstance(node, instance) {
-    if (node instanceof QHTMLComponentSlot) return instance.renderSlotForOwnedDefinition(node);
+    if (node instanceof QHTMLComponentSlot) {
+      const owner = qhtmlSlotOwnerInstanceFor(node, instance);
+      return owner ? owner.renderSlotForOwnedDefinition(node) : node.renderHtml();
+    }
     if (node instanceof QHTMLStyleApplication) {
       return "<q-style-application qhtml-style=\"" + qhtmlEscapeAttribute(node.qhtmlName()) + "\" qhtml-node=\"" +
         qhtmlEscapeAttribute(node.qhtmlUUID()) + "\">" +
@@ -3473,7 +3570,7 @@
     instance.setProperty("componentName", definition.qhtmlName());
 
     const slotsByName = new Map();
-    for (const slot of definition.findChildrenByType("QHTMLComponentSlot")) {
+    for (const slot of qhtmlSlotsOwnedByDefinition(definition)) {
       if (slot.qhtmlName()) {
         slotsByName.set(slot.qhtmlName(), slot);
       }
@@ -3737,6 +3834,7 @@
     qhtmlResolvePropertyValue,
     qhtmlResolveCssValueForContext,
     qhtmlEffectiveComponentDefinitionChildren,
+    qhtmlSlotsOwnedByDefinition,
     reassignNodeUUIDs,
     materializeIterationValue,
     applyContextPropertyToDescendants,

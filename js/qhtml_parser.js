@@ -1237,7 +1237,10 @@
       parent.takeChildAt(i);
     }
     for (const child of original) {
-      parent.appendChild(transform(parent, child));
+      const replacement = transform(parent, child);
+      if (replacement) {
+        parent.appendChild(replacement);
+      }
     }
   }
 
@@ -1459,7 +1462,18 @@
   }
 
   function slotNamesForDefinition(definition) {
-    return new Set(definition.findChildrenByType("QHTMLComponentSlot").map(slot => slot.qhtmlName()).filter(Boolean));
+    const slots = typeof QHTMLTypes.qhtmlSlotsOwnedByDefinition === "function"
+      ? QHTMLTypes.qhtmlSlotsOwnedByDefinition(definition)
+      : definition.findChildrenByType("QHTMLComponentSlot");
+    return new Set(slots.map(slot => slot.qhtmlName()).filter(Boolean));
+  }
+
+  function shouldPassImplicitlyToSingleSlot(child) {
+    return !(child instanceof QHTMLTypes.QHTMLComponentInstanceSlot) &&
+      !(child instanceof QHTMLTypes.QHTMLPropertyAssignment) &&
+      !(child instanceof QHTMLTypes.QHTMLProperty) &&
+      !(child instanceof QHTMLTypes.QHTMLEventHandler) &&
+      !(child instanceof QHTMLTypes.QHTMLConnect);
   }
 
   function transformInstanceSlots(root) {
@@ -1471,6 +1485,8 @@
       if (!slotNames.size) {
         return;
       }
+      const singleSlotName = slotNames.size === 1 ? Array.from(slotNames)[0] : "";
+      let implicitSingleSlot = null;
       replaceChildren(node, (owner, child) => {
         if (child instanceof QHTMLTypes.QHTMLComponentInstanceSlot) {
           return child;
@@ -1482,6 +1498,15 @@
           slotName = child.keyword() || child.qhtmlName();
         } else {
           slotName = child.qhtmlName();
+        }
+        if (!slotNames.has(slotName) && singleSlotName && shouldPassImplicitlyToSingleSlot(child)) {
+          if (!implicitSingleSlot) {
+            implicitSingleSlot = new QHTMLTypes.QHTMLComponentInstanceSlot(node, node.slot(singleSlotName), singleSlotName);
+            implicitSingleSlot.appendChild(child);
+            return implicitSingleSlot;
+          }
+          implicitSingleSlot.appendChild(child);
+          return null;
         }
         if (!slotNames.has(slotName)) {
           return child;

@@ -4,12 +4,12 @@ const REEL_COUNT = 5;
 const CARDS_PER_REEL = 9;
 const VISIBLE_SLOTS = 3;
 const SLOT_HEIGHT = 100 / VISIBLE_SLOTS;
-const SPIN_DURATION = 1600;
-const WIN_LINE_DURATION = 2000;
+const SPIN_DURATION = 2600;
+const WIN_LINE_DURATION = 1000;
 
 const STARTING_CREDITS = 100;
 const MIN_BET = 1;
-const MAX_BET = 10;
+const MAX_BET = 100;
 
 const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"];
 const SUITS = ["D", "H", "C", "S"];
@@ -280,13 +280,13 @@ class PokerGame {
   }
 
   async spin() {
-    if (this.spinning || this.credits < this.bet) {
+    if (this.spinning || this.credits < (this.bet * (0.5 * 20))) {
       return;
     }
 
     this.stopWinCelebration();
     this.spinning = true;
-    this.credits -= this.bet;
+    this.credits -= this.bet * (0.5 * 20);
     this.lastWin = 0;
     this.clearWinningPaylines();
     this.updateDisplay();

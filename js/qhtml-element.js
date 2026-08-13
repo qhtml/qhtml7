@@ -1242,7 +1242,7 @@
         domElement.setAttribute(name, String(resolved == null ? "" : resolved));
       };
       applyAttribute();
-      queueQHTMLInterpolationBinding(registry, domElement, rawValue, applyAttribute, `attribute:${name}`);
+      queueQHTMLReactiveAssignmentBinding(registry, domElement, rawValue, applyAttribute, `attribute:${name}`);
     }
   }
 
@@ -1330,7 +1330,7 @@
       domElement.style.setProperty(cssName, serializeCssShortcutValue(cssName, nextValue, cssShortcutRawValue(domElement, cssName)));
     };
     domElement.style.setProperty(cssName, serializeCssShortcutValue(cssName, value, cssShortcutRawValue(domElement, cssName)));
-    queueQHTMLInterpolationBinding(registry, domElement, rawValue, applyStyleValue, `style:${cssName}`);
+    queueQHTMLReactiveAssignmentBinding(registry, domElement, rawValue, applyStyleValue, `style:${cssName}`);
     if (typeof geometryValue !== "undefined" && typeof globalScope.requestAnimationFrame === "function") {
       globalScope.requestAnimationFrame(() => {
         const nextValue = cssGeometryReferenceValue(cssName, rawValue, domElement, registry);
@@ -3995,6 +3995,17 @@
     return true;
   }
 
+  function queueQHTMLReactiveAssignmentBinding(registry, domElement, rawValue, apply, label) {
+    if (queueQHTMLInterpolationBinding(registry, domElement, rawValue, apply, label)) {
+      return true;
+    }
+    const binding = propertyBindingExpression(rawValue);
+    if (!binding) {
+      return false;
+    }
+    return queueQHTMLInterpolationBinding(registry, domElement, "${" + binding.expression + "}", apply, label);
+  }
+
   function installQHTMLInterpolationBinding(record, registry) {
     const dependencies = interpolationDependencyPaths(record.source)
       .map((path) => resolveInterpolationDependency(path, record.domElement, registry))
@@ -6124,12 +6135,20 @@
     return parsed.unit || "";
   }
 
+  function isQHTMLRuntimePropertyTarget(target, propertyName) {
+    return !!(target &&
+      propertyName &&
+      target.__qhtmlProperties &&
+      Object.prototype.hasOwnProperty.call(target.__qhtmlProperties, propertyName));
+  }
+
   function animationFrameValue(animationObject, value) {
     const unit = animationObject && animationObject.__qhtmlValueUnit ? animationObject.__qhtmlValueUnit : "";
     if (!unit || !animationObject || !animationObject.target || !animationObject.property) {
       return value;
     }
-    if (animationObject.target.style && isCssShortcutAssignmentName(animationObject.property)) {
+    if (isQHTMLRuntimePropertyTarget(animationObject.target, animationObject.property) ||
+        (animationObject.target.style && isCssShortcutAssignmentName(animationObject.property))) {
       return new QHTMLCssRuntimeValue(
         animationObject.target,
         cssShortcutPropertyName(animationObject.property),
@@ -6182,6 +6201,12 @@
 
   function writeAnimationFrameProperty(target, propertyName, value) {
     if (!target || !propertyName) {
+      return;
+    }
+    if (isQHTMLRuntimePropertyTarget(target, propertyName) &&
+        !qhtmlSignalsBlocked(target) &&
+        typeof target[propertyName] !== "undefined") {
+      target[propertyName] = value;
       return;
     }
     if (target.style && isCssShortcutAssignmentName(propertyName)) {
@@ -6302,7 +6327,11 @@
       animationObject.to = animationAssignment(animationNode, "to", ownerElement, registry,
         animationAssignment(animationNode, "endValue", ownerElement, registry,
           animationAssignment(animationNode, "end", ownerElement, registry, undefined)));
-      animationObject.emitInterpolatedValues = timerBool(animationAssignment(animationNode, "emitInterpolatedValues", ownerElement, registry, false), false);
+      const defaultEmitInterpolatedValues = isQHTMLRuntimePropertyTarget(animationObject.target, animationObject.property);
+      animationObject.emitInterpolatedValues = timerBool(
+        animationAssignment(animationNode, "emitInterpolatedValues", ownerElement, registry, defaultEmitInterpolatedValues),
+        defaultEmitInterpolatedValues
+      );
       animationObject.__qhtmlInitialRunning = timerBool(animationAssignment(animationNode, "running", ownerElement, registry, false), false);
       return animationObject;
     };
@@ -6439,6 +6468,7 @@
       if (registry && registry.rootElement && registry.rootElement.__qhtml7RuntimeDisposed === true) {
         return animationObject;
       }
+      animationObject.refresh();
       const currentRawValue = readTargetPropertyRaw(animationObject.target, animationObject.property);
       const currentValue = numericValue(currentRawValue, readTargetProperty(animationObject.target, animationObject.property));
       const hasFrom = animationHasAssignment(animationNode, "from") ||

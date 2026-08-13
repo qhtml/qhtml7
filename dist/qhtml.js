@@ -2196,8 +2196,9 @@ try {
       this.setProperty("kind", "component-slot");
     }
     renderHtmlInContext(contextNode) {
-      if (contextNode instanceof QHTMLComponentInstance) {
-        return contextNode.renderSlotForOwnedDefinition(this);
+      const owner = qhtmlSlotOwnerInstanceFor(this, contextNode);
+      if (owner) {
+        return owner.renderSlotForOwnedDefinition(this);
       }
       return super.renderHtml();
     }
@@ -2415,6 +2416,112 @@ try {
     return out;
   }
 
+  function qhtmlSlotsOwnedByDefinition(definitionNode) {
+    if (!(definitionNode instanceof QHTMLComponentDefinition)) {
+      return [];
+    }
+    const out = [];
+    const walk = function (node) {
+      if (!node) {
+        return;
+      }
+      if (node instanceof QHTMLComponentDefinition) {
+        return;
+      }
+      if (node instanceof QHTMLComponentSlot) {
+        out.push(node);
+      }
+      for (const child of node.children()) {
+        walk(child);
+      }
+    };
+    qhtmlEffectiveComponentDefinitionChildren(definitionNode).forEach(walk);
+    return out;
+  }
+
+  function qhtmlSlotDefaultsOwnedByDefinition(definitionNode) {
+    if (!(definitionNode instanceof QHTMLComponentDefinition)) {
+      return [];
+    }
+    const out = [];
+    const walk = function (node) {
+      if (!node) {
+        return;
+      }
+      if (node instanceof QHTMLComponentDefinition) {
+        return;
+      }
+      if (node instanceof QHTMLSlotDefault) {
+        out.push(node);
+      }
+      for (const child of node.children()) {
+        walk(child);
+      }
+    };
+    qhtmlEffectiveComponentDefinitionChildren(definitionNode).forEach(walk);
+    return out;
+  }
+
+  function qhtmlParentComponentInstance(node) {
+    let current = node && typeof node.parent === "function" ? node.parent() : null;
+    while (current) {
+      if (current instanceof QHTMLComponentInstance) {
+        return current;
+      }
+      current = typeof current.parent === "function" ? current.parent() : null;
+    }
+    return null;
+  }
+
+  function qhtmlComponentInstanceDeclaresSlot(instance, slotName) {
+    return instance instanceof QHTMLComponentInstance &&
+      instance.collectSlots().some(slot => slot.qhtmlName() === slotName);
+  }
+
+  function qhtmlSlotOwnerInstanceFor(slotNode, contextNode) {
+    const slotName = slotNode && typeof slotNode.qhtmlName === "function" ? slotNode.qhtmlName() : "";
+    let current = contextNode instanceof QHTMLComponentInstance
+      ? contextNode
+      : qhtmlParentComponentInstance(contextNode);
+    while (current) {
+      if (qhtmlComponentInstanceDeclaresSlot(current, slotName)) {
+        return current;
+      }
+      current = qhtmlParentComponentInstance(current);
+    }
+    return null;
+  }
+
+  function qhtmlDirectPropertyOverride(instance, propertyName) {
+    if (!(instance instanceof QHTMLComponentInstance)) {
+      return null;
+    }
+    const wanted = trim(propertyName).toLowerCase();
+    for (const child of instance.children()) {
+      if ((child instanceof QHTMLPropertyAssignment || child instanceof QHTMLProperty) &&
+          child.qhtmlName().toLowerCase() === wanted) {
+        return child;
+      }
+    }
+    const attributes = instance.attributes();
+    const key = Object.keys(attributes).find(item => item.toLowerCase() === wanted);
+    return key
+      ? new QHTMLPropertyAssignment(propertyName, { value: attributes[key] })
+      : null;
+  }
+
+  function qhtmlCloneDefinitionMemberForInstance(child, instance) {
+    if (child instanceof QHTMLProperty) {
+      const clone = child.cloneProperty();
+      const override = qhtmlDirectPropertyOverride(instance, child.qhtmlName());
+      if (override && typeof override.value === "function") {
+        clone.setValue(override.value());
+      }
+      return clone;
+    }
+    return cloneTemplateNode(child);
+  }
+
   class QHTMLComponentInstance extends QHTMLTypedNode {
     constructor(name = "", attributes = {}, definition = null) {
       if (name instanceof QHTMLComponentDefinition) {
@@ -2493,7 +2600,7 @@ try {
         if (child instanceof QHTMLComponentDefinition) {
           continue;
         }
-        const cloned = cloneTemplateNode(child);
+        const cloned = qhtmlCloneDefinitionMemberForInstance(child, this);
         reassignNodeUUIDs(cloned);
         markDefinitionInstanceMember(cloned);
         this.appendReferenceMember(cloned);
@@ -2503,14 +2610,7 @@ try {
     }
     materializedDefinitionMembersJs() { return this.materializeDefinitionMembers(); }
     collectSlots() {
-      const out = [];
-      function walk(node) {
-        if (!node) return;
-        if (node instanceof QHTMLComponentSlot) out.push(node);
-        for (const child of node.children()) walk(child);
-      }
-      qhtmlEffectiveComponentDefinitionChildren(this._definition).forEach(walk);
-      return out;
+      return qhtmlSlotsOwnedByDefinition(this._definition);
     }
     slotCount() { return this.collectSlots().length; }
     slotsJs() { this.ensureSlotViews(); return this._slotViews.slice(); }
@@ -2545,13 +2645,7 @@ try {
     }
     slotDefault(slotName) {
       if (!this._definition) return null;
-      const defaults = [];
-      function walk(node) {
-        if (!node) return;
-        if (node instanceof QHTMLSlotDefault) defaults.push(node);
-        for (const child of node.children()) walk(child);
-      }
-      qhtmlEffectiveComponentDefinitionChildren(this._definition).forEach(walk);
+      const defaults = qhtmlSlotDefaultsOwnedByDefinition(this._definition);
       return defaults.find(item => item.qhtmlName() === slotName) || null;
     }
     slotDefaultJs(slotName) { return this.slotDefault(slotName); }
@@ -2641,7 +2735,10 @@ try {
   }
 
   function renderNodeWithSlotsForInstance(node, instance) {
-    if (node instanceof QHTMLComponentSlot) return instance.renderSlotForOwnedDefinition(node);
+    if (node instanceof QHTMLComponentSlot) {
+      const owner = qhtmlSlotOwnerInstanceFor(node, instance);
+      return owner ? owner.renderSlotForOwnedDefinition(node) : node.renderHtml();
+    }
     if (node instanceof QHTMLStyleApplication) {
       return "<q-style-application qhtml-style=\"" + qhtmlEscapeAttribute(node.qhtmlName()) + "\" qhtml-node=\"" +
         qhtmlEscapeAttribute(node.qhtmlUUID()) + "\">" +
@@ -3712,7 +3809,7 @@ try {
     instance.setProperty("componentName", definition.qhtmlName());
 
     const slotsByName = new Map();
-    for (const slot of definition.findChildrenByType("QHTMLComponentSlot")) {
+    for (const slot of qhtmlSlotsOwnedByDefinition(definition)) {
       if (slot.qhtmlName()) {
         slotsByName.set(slot.qhtmlName(), slot);
       }
@@ -3976,6 +4073,7 @@ try {
     qhtmlResolvePropertyValue,
     qhtmlResolveCssValueForContext,
     qhtmlEffectiveComponentDefinitionChildren,
+    qhtmlSlotsOwnedByDefinition,
     reassignNodeUUIDs,
     materializeIterationValue,
     applyContextPropertyToDescendants,
@@ -5234,7 +5332,10 @@ try {
       parent.takeChildAt(i);
     }
     for (const child of original) {
-      parent.appendChild(transform(parent, child));
+      const replacement = transform(parent, child);
+      if (replacement) {
+        parent.appendChild(replacement);
+      }
     }
   }
 
@@ -5456,7 +5557,18 @@ try {
   }
 
   function slotNamesForDefinition(definition) {
-    return new Set(definition.findChildrenByType("QHTMLComponentSlot").map(slot => slot.qhtmlName()).filter(Boolean));
+    const slots = typeof QHTMLTypes.qhtmlSlotsOwnedByDefinition === "function"
+      ? QHTMLTypes.qhtmlSlotsOwnedByDefinition(definition)
+      : definition.findChildrenByType("QHTMLComponentSlot");
+    return new Set(slots.map(slot => slot.qhtmlName()).filter(Boolean));
+  }
+
+  function shouldPassImplicitlyToSingleSlot(child) {
+    return !(child instanceof QHTMLTypes.QHTMLComponentInstanceSlot) &&
+      !(child instanceof QHTMLTypes.QHTMLPropertyAssignment) &&
+      !(child instanceof QHTMLTypes.QHTMLProperty) &&
+      !(child instanceof QHTMLTypes.QHTMLEventHandler) &&
+      !(child instanceof QHTMLTypes.QHTMLConnect);
   }
 
   function transformInstanceSlots(root) {
@@ -5468,6 +5580,8 @@ try {
       if (!slotNames.size) {
         return;
       }
+      const singleSlotName = slotNames.size === 1 ? Array.from(slotNames)[0] : "";
+      let implicitSingleSlot = null;
       replaceChildren(node, (owner, child) => {
         if (child instanceof QHTMLTypes.QHTMLComponentInstanceSlot) {
           return child;
@@ -5479,6 +5593,15 @@ try {
           slotName = child.keyword() || child.qhtmlName();
         } else {
           slotName = child.qhtmlName();
+        }
+        if (!slotNames.has(slotName) && singleSlotName && shouldPassImplicitlyToSingleSlot(child)) {
+          if (!implicitSingleSlot) {
+            implicitSingleSlot = new QHTMLTypes.QHTMLComponentInstanceSlot(node, node.slot(singleSlotName), singleSlotName);
+            implicitSingleSlot.appendChild(child);
+            return implicitSingleSlot;
+          }
+          implicitSingleSlot.appendChild(child);
+          return null;
         }
         if (!slotNames.has(slotName)) {
           return child;
@@ -8203,7 +8326,7 @@ try {
         domElement.setAttribute(name, String(resolved == null ? "" : resolved));
       };
       applyAttribute();
-      queueQHTMLInterpolationBinding(registry, domElement, rawValue, applyAttribute, `attribute:${name}`);
+      queueQHTMLReactiveAssignmentBinding(registry, domElement, rawValue, applyAttribute, `attribute:${name}`);
     }
   }
 
@@ -8291,7 +8414,7 @@ try {
       domElement.style.setProperty(cssName, serializeCssShortcutValue(cssName, nextValue, cssShortcutRawValue(domElement, cssName)));
     };
     domElement.style.setProperty(cssName, serializeCssShortcutValue(cssName, value, cssShortcutRawValue(domElement, cssName)));
-    queueQHTMLInterpolationBinding(registry, domElement, rawValue, applyStyleValue, `style:${cssName}`);
+    queueQHTMLReactiveAssignmentBinding(registry, domElement, rawValue, applyStyleValue, `style:${cssName}`);
     if (typeof geometryValue !== "undefined" && typeof globalScope.requestAnimationFrame === "function") {
       globalScope.requestAnimationFrame(() => {
         const nextValue = cssGeometryReferenceValue(cssName, rawValue, domElement, registry);
@@ -10956,6 +11079,17 @@ try {
     return true;
   }
 
+  function queueQHTMLReactiveAssignmentBinding(registry, domElement, rawValue, apply, label) {
+    if (queueQHTMLInterpolationBinding(registry, domElement, rawValue, apply, label)) {
+      return true;
+    }
+    const binding = propertyBindingExpression(rawValue);
+    if (!binding) {
+      return false;
+    }
+    return queueQHTMLInterpolationBinding(registry, domElement, "${" + binding.expression + "}", apply, label);
+  }
+
   function installQHTMLInterpolationBinding(record, registry) {
     const dependencies = interpolationDependencyPaths(record.source)
       .map((path) => resolveInterpolationDependency(path, record.domElement, registry))
@@ -13085,12 +13219,20 @@ try {
     return parsed.unit || "";
   }
 
+  function isQHTMLRuntimePropertyTarget(target, propertyName) {
+    return !!(target &&
+      propertyName &&
+      target.__qhtmlProperties &&
+      Object.prototype.hasOwnProperty.call(target.__qhtmlProperties, propertyName));
+  }
+
   function animationFrameValue(animationObject, value) {
     const unit = animationObject && animationObject.__qhtmlValueUnit ? animationObject.__qhtmlValueUnit : "";
     if (!unit || !animationObject || !animationObject.target || !animationObject.property) {
       return value;
     }
-    if (animationObject.target.style && isCssShortcutAssignmentName(animationObject.property)) {
+    if (isQHTMLRuntimePropertyTarget(animationObject.target, animationObject.property) ||
+        (animationObject.target.style && isCssShortcutAssignmentName(animationObject.property))) {
       return new QHTMLCssRuntimeValue(
         animationObject.target,
         cssShortcutPropertyName(animationObject.property),
@@ -13143,6 +13285,12 @@ try {
 
   function writeAnimationFrameProperty(target, propertyName, value) {
     if (!target || !propertyName) {
+      return;
+    }
+    if (isQHTMLRuntimePropertyTarget(target, propertyName) &&
+        !qhtmlSignalsBlocked(target) &&
+        typeof target[propertyName] !== "undefined") {
+      target[propertyName] = value;
       return;
     }
     if (target.style && isCssShortcutAssignmentName(propertyName)) {
@@ -13263,7 +13411,11 @@ try {
       animationObject.to = animationAssignment(animationNode, "to", ownerElement, registry,
         animationAssignment(animationNode, "endValue", ownerElement, registry,
           animationAssignment(animationNode, "end", ownerElement, registry, undefined)));
-      animationObject.emitInterpolatedValues = timerBool(animationAssignment(animationNode, "emitInterpolatedValues", ownerElement, registry, false), false);
+      const defaultEmitInterpolatedValues = isQHTMLRuntimePropertyTarget(animationObject.target, animationObject.property);
+      animationObject.emitInterpolatedValues = timerBool(
+        animationAssignment(animationNode, "emitInterpolatedValues", ownerElement, registry, defaultEmitInterpolatedValues),
+        defaultEmitInterpolatedValues
+      );
       animationObject.__qhtmlInitialRunning = timerBool(animationAssignment(animationNode, "running", ownerElement, registry, false), false);
       return animationObject;
     };
@@ -13400,6 +13552,7 @@ try {
       if (registry && registry.rootElement && registry.rootElement.__qhtml7RuntimeDisposed === true) {
         return animationObject;
       }
+      animationObject.refresh();
       const currentRawValue = readTargetPropertyRaw(animationObject.target, animationObject.property);
       const currentValue = numericValue(currentRawValue, readTargetProperty(animationObject.target, animationObject.property));
       const hasFrom = animationHasAssignment(animationNode, "from") ||

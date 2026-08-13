@@ -2638,34 +2638,21 @@
     throw new Error('QHTML preview runtime did not register <q-html>.');
   }
 
-  function qEditorShadowPreviewRoot(previewNode) {
-    if (!previewNode) return null;
-    if (previewNode.shadowRoot) {
-      return previewNode.shadowRoot;
-    }
-    if (typeof previewNode.attachShadow === 'function') {
-      return previewNode.attachShadow({ mode: 'open' });
-    }
-    return previewNode;
-  }
-
-  async function mountShadowQHtmlPreview(previewNode, source) {
-    const shadowRoot = qEditorShadowPreviewRoot(previewNode);
-    if (!shadowRoot) {
+  async function mountLightQHtmlPreview(previewNode, source) {
+    if (!previewNode) {
       throw new Error('Preview host is unavailable.');
     }
 
     previewNode.innerHTML = '';
-    shadowRoot.innerHTML = '';
     await qEditorEnsurePreviewRuntime();
 
     const style = document.createElement('style');
-    style.textContent = ':host{display:block;color:#0f172a;background:#fff;min-height:20rem} q-html{display:block;min-height:20rem}';
+    style.textContent = '.qe-preview{display:block;color:#0f172a;background:#fff;min-height:20rem}.qe-preview q-html{display:block;min-height:20rem}';
     const host = document.createElement('q-html');
     host.qhtmlSource = String(source || '');
     host.textContent = String(source || '');
-    shadowRoot.appendChild(style);
-    shadowRoot.appendChild(host);
+    previewNode.appendChild(style);
+    previewNode.appendChild(host);
 
     let mountBinding = null;
     const runtime = getQHtmlRuntime();
@@ -2705,18 +2692,17 @@
     return host ? String(host.innerHTML || '') : '';
   }
 
-  function renderShadowPreviewError(previewNode, error) {
+  function renderLightPreviewError(previewNode, error) {
     const message = String(error && error.stack ? error.stack : error);
-    const root = qEditorShadowPreviewRoot(previewNode);
-    if (!root) return;
-    root.innerHTML = '';
+    if (!previewNode) return;
+    previewNode.innerHTML = '';
     const style = document.createElement('style');
-    style.textContent = ':host{display:block;background:#0f1220;min-height:20rem}.qe-error{box-sizing:border-box;margin:0;min-height:20rem;padding:1rem;color:#fecaca;white-space:pre-wrap;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}';
+    style.textContent = '.qe-preview{display:block;background:#0f1220;min-height:20rem}.qe-error{box-sizing:border-box;margin:0;min-height:20rem;padding:1rem;color:#fecaca;white-space:pre-wrap;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}';
     const pre = document.createElement('pre');
     pre.className = 'qe-error';
     pre.textContent = message;
-    root.appendChild(style);
-    root.appendChild(pre);
+    previewNode.appendChild(style);
+    previewNode.appendChild(pre);
   }
 
   class QEditor extends HTMLElement {
@@ -3636,8 +3622,8 @@
       }
       this._previewQHtmlNode = null;
       this._previewMountBinding = null;
-      if (this._previewNode && this._previewNode.shadowRoot) {
-        this._previewNode.shadowRoot.innerHTML = '';
+      if (this._previewNode) {
+        this._previewNode.innerHTML = '';
       }
     }
 
@@ -3714,7 +3700,7 @@
         if (this._previewNode) {
           if (shouldPopulatePreview || shouldPopulateHtml) {
             try {
-              const mounted = await mountShadowQHtmlPreview(this._previewNode, runtimeSource);
+              const mounted = await mountLightQHtmlPreview(this._previewNode, runtimeSource);
               if (version !== this._renderVersion) return;
               this._previewQHtmlNode = mounted.host;
               this._previewMountBinding = mounted.mountBinding || null;
@@ -3727,7 +3713,7 @@
             } catch (error) {
               renderError = error;
               if (shouldPopulatePreview) {
-                renderShadowPreviewError(this._previewNode, error);
+                renderLightPreviewError(this._previewNode, error);
               }
             }
           } else {
@@ -3805,10 +3791,10 @@
         if (!shouldPopulatePreview) {
           // Preview runtime is mounted lazily only when preview tab is active.
         } else if (renderError) {
-          renderShadowPreviewError(this._previewNode, renderError);
+          renderLightPreviewError(this._previewNode, renderError);
         } else {
           try {
-            const mounted = await mountShadowQHtmlPreview(this._previewNode, runtimeSource);
+            const mounted = await mountLightQHtmlPreview(this._previewNode, runtimeSource);
             if (version !== this._renderVersion) {
               this._unmountPreviewQHtml();
               return;
@@ -3820,7 +3806,7 @@
             }
           } catch (error) {
             this._unmountPreviewQHtml();
-            renderShadowPreviewError(this._previewNode, error);
+            renderLightPreviewError(this._previewNode, error);
           }
         }
       }
