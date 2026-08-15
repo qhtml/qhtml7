@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QHTML7 Behavior Animation Loop Test</title>
   <script src="../dist/qhtml.js"></script>
-  <script src="../dist/particle-emitter.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -20,7 +19,7 @@
     }
 
     main {
-      width: min(1120px, calc(100vw - 32px));
+      width: min(920px, calc(100vw - 32px));
       margin: 0 auto;
       padding: 24px 0 48px;
     }
@@ -48,141 +47,118 @@
       display: block;
       min-height: 180px;
     }
-
-    .behavior-loop-shell {
-      padding: 16px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      background: #f8fafc;
-    }
-
-    .behavior-loop-track {
-      width: 100%;
-      height: 34px;
-      padding: 4px;
-      border: 1px solid #d8e0eb;
-      border-radius: 8px;
-      background: #ffffff;
-      box-sizing: border-box;
-    }
-
-    .behavior-loop-fill {
-      width: 1vh;
-      height: 24px;
-      border-radius: 6px;
-      background-color: #22c55e;
-    }
-
-    .behavior-loop-readout {
-      margin-top: 10px;
-      color: #475569;
-      font-size: 13px;
-      font-weight: 700;
-    }
   </style>
 </head>
 <body>
   <main>
     <h1>QHTML7 Behavior Animation Loop Test</h1>
-    <p class="intro">This page loops a property animation from 1vh to 100vh and back using behavior on and q-script-action.</p>
+    <p class="intro">The progress bar loops by setting only one property: <code>progress</code>.</p>
 
     <section>
       <q-html>
+q-component behaviorProgressBar {
+  q-property progress: 0%
 
+  behavior on this.progress {
+    q-property-animation {
+      duration: 1600
+      steps: 96
 
-
-q-component behavior-loop-bar {
-  q-property barWidth: 1
-  q-property nextBarWidth: 100
-
-  behavior on barWidth {
-    q-sequential-animation {
-      q-property-animation {
-        duration: 1400
-        steps: 80
-
-        onstepped(stepNum, value) {
-        loopDemo.style.width = String(value) + "vh";
-          loopDemo.textContent = "step " + String(stepNum) + ": " + String(Math.round(value)) + "vh";
+      onfinished {
+        if (this.progress.number >= 100) {
+          this.progress = "0%"
+        } else {
+          this.progress = "100%"
         }
-      }
-
-      q-script-action {
-        this.qhtmlComponent.nextBarWidth = this.barWidth == 100 ? 1 : 100;
-        setTimeout(function() {
-          this.qhtmlComponent.barWidth = this.nextBarWidth;
-        }.bind(this), 0);
       }
     }
   }
 
-  q-style testShellStyle {
-    padding: 16px;
-    borderWidth: 1px;
-    borderColor: #cbd5e1;
-    borderRadius: 8px;
-    backgroundColor: #f8fafc;
+  q-style shellStyle {
+    display: block
+    padding: 18px
+    border: "1px solid #cbd5e1"
+    borderRadius: 8px
+    background: "#f8fafc"
   }
 
-  q-style testTrackStyle {
-    width: 100%;
-    height: 34px;
-    padding: 4px;
-    borderWidth: 1px;
-    borderColor: #d8e0eb;
-    borderRadius: 8px;
-    backgroundColor: #ffffff;
+  q-style trackStyle {
+    display: block
+    width: 100%
+    height: 36px
+    padding: 4px
+    border: "1px solid #d8e0eb"
+    borderRadius: 8px
+    boxSizing: "border-box"
+    overflow: hidden
   }
 
-  q-style testBarStyle {
-    width: 1vh;
-    height: 24px;
-    borderRadius: 6px;
-    backgroundColor: #22c55e;
+  q-style fillStyle {
+    display: block
+    height: "100%"
+    borderRadius: 6px
+    background: "#22c55e"
   }
 
-  q-style testReadoutStyle {
-    marginTop: 10px;
-    color: #475569;
-    fontSize: 13px;
-    fontWeight: 700;
+  q-style readoutStyle {
+    display: block
+    marginTop: 10px
+    color: "#475569"
+    fontSize: 13px
+    fontWeight: 700
   }
 
   q-default-theme behaviorLoopTheme {
-    .behavior-loop-shell { testShellStyle }
-    .behavior-loop-track { testTrackStyle }
-    .behavior-loop-fill { testBarStyle }
-    .behavior-loop-readout { testReadoutStyle }
-  }
-
-  onready {
-    this.querySelector(".behavior-loop-fill").style.width = String(this.barWidth) + "vh";
-    this.querySelector(".behavior-loop-readout").textContent = "width: " + String(this.barWidth) + "vh";
-    this.barWidth = 100;
-  }
-
-  onbarWidthchanged(value) {
-    this.querySelector(".behavior-loop-fill").style.width = String(value) + "vh";
-    this.querySelector(".behavior-loop-readout").textContent = "width: " + String(value) + "vh";
+    .behavior-loop-shell { shellStyle }
+    .behavior-loop-track { trackStyle }
+    .behavior-loop-fill { fillStyle }
+    .behavior-loop-readout { readoutStyle }
   }
 
   div.behavior-loop-shell {
+    display: block
+    padding: 18px
+    border: "1px solid #cbd5e1"
+    borderRadius: 8px
+    background: "#f8fafc"
+
     div.behavior-loop-track {
-      div.behavior-loop-fill { }
+      display: block
+      width: "100%"
+      height: 36px
+      padding: 4px
+      border: "1px solid #d8e0eb"
+      borderRadius: 8px
+      background: "#ffffff"
+      boxSizing: "border-box"
+      overflow: hidden
+
+      div.behavior-loop-fill {
+        display: block
+        width: this.progress
+        height: "100%"
+        borderRadius: 6px
+        background: "#22c55e"
+      }
     }
+
     div.behavior-loop-readout {
-      text { width: 1vh }
+      display: block
+      marginTop: 10px
+      color: "#475569"
+      fontSize: 13px
+      fontWeight: 700
+
+      text { progress: ${this.progress} }
     }
+  }
+
+  onready {
+    this.progress = "100%"
   }
 }
 
-behavior-loop-bar loopDemo { }
-q-timer startTimer {
-  interval: 1000
-  running: true
-  ontimeout { loopDemo.barWidth = 75;  }
-  repeat: false
-}
+behaviorProgressBar progressDemo { }
       </q-html>
     </section>
   </main>

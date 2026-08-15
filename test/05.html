@@ -99,73 +99,71 @@
 
     <q-html id="animation-root">q-component stress-rect {
   q-property label: "0"
-  q-property numSteps: 150
+  q-property numSteps: 120
+  q-property rectWidth: 8vw
+  q-property widthFrom: 8vw
+  q-property widthTo: 30vw
+  q-property rectOpacity: 0.58
+  q-property opacityFrom: 0.58
+  q-property opacityTo: 1
+  q-property status: running
+
   q-property-animation widthAnim {
-    target: this
-    property: "width"
-    duration: 5400
+    target: this.rectWidth
+    duration: 1400
     steps: this.numSteps
     easing: "linear"
-    repeat: false
-    from: 8vw
-    to: 30vw
-    running: true
+    from: this.widthFrom
+    to: this.widthTo
+    emitInterpolatedValues: true
 
-    onstepped(value, currentStep) {
-    console.log(this)
-      var status = this.querySelector(".rect-status");
-      if (status) {
-        status.textContent = "width " + Math.round(value) + "px / step " + currentStep;
-      }
+    onfinished {
+      var oldFrom = this.widthFrom
+      this.widthFrom = this.widthTo
+      this.widthTo = oldFrom
+      this.widthAnim.start()
     }
-    onended() {
-      var oldFrom = this.widthAnim.from;
-        this.widthAnim.from = this.widthAnim.to;
-     this.widthAnim.to = oldFrom;
-      this.widthAnim.start();
-    }
-
   }
+
   q-property-animation opacityAnim {
-    target: this
-    property: "opacity"
-    duration: 140
-    steps: 100
+    target: this.rectOpacity
+    duration: 1200
+    steps: 80
     easing: "linear"
-    repeat: false
-    from: 0.58
-    to: 1
-    running: true
+    from: this.opacityFrom
+    to: this.opacityTo
+    emitInterpolatedValues: true
 
-    onended {
-  var oldFrom = this.opacityAnim.from;
-        this.opacityAnim.from = this.opacityAnim.to;
-     this.opacityAnim.to = oldFrom;
-
-
+    onfinished {
+      var oldFrom = this.opacityFrom
+      this.opacityFrom = this.opacityTo
+      this.opacityTo = oldFrom
+      this.opacityAnim.start()
     }
   }
 
   onready {
-    var rect = this;
-    this.widthAnim.to = this.widthAnim.to.add(this.numSteps);
-    this.widthAnim.steps *= 2;
-        this.widthAnim.start();
-        this.opacityAnim.start();
+    this.widthAnim.start()
+    this.opacityAnim.start()
   }
 
   div.rect-body {
+    width: this.rectWidth
+    opacity: this.rectOpacity
+
     span.rect-label {
-      html { rect }
-      span.rect-number { text { ${label} } }
+      text { rect ${this.label} }
     }
-    span.rect-status { text { waiting } }
+
+    span.rect-status {
+      text { ${this.status} }
+    }
   }
 }
 
 q-component stress-stage {
-q-logger { q-signal }
-  q-property somearray: [ 4, 10, 20, 30, 40]
+  q-property somearray: [ 48, 64, 80, 96, 112, 128, 144, 160 ]
+
   div.animation-stage {
     for (num in this.somearray) {
       stress-rect {

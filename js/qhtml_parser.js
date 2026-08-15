@@ -1086,7 +1086,7 @@
     if (trimmedHeader === "style") {
       return new QHTMLAstNamedTypeNode("style", "", {}, content);
     }
-    match = /^behavior\s+on\s+([A-Za-z_][A-Za-z0-9_+-]*)$/i.exec(trimmedHeader);
+    match = /^behavior\s+on\s+(.+?)$/i.exec(trimmedHeader);
     if (match) {
       return new QHTMLAstNamedTypeNode("behavior", trim(match[1]), {}, content);
     }

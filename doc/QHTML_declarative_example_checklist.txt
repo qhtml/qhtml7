@@ -435,6 +435,338 @@ C. PROPERTIES AND STATE
     button { onclick { obj1.myprop = "34px" } text { Click to Change } }
     ```
 
+28a. q-property-animation targeting a QHTML property directly
+     Preferred syntax when animating a q-property value.
+     The target path resolves to an object/property pair.
+     ```
+     q-component animatedPanel {
+         q-property panelHeight: 10vh
+
+         q-property-animation heightAnim {
+             target: this.panelHeight
+             from: 10vh
+             to: 50vh
+             duration: 13000
+             steps: 300
+             running: false
+         }
+
+         div {
+             height: this.panelHeight
+             background: red
+             text { Height: ${this.panelHeight} }
+         }
+
+         function start() {
+             heightAnim.start()
+         }
+     }
+
+     animatedPanel panel1 {
+         onready { this.start() }
+     }
+     ```
+
+28b. q-property-animation targeting an explicit object plus property name
+     Alternate syntax when the target object and property are supplied separately.
+     ```
+     q-component animatedPanel {
+         q-property panelWidth: 20vw
+
+         q-property-animation widthAnim {
+             target: this
+             property: "panelWidth"
+             from: 20vw
+             to: 60vw
+             duration: 9000
+             steps: 180
+         }
+
+         div {
+             width: this.panelWidth
+             background: orange
+             text { Width: ${this.panelWidth} }
+         }
+
+         button {
+             onclick { widthAnim.start() }
+             text { Animate width }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28c. q-property-animation with interpolated updates suppressed
+     Use emitInterpolatedValues when subscribers should only observe the final
+     value instead of each intermediate animation step.
+     ```
+     q-component animatedPanel {
+         q-property amount: 10%
+
+         q-property-animation amountAnim {
+             target: this.amount
+             from: 10%
+             to: 90%
+             duration: 3000
+             steps: 100
+             emitInterpolatedValues: false
+         }
+
+         div {
+             width: this.amount
+             background: green
+             text { ${this.amount} }
+         }
+
+         button {
+             onclick { amountAnim.start() }
+             text { Animate amount }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28d. behavior on a local property
+     A behavior attaches to the resolved property in the current component
+     instance scope. The assigned value becomes the animation destination when
+     the child animation does not declare its own `to`.
+     ```
+     q-component animatedPanel {
+         q-property panelHeight: 10vh
+
+         behavior on panelHeight {
+             q-property-animation {
+                 duration: 13000
+                 steps: 300
+             }
+         }
+
+         div {
+             height: this.panelHeight
+             background: red
+             text { Height: ${this.panelHeight} }
+         }
+
+         button {
+             onclick { this.panelHeight = "50vh" }
+             text { Grow }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28e. behavior on an explicit resolved property path
+     The behavior can resolve a dotted property path and bind to that exact
+     target/property pair.
+     ```
+     q-component meter {
+         q-property amount: 10%
+
+         div {
+             width: this.amount
+             background: blue
+             text { ${this.amount} }
+         }
+     }
+
+     q-component dashboard {
+         meter meter1 { }
+
+         behavior on meter1.amount {
+             q-property-animation {
+                 duration: 5000
+                 steps: 200
+             }
+         }
+
+         button {
+             onclick { meter1.amount = "80%" }
+             text { Fill meter }
+         }
+     }
+
+     dashboard dash1 { }
+     ```
+
+28f. behavior on a property with fixed from/to values
+     If from or to are declared, they override the runtime current value or
+     assigned destination value respectively.
+     ```
+     q-component animatedPanel {
+         q-property panelWidth: 20vw
+
+         behavior on panelWidth {
+             q-property-animation {
+                 from: 10vw
+                 to: 70vw
+                 duration: 4000
+                 steps: 160
+             }
+         }
+
+         div {
+             width: this.panelWidth
+             background: purple
+             text { ${this.panelWidth} }
+         }
+
+         button {
+             onclick { this.panelWidth = "35vw" }
+             text { Run fixed animation }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28g. behavior on a property with q-sequential-animation
+     Sequential behavior children execute in order while targeting the resolved
+     behavior property unless an individual child declares another target.
+     ```
+     q-component animatedPanel {
+         q-property panelHeight: 10vh
+
+         behavior on panelHeight {
+             q-sequential-animation {
+                 q-property-animation {
+                     from: 10vh
+                     to: 30vh
+                     duration: 1000
+                     steps: 60
+                 }
+
+                 q-property-animation {
+                     from: 30vh
+                     to: 50vh
+                     duration: 1000
+                     steps: 60
+                 }
+             }
+         }
+
+         div {
+             height: this.panelHeight
+             background: teal
+             text { ${this.panelHeight} }
+         }
+
+         button {
+             onclick { this.panelHeight = "50vh" }
+             text { Run sequence }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28h. behavior on a property with q-parallel-animation
+     Parallel behavior children may animate the behavior property and other
+     explicitly targeted properties together.
+     ```
+     q-component animatedPanel {
+         q-property panelHeight: 10vh
+         q-property panelOpacity: 0.25
+
+         behavior on panelHeight {
+             q-parallel-animation {
+                 q-property-animation {
+                     from: 10vh
+                     to: 50vh
+                     duration: 2000
+                     steps: 120
+                 }
+
+                 q-property-animation {
+                     target: this.panelOpacity
+                     from: 0.25
+                     to: 1
+                     duration: 2000
+                     steps: 120
+                 }
+             }
+         }
+
+         div {
+             height: this.panelHeight
+             opacity: this.panelOpacity
+             background: black
+             color: white
+             text { ${this.panelHeight} / ${this.panelOpacity} }
+         }
+
+         button {
+             onclick { this.panelHeight = "50vh" }
+             text { Animate both }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28i. behavior on a property with q-script-action
+     q-script-action executes in the context of the closest q-component
+     instance. It can be used as a behavior step without becoming the normal
+     way to manipulate state.
+     ```
+     q-component animatedPanel {
+         q-property panelHeight: 10vh
+         q-property status: "idle"
+
+         behavior on panelHeight {
+             q-script-action markRunning {
+                 this.status = "animating " + this.panelHeight
+             }
+
+             q-property-animation {
+                 duration: 2000
+                 steps: 120
+             }
+         }
+
+         div {
+             height: this.panelHeight
+             text { ${this.status} }
+         }
+
+         button {
+             onclick { this.panelHeight = "40vh" }
+             text { Animate }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+28j. behavior animation stopping itself with object()
+     object() returns the owning runtime object for an animation event handler.
+     objectParent() returns the direct QHTMLDomTree parent, not the scoped
+     component parent.
+     ```
+     q-component animatedPanel {
+         q-property myprop: 10
+
+         behavior on myprop {
+             q-property-animation {
+                 duration: 2000
+                 steps: 300
+
+                 onstepped(val, step) {
+                     if (step == 200) {
+                         object().stop()
+                     }
+                 }
+             }
+         }
+     }
+
+     animatedPanel panel1 {
+         onready { this.myprop = 400 }
+     }
+     ```
+
 29. Parent property visible to descendants
     Demonstrate QHTML context/property resolution.
     ```
@@ -1361,12 +1693,58 @@ J. REFERENCES / CONTEXT
 
 81. Named reference lookup
     Show how qhtmlName/named references are used from QHTML.
+    ```
+    q-component mycomp1 { q-property myprop1: 42 }
+    q-component mycomp2 {
+        mycomp1 obj1 { } /* obj1 is reference in obj2 */
+    }
+    q-component mycomp3 {
+        mycomp2 obj2 { }
+    }
+    q-component nestedcomp {
+        mycomp3 obj3 { }
+    }
+    nestedcomp obj4 { }
+
+    button {
+       onclick {
+            alert(obj4.obj3.obj2.obj1.myprop1) /* 42 */
+       }
+       text { Access Named Refs }
+    }
+    ```
 
 82. Parent accessing named child
     Canonical reference path.
+    ```
+    q-component mycomp1 { q-property myprop1: 42 }
+    q-component mycomp2 {
+        mycomp1 obj1 { }
+        q-property myprop2: obj1.myprop1
+    }
+
+    mycomp2 obj2 { }
+
+    button {
+       onclick {
+            alert(obj2.myprop2) /* 42 */
+       }
+       text { Access Children }
+    }
+    ```
 
 83. Child accessing ancestor context
     Demonstrate inherited QHTML context.
+    ```
+    q-component childcomp1 {
+        onready { alert(this.parent().myprop) }
+    }
+    q-component parentcomp2 {
+        q-property myprop: 42
+        childcomp1 obj1 { }
+    }
+    parentcomp2 obj2 { }
+    ```
 
 84. Sibling component communication
     Show the preferred native pattern.
@@ -1388,6 +1766,267 @@ J. REFERENCES / CONTEXT
 
 90. Context precedence/resolution
     Show what happens when the same name exists at different scopes.
+
+90a. object() in a DOM event handler
+     object() returns the QHTML object that owns the event handler. For an
+     onclick block inside a button, object() is the button, not the onclick
+     handler wrapper.
+     ```
+     q-component toolbar {
+         q-property lastClicked: ""
+
+         div panel {
+             button saveButton {
+                 onclick {
+                     this.lastClicked = object().qhtmlName()
+                 }
+
+                 text { Save }
+             }
+         }
+
+         span {
+             text { Last clicked: ${this.lastClicked} }
+         }
+     }
+
+     toolbar mainToolbar { }
+     ```
+
+90b. objectParent() in a DOM event handler
+     objectParent() returns the direct QHTMLDomTree parent of object(). This is
+     not the same thing as object().parent(), which follows component/runtime
+     parent semantics.
+     ```
+     q-component toolbar {
+         q-property directParentName: ""
+
+             button {
+                 onclick {
+                     this.directParentName = objectParent().qhtmlName();
+                     /* this.directParentName === "mainToolbar" */
+                 }
+
+                 text { Save }
+             }
+
+         span {
+             text { Direct parent: ${this.directParentName} }
+         }
+     }
+
+     toolbar mainToolbar { }
+     ```
+
+90c. object() versus objectParent() inside q-property-animation handlers
+     Inside an animation event handler, object() returns the animation runtime
+     object. objectParent() returns the direct QHTMLDomTree parent, which may be
+     a behavior node, animation group, component definition, or another QHTML
+     container type.
+     ```
+     q-component animatedPanel {
+         q-property myprop: 10
+         q-property stoppedAt: 0
+
+         behavior on myprop {
+             q-property-animation anim {
+                 duration: 2000
+                 steps: 100
+
+                 onstepped(val, step) {
+                     if (step == 200) {
+                         this.stoppedAt = step
+                         object().stop()
+                     }
+                 }
+             }
+         }
+
+         span {
+             text { Myprop: ${this.myprop} -- Stopped at: ${this.stoppedAt} }
+         }
+     }
+
+     animatedPanel panel1 {
+         onready { this.myprop = 400 }
+     }
+     ```
+
+90d. objectParent() returning an animation group parent
+     When an animation is nested in a q-sequential-animation or
+     q-parallel-animation, objectParent() returns that direct group parent.
+     ```
+     q-component animatedPanel {
+         q-property myheight: 10vh
+         q-property animationParent: ""
+
+         q-sequential-animation sequence1 {
+             q-property-animation heightStep1 {
+                 target: this.myheight
+                 from: 10vh
+                 to: 30vh
+                 duration: 1000
+                 steps: 60
+
+                 onstarted {
+                     this.animationParent = objectParent().qhtmlName()
+                 }
+             }
+
+             q-property-animation heightStep2 {
+                 target: this.myheight
+                 from: 30vh
+                 to: 50vh
+                 duration: 1000
+                 steps: 60
+             }
+         }
+
+         button {
+             onclick { sequence1.start() }
+             text { Start sequence }
+         }
+
+         span {
+             text { Parent: ${this.animationParent} }
+         }
+     }
+
+     animatedPanel panel1 { }
+     ```
+
+90e. object() in a named q-script-action
+     A named q-script-action is a callable runtime object. object() returns the
+     script action object while `this` remains the closest q-component instance.
+     ```
+     q-component actionPanel {
+         q-property runCount: 0
+         q-property lastAction: "Property Animation"
+
+         q-sequential-animation animgroup1 {
+         q-property-animation anim1 {
+            duration: 2000
+            from: 0
+            to: 100
+            target: this.runCount
+            onstarted {
+                this.lastAction = objectParent().qhtmlName()
+            }
+            running: true
+
+         }
+         q-script-action incrementRunCount {
+             this.runCount = this.runCount * 100
+             this.lastAction = objectParent().qhtmlName()
+         }
+         }
+
+         button {
+             onclick { animgroup1.start() }
+             text { Run action ${this.runCount} }
+         }
+
+         span {
+             text { Last action: ${this.lastAction} }
+         }
+     }
+
+     actionPanel panel1 { }
+     ```
+
+90f. objectParent() in q-script-action nested inside behavior
+     q-script-action executes with `this` bound to the closest component
+     instance, while objectParent() exposes the direct QHTMLDomTree parent.
+     ```
+     q-component actionPanel {
+         q-property amount: 10
+         q-property behaviorParentName: ""
+
+         behavior on amount {
+             q-script-action captureParent {
+                 this.behaviorParentName = objectParent().qhtmlName()
+             }
+
+             q-property-animation {
+                 duration: 1000
+                 steps: 50
+             }
+         }
+
+         button {
+             onclick { this.amount = 100 }
+             text { Start }
+         }
+
+         span {
+             text { Behavior parent: ${this.behaviorParentName} }
+         }
+     }
+
+     actionPanel panel1 { }
+     ```
+
+90g. objectParent() can expose a slot definition parent
+     When script-capable objects are declared inside default slot content,
+     objectParent() follows the raw QHTMLDomTree and can return the slot
+     definition rather than a component parent.
+     ```
+     q-component slotPanel {
+         q-property slotParentName: ""
+
+         div {
+             slot body {
+                 q-script-action inspectDefaultSlot {
+                     this.slotParentName = objectParent().qhtmlName()
+                 }
+             }
+         }
+
+         button {
+             onclick { inspectDefaultSlot.start() }
+             text { Inspect slot parent }
+         }
+
+         span {
+             text { Slot parent: ${this.slotParentName} }
+         }
+     }
+
+     slotPanel panel1 { }
+     ```
+
+90h. object().parent() versus objectParent()
+     object().parent() returns the component/runtime parent. objectParent()
+     returns the immediate QHTMLDomTree parent regardless of type.
+     ```
+     q-component childComp {
+         q-property result: ""
+
+         div wrapper {
+             button innerButton {
+                 onclick {
+                     this.result =
+                         "component parent=" + object().parent().qhtmlName() +
+                         ", tree parent=" + objectParent().qhtmlName()
+                 }
+
+                 text { Compare parents }
+             }
+         }
+
+         span {
+             text { ${this.result} }
+         }
+     }
+
+     q-component parentComp {
+         div wrapper {
+             childComp child1 { }
+         }
+     }
+
+     parentComp rootObj { }
+     ```
 
 
 ======================================================================

@@ -2,6 +2,7 @@
   "use strict";
 
   const QHTML_VERSION_FALLBACK = "7.4.0";
+  let qhtmlGlobalReferenceRevision = 0;
 
   const CSS_SHORTCUTS = new Map(Object.entries({
     alignContent: "align-content",
@@ -684,6 +685,7 @@
       this._qhtmlRuntimeGenerated = false;
       this._qhtmlRuntimeSourceUUID = "";
       this._qhtmlRuntimeOwnerUUID = "";
+      this._qhtmlReferenceRevision = 0;
     }
 
     parent() { return this.qhtmlParent; }
@@ -696,6 +698,14 @@
       return current || this;
     }
     rootNodeJs() { return this.rootNode(); }
+    referenceRevision() { return qhtmlGlobalReferenceRevision; }
+    referenceRevisionJs() { return this.referenceRevision(); }
+    invalidateReferenceCache() {
+      qhtmlGlobalReferenceRevision += 1;
+      this._qhtmlReferenceRevision = qhtmlGlobalReferenceRevision;
+      return qhtmlGlobalReferenceRevision;
+    }
+    invalidateReferenceCacheJs() { return this.invalidateReferenceCache(); }
     childCount() { return this.qhtmlChildren.length; }
     childAt(index) { return this.qhtmlChildren[index] || null; }
     children() { return this.qhtmlChildren.slice(); }
@@ -793,6 +803,7 @@
       child.qhtmlParent = this;
       child.qhtmlContext.setParentContext(this.qhtmlContext);
       this.qhtmlChildren.push(child);
+      this.invalidateReferenceCache();
       this.adoptLoggerFromChild(child);
       if (this.qhtmlLogger) {
         qhtmlBindLoggerToNode(this.qhtmlLogger, child);
@@ -808,6 +819,7 @@
       child.qhtmlParent = this;
       child.qhtmlContext.setParentContext(this.qhtmlContext);
       this.qhtmlChildren.splice(Math.max(0, Math.min(index, this.qhtmlChildren.length)), 0, child);
+      this.invalidateReferenceCache();
       this.adoptLoggerFromChild(child);
       if (this.qhtmlLogger) {
         qhtmlBindLoggerToNode(this.qhtmlLogger, child);
@@ -824,6 +836,7 @@
       if (child) {
         child.qhtmlParent = null;
         child.qhtmlContext.setParentContext(null);
+        this.invalidateReferenceCache();
       }
       return child;
     }
@@ -835,6 +848,7 @@
         child.qhtmlContext.setParentContext(null);
       }
       this.qhtmlChildren = [];
+      this.invalidateReferenceCache();
     }
     clearChildrenJs() { this.clearChildren(); }
     setProperty(key, value) {
@@ -905,11 +919,20 @@
       return logger ? logger.log(message, this.loggerCategory()) : false;
     }
     maybeLogJs(message) { return this.maybeLog(message); }
-    updateKeywordReference(name, value) { this.qhtmlContext.updateKeywordReference(name, value); }
+    updateKeywordReference(name, value) {
+      this.qhtmlContext.updateKeywordReference(name, value);
+      this.invalidateReferenceCache();
+    }
     updateKeywordReferenceJs(name, value) { this.updateKeywordReference(name, value); }
-    updateNamedReference(name, uuid) { this.qhtmlContext.updateNamedReference(name, uuid); }
+    updateNamedReference(name, uuid) {
+      this.qhtmlContext.updateNamedReference(name, uuid);
+      this.invalidateReferenceCache();
+    }
     updateNamedReferenceJs(name, uuid) { this.updateNamedReference(name, uuid); }
-    updateObjectReference(name, target) { this.qhtmlContext.updateObjectReference(name, target); }
+    updateObjectReference(name, target) {
+      this.qhtmlContext.updateObjectReference(name, target);
+      this.invalidateReferenceCache();
+    }
     localContextPropertyPointer(name) {
       const wanted = trim(name);
       return this.children().find(child =>
@@ -943,6 +966,7 @@
       this.qhtmlContext.setContextProperty(key, pointer);
       this.updateObjectReference(key, pointer);
       this.addQHTMLReference(key, pointer);
+      this.invalidateReferenceCache();
       return value;
     }
     setContextPropertyJs(name, value) { return this.setContextProperty(name, value); }
@@ -953,7 +977,13 @@
     contextPropertyJs(name, fallback = undefined) { return this.contextProperty(name, fallback); }
     hasContextProperty(name) { return this.qhtmlContext.hasContextProperty(name); }
     hasContextPropertyJs(name) { return this.hasContextProperty(name); }
-    removeContextProperty(name) { return this.qhtmlContext.removeContextProperty(name); }
+    removeContextProperty(name) {
+      const removed = this.qhtmlContext.removeContextProperty(name);
+      if (removed) {
+        this.invalidateReferenceCache();
+      }
+      return removed;
+    }
     removeContextPropertyJs(name) { return this.removeContextProperty(name); }
     addQHTMLReference(visibleName, reference) {
       const ref = reference === undefined ? visibleName : reference;
@@ -962,6 +992,7 @@
       if (name) {
         this._qhtmlReferenceNames.set(name, ref.qhtmlUUID());
       }
+      this.invalidateReferenceCache();
       return true;
     }
     removeQHTMLReference(uuid) {
@@ -972,11 +1003,15 @@
           this._qhtmlReferenceNames.delete(name);
         }
       }
+      if (removed) {
+        this.invalidateReferenceCache();
+      }
       return removed;
     }
     clearQHTMLReferences() {
       this._qhtmlReferenceNames.clear();
       this.qhtmlReferences.clear();
+      this.invalidateReferenceCache();
     }
     hasQHTMLReferenceUUID(uuid) { return this.qhtmlReferences.has(trim(uuid)); }
     hasQHTMLReferenceName(name) { return this._qhtmlReferenceNames.has(trim(name)); }
