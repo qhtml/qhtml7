@@ -2,8 +2,8 @@
 
 **Source:** `qhtml_types.js`  
 **Source version fallback:** `7.4.0`  
-**Audited source:** 2,958 lines, 122,484 bytes  
-**SHA-256:** `1c4c4d208afa5249a8391d606f01742b3a325ddfb616ce413399ed851c5b57aa`  
+**Audited source:** 4,003 lines, 162,682 bytes
+**SHA-256:** `beffb497e7621c9b602835ec2993c9f8de93541789d57521e894b7ac42783d27`
 
 ## Scope and accuracy
 
@@ -18,9 +18,9 @@ This reference is generated from the uploaded implementation, not from assumptio
 
 ## Inventory summary
 
-- Top-level exports: **90**
-- Exported classes: **74**
-- Own callable class members (excluding constructors): **626**
+- Top-level exports: **99**
+- Exported classes: **78**
+- Own callable class members (excluding constructors): **744**
 
 ## Top-level constants, objects, and functions
 
@@ -229,8 +229,8 @@ Hierarchical lexical reference table with parent fallback.
 Core mutable QHTML tree node: ownership, references, properties, serialization, rendering, parsing insertion, and logging.
 
 - **Inheritance:** `QHTMLNode -> QHTMLReference`
-- **Source:** lines 578-1097
-- **Constructor:** `new QHTMLNode(type = "QHTMLNode", name = "")` (line 579)
+- **Source:** lines 675-1394
+- **Constructor:** `new QHTMLNode(type = "QHTMLNode", name = "")` (line 676)
 - **Inherited API:** all public members documented under `QHTMLReference` and its ancestors.
 - **Constructor-created fields specific to this class:** `qhtmlParent` (null, direct public field); `qhtmlChildren` (Array(0), direct public field); `qhtmlProperties` (Map(0), direct public field); `qhtmlReferences` (Map(0), direct public field); `_qhtmlReferenceNames` (Map(0), conventional internal state); `qhtmlContext` (QHTMLContext, direct public field); `qhtmlLogger` (null, direct public field)
 
@@ -260,6 +260,8 @@ Core mutable QHTML tree node: ownership, references, properties, serialization, 
 - `takeChildAt(index)` — Detaches and returns the child at index, clearing its parent and parent context; returns null when absent. **Observed return:** `implementation-defined`. **Source:** line 668.
 - `removeChildAt(index)` — Removes the selected item/reference/category and returns success where implemented. **Observed return:** `implementation-defined`. **Source:** line 676.
 - `removeChildAtJs(index)` — Compatibility alias for `removeChildAt()` with the same behavior and return value. **Observed return:** `implementation-defined`. **Source:** line 677.
+- `remove(node)` — With no arguments, removes this node from its parent qhtmlChildren, rebuilds root references, and rerenders the parent. With a child argument, removes that direct child from this node, rebuilds root references, and rerenders this node. **Observed return:** `boolean`. **Source:** line 845.
+- `removeJs(node)` — Compatibility alias for `remove()` with the same no-argument self-removal and explicit-child removal behavior. **Observed return:** `boolean`. **Source:** line 879.
 - `clearChildren()` — Clears the corresponding collection/state. **Observed return:** `void`. **Source:** line 678.
 - `clearChildrenJs()` — Compatibility alias for `clearChildren()` with the same behavior and return value. **Observed return:** `void`. **Source:** line 685.
 - `setProperty(key, value)` — Sets the property from the supplied value. **Observed return:** `void`. **Source:** line 686.
@@ -799,8 +801,8 @@ Mutable slot view owned by a component instance.
 Non-rendering q-component template definition with optional extends metadata.
 
 - **Inheritance:** `QHTMLComponentDefinition -> QHTMLTypedNode -> QHTMLDomNode -> QHTMLNode -> QHTMLReference`
-- **Source:** lines 1724-1740
-- **Constructor:** `new QHTMLComponentDefinition(name = "", attributes = {})` (line 1725)
+- **Source:** lines 2172-2212
+- **Constructor:** `new QHTMLComponentDefinition(name = "", attributes = {})` (line 2173)
 - **Inherited API:** all public members documented under `QHTMLTypedNode` and its ancestors.
 
 ### Own members
@@ -811,6 +813,8 @@ Non-rendering q-component template definition with optional extends metadata.
 - `extendsList()` — Returns a serialized/list form of the corresponding values. **Observed return:** `Array`. **Source:** line 1733.
 - `extendsListJs()` — Compatibility alias for `extendsList()` with the same behavior and return value. **Observed return:** `string`. **Source:** line 1737.
 - `hasExtends()` — Returns whether the named condition is satisfied. **Observed return:** `boolean`. **Source:** line 1738.
+- `create(parentNode, properties = {})` — Instantiates this component definition as a new QHTMLComponentInstance, appends it to the supplied QHTML parent node or rendered element's qhtmlNode, applies optional property assignments, rebuilds references, rerenders the parent, and returns the new instance. **Observed return:** `QHTMLComponentInstance`. **Source:** line 2187.
+- `createJs(parentNode, properties = {})` — Compatibility alias for `create()` with the same behavior and return value. **Observed return:** `QHTMLComponentInstance`. **Source:** line 2211.
 
 ## `QHTMLComponentInstance`
 Runtime component instance binding a definition, reference members, slot views/overrides, rendering, and serialization.

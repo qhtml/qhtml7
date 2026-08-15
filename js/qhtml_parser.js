@@ -197,6 +197,26 @@
     return out;
   }
 
+  function typedSignatureIsQHTMLConstruct(signature) {
+    const keyword = trim(signature && signature.keyword || "");
+    if (!keyword) {
+      return false;
+    }
+    if (keyword.startsWith("q-")) {
+      return true;
+    }
+    return [
+      "behavior",
+      "for",
+      "function",
+      "native-vid-player",
+      "particle-emitter",
+      "script",
+      "slot",
+      "style"
+    ].includes(keyword);
+  }
+
   function stripComments(source) {
     const text = String(source || "");
     let out = "";
@@ -903,11 +923,11 @@
   }
 
   class QHTMLAstAnonNode extends QHTMLAstNode {
-    constructor(tagName, attributes, innerText, scanInner = true) {
+    constructor(tagName, attributes, innerText, scanInner = true, referenceName = "") {
       super(innerText, false);
       this._tagName = trim(tagName);
       this._attributes = Object.assign({}, attributes || {});
-      this.qhtmlName = this._tagName;
+      this.qhtmlName = trim(referenceName) || this._tagName;
       if (scanInner && !this.isSpecialFragment()) {
         this.scan(innerText);
       }
@@ -925,6 +945,9 @@
         node = new QHTMLTypes.QHTMLTypedNode(this._tagName, "", this._attributes);
       } else {
         node = new QHTMLTypes.QHTMLDomElement(this._tagName, this._attributes);
+        if (this.qhtmlName && this.qhtmlName !== this._tagName) {
+          node.setQHTMLName(this.qhtmlName);
+        }
       }
       node.setQHTMLUUID(this.qhtmlUUID);
       for (const child of this.astChildren) {
@@ -1106,6 +1129,15 @@
     }
     const typedSignature = parseTypedSignature(trimmedHeader);
     if (typedSignature.valid) {
+      if (!typedSignatureIsQHTMLConstruct(typedSignature)) {
+        return new QHTMLAstAnonNode(
+          typedSignature.keyword,
+          typedSignature.attributes,
+          content,
+          true,
+          typedSignature.name
+        );
+      }
       return new QHTMLAstNamedTypeNode(typedSignature.keyword, typedSignature.name, typedSignature.attributes, content);
     }
     return new QHTMLAstUnknownFragment(trimmedHeader + " { " + content + " }");

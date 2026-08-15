@@ -2007,6 +2007,18 @@
         (registry && registry.rootElement);
       return runtimeAnimationForNode(node, registry, owner) || node;
     }
+    if (type === "QHTMLComponentInstance" ||
+        type === "QHTMLDomElement" ||
+        type === "QHTMLLayout" ||
+        type === "QHTMLRowLayout" ||
+        type === "QHTMLColumnLayout" ||
+        type === "QHTMLModelView" ||
+        type === "QHTMLCanvas" ||
+        type === "QHTMLVideo" ||
+        type === "QHTMLParticleEmitter") {
+      const value = runtimeValueForQHTMLReference(node, registry, caller);
+      return typeof value === "undefined" ? node : value;
+    }
     return node;
   }
 
@@ -3229,10 +3241,17 @@
       return qhtmlNodeType(sourceNode) === "QHTMLContextPropertyPointer";
     };
 
+    const isNamedDomReferenceNode = function (sourceNode) {
+      return qhtmlNodeType(sourceNode) === "QHTMLDomElement" &&
+        typeof sourceNode.tagName === "function" &&
+        qhtmlNodeName(sourceNode) !== sourceNode.tagName();
+    };
+
     const isLocalReferenceBearingNode = function (sourceNode) {
       const type = qhtmlNodeType(sourceNode);
       return type === "QHTMLComponentInstance" ||
         type === "QHTMLComponentDefinition" ||
+        isNamedDomReferenceNode(sourceNode) ||
         type === "QHTMLProperty" ||
         type === "QHTMLPropertyAssignment" ||
         type === "QHTMLFunction" ||
@@ -3290,10 +3309,54 @@
       }
       const count = typeof sourceNode.childCount === "function" ? sourceNode.childCount() : 0;
       for (let index = 0; index < count; index += 1) {
-        addReferenceNode(sourceNode.childAt(index), overwrite);
+        const child = sourceNode.childAt(index);
+        addReferenceNode(child, overwrite);
+        addSlotReferenceNodes(child, overwrite);
       }
       if (sourceNode === node && typeof sourceNode.ownedReferenceMembers === "function") {
-        sourceNode.ownedReferenceMembers().forEach((member) => addReferenceNode(member, overwrite));
+        sourceNode.ownedReferenceMembers().forEach((member) => {
+          addReferenceNode(member, overwrite);
+          addSlotReferenceNodes(member, overwrite);
+        });
+      }
+    };
+
+    const addSlotReferenceNodes = function (sourceNode, overwrite, insideSlot = false) {
+      if (!sourceNode) {
+        return;
+      }
+      const sourceType = qhtmlNodeType(sourceNode);
+      if (!insideSlot &&
+          (sourceType === "QHTMLComponentDefinition" || sourceType === "QHTMLComponentInstance")) {
+        return;
+      }
+      if (insideSlot) {
+        addReferenceNode(sourceNode, overwrite);
+      }
+      const nextInsideSlot = insideSlot || sourceType === "QHTMLComponentSlot";
+      const count = typeof sourceNode.childCount === "function" ? sourceNode.childCount() : 0;
+      for (let index = 0; index < count; index += 1) {
+        const child = sourceNode.childAt(index);
+        const childType = qhtmlNodeType(child);
+        if (nextInsideSlot &&
+            child !== sourceNode &&
+            (childType === "QHTMLComponentDefinition" || childType === "QHTMLComponentInstance")) {
+          addReferenceNode(child, overwrite);
+          continue;
+        }
+        addSlotReferenceNodes(child, overwrite, nextInsideSlot);
+      }
+      if (typeof sourceNode.ownedReferenceMembers === "function") {
+        sourceNode.ownedReferenceMembers().forEach((member) => {
+          const memberType = qhtmlNodeType(member);
+          if (nextInsideSlot &&
+              member !== sourceNode &&
+              (memberType === "QHTMLComponentDefinition" || memberType === "QHTMLComponentInstance")) {
+            addReferenceNode(member, overwrite);
+            return;
+          }
+          addSlotReferenceNodes(member, overwrite, nextInsideSlot);
+        });
       }
     };
 
@@ -5219,7 +5282,13 @@
       name: definitionName,
       qhtmlNode: definitionNode,
       qhtmlUUID: typeof definitionNode.qhtmlUUID === "function" ? definitionNode.qhtmlUUID() : "",
-      propertySignals: {}
+      propertySignals: {},
+      create(parentNode, properties = {}) {
+        return definitionNode.create(parentNode, properties);
+      },
+      remove() {
+        return definitionNode.remove();
+      }
     };
     propertyNodesForDefinition(definitionNode).forEach((propertyNode) => {
       const signalName = propertyChangeSignalName(propertyNode);
@@ -5981,6 +6050,13 @@
     return signalFunction;
   }
 
+  function removeRuntimeQHTMLNode(runtimeObject, qhtmlNode) {
+    if (runtimeObject && typeof runtimeObject.stop === "function") {
+      runtimeObject.stop();
+    }
+    return qhtmlNode && typeof qhtmlNode.remove === "function" ? qhtmlNode.remove() : false;
+  }
+
   function createLiveTimer(timerNode, ownerElement, registry) {
     const timerName = qhtmlNodeName(timerNode);
     const liveTimer = {
@@ -6088,6 +6164,9 @@
       liveTimer.__qhtmlTimerId = null;
       liveTimer.__qhtmlRunning = false;
       return liveTimer;
+    };
+    liveTimer.remove = function () {
+      return removeRuntimeQHTMLNode(liveTimer, timerNode);
     };
 
     const initiallyRunning = timerBool(timerAssignmentValue(timerNode, "running", ownerElement, registry, false), false);
@@ -6735,6 +6814,9 @@
       animationObject.stop();
       return animationObject.start();
     };
+    animationObject.remove = function () {
+      return removeRuntimeQHTMLNode(animationObject, animationNode);
+    };
 
     animationObject.refresh();
     animationEventHandlers(animationNode).forEach((handler) => bindEventHandler(animationObject, handler));
@@ -6792,6 +6874,9 @@
     actionObject.stop = function () {
       actionObject.__qhtmlRunning = false;
       return actionObject;
+    };
+    actionObject.remove = function () {
+      return removeRuntimeQHTMLNode(actionObject, actionNode);
     };
     Object.defineProperty(actionObject, "running", {
       enumerable: true,
@@ -6921,6 +7006,9 @@
         groupObject.stopped();
       }
       return groupObject;
+    };
+    groupObject.remove = function () {
+      return removeRuntimeQHTMLNode(groupObject, groupNode);
     };
     groupObject.start = function () {
       const token = groupObject.__qhtmlRunToken + 1;
@@ -10209,6 +10297,27 @@
     installSignalBlocker(domElement);
     installCssShortcutAccessors(domElement);
     domElement.component = componentElement;
+    domElement.qhtmlName = function qhtmlName() {
+      return qhtmlNodeName(domElement.qhtmlNode);
+    };
+    domElement.qhtmlUUID = function qhtmlUUID() {
+      return qhtmlNodeUuid(domElement.qhtmlNode);
+    };
+    domElement.qhtmlType = function qhtmlType() {
+      return qhtmlNodeType(domElement.qhtmlNode);
+    };
+    Object.defineProperty(domElement, "remove", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value() {
+        const node = domElement.qhtmlNode;
+        if (!node || typeof node.remove !== "function") {
+          return false;
+        }
+        return node.remove();
+      }
+    });
     domElement.parent = function parent() {
       return parentQHTMLComponentFor(domElement, registry || domElement.__qhtmlRegistry);
     };

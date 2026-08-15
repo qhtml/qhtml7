@@ -6,73 +6,81 @@ Language design, specifications, and tests created by humans; implementation by 
 
 ## What's New
 
-### Reactive interpolation, CSS-unit properties, and simpler animations
+### 7.4.6: QHTML-native dynamic creation and removal
 
-Interpolated values now install hidden property-change bindings. Text, HTML, attributes, CSS shortcut assignments, `q-style`, and inline `q-style` blocks inside `q-theme` are re-evaluated when the referenced QHTML property changes.
+QHTML components can now be instantiated directly from their component definition with `.create(parent, properties)`. The first argument is the QHTML parent object to append into, and the optional second argument supplies initial property assignments. The parent is rerendered after the new instance is added.
 
 ```qhtml
-q-component color-card {
-  q-property bgColor: blue
+q-component card {
+  q-property title: "New card"
+  div.card,text { ${this.title} }
+}
 
-  q-theme card-theme {
-    div { q-style { backgroundColor: ${this.bgColor} } }
-  }
-
-  card-theme {
-    div {
-      text { Current color: ${this.bgColor} }
-    }
-  }
+q-component panel {
+  div container { }
 
   button {
-    onclick { this.bgColor = "red"; }
-    text { Change color }
+    onclick { card.create(container, { title: "Created at runtime" }) }
+    text { Add card }
   }
 }
 
-color-card card1 { }
+panel app { }
 ```
 
-CSS-unit `q-property` values keep their unit during normal arithmetic. If `amount` is `40%`, then `amount = amount + 10` becomes `50%`; if it is `40vw`, the same operation becomes `50vw`.
-
-`q-property-animation` can now target a property directly:
+Any named QHTML object can now be removed with `.remove()`. Calling `.remove(child)` on a parent removes that specific child from the parent's `qhtmlChildren`. Calling `object().remove()` from an event handler removes the current rendered QHTML object, not just the browser DOM element.
 
 ```qhtml
-q-property-animation growAmount {
-  target: card1.amount
-  from: 10%
-  to: 70%
-  duration: 9000
-  running: true
-  emitInterpolatedValues: false
+q-component removableCard {
+  div.card,text { Remove me }
 }
+
+q-component removalPanel {
+  removableCard card1 { }
+
+  button {
+    onclick { card1.remove() }
+    text { Remove named card }
+  }
+
+  div wrapper1 {
+    button {
+      onclick { object().remove() }
+      text { Remove this button }
+    }
+  }
+}
+
+removalPanel app { }
 ```
 
-`emitInterpolatedValues` defaults to `false`, which suppresses target property-change handlers during each animation frame and emits the final target property change when the animation completes. Set it to `true` when handlers/interpolations should update continuously during the animation.
+Plain DOM elements can also use named QHTML syntax. A declaration such as `div wrapper1 { ... }` still renders a normal `<div>`, but `wrapper1` is preserved as the QHTML reference name for dot-walking, `.toQHTML()`, `.create()`, and `.remove()` workflows. Named objects declared inside component slots are now also available to the containing component context.
 
-### No more WebAssembly -- too clunky and slow. 
-While it would have been nice to have a clean assembly based library, it was much too slow and over-complicated. So, QHTML7 now ships as a native JavaScript runtime. The earlier WebAssembly backing system was accurate, but large QHTML scripts had too much startup and interaction lag under WASM, and the distributable package was larger than necessary. The runtime was redesigned as native JavaScript while retaining the QHTMLDomTree object model, the QHTML node classes, and the QHTML7 syntax shortcuts used by the WASM version.
+Useful public entry points:
 
-The runtime still treats QHTML as the model. Parsed source becomes a `QHTMLDomTree`; mounted DOM elements point back to their QHTML node objects; and editing tools can continue using `.toQHTML()`, `.fromQHTML()`, `.toJSON()`, `.fromJSON()`, and `.toHTML()`.
-
-Scope is intentionally component-centered:
-
-- `this` resolves to the nearest parent `q-component` instance in QHTML functions, signal handlers, property handlers, animations, and event blocks. It does not become the current `q-property-animation`, `q-style`, `q-painter`, or other helper object.
-- Rendered DOM nodes are still the browser output. QHTML helpers resolve back to the DOM element when browser work is needed, so DOM APIs such as `this.querySelector(...)`, `this.setAttribute(...)`, and CSS shortcut assignments remain direct and predictable.
-- Properties flow top-down through the QHTML context. Local objects and local properties can overshadow ancestor names for that branch and its descendants.
-- Named objects are passed by reference to their direct descendants. Parent objects themselves are not copied into child scope as ordinary names; use `parent()` / `parentComponent()` on mounted DOM helpers, or `.parent()` / `.qhtmlParent` on QHTML node objects.
-
-Useful local entry points:
-
-- Dev gallery: https://qhtml.github.io/qhtml7/test/demo.html
-- Component tests: https://qhtml.github.io/qhtml7/test/02.html
-- Style/theme tests: https://qhtml.github.io/qhtml7/test/03.html
-- Particle editor: https://qhtml.github.io/qhtml7/tools/particle-editor.html
-- Layout builder: https://qhtml.github.io/qhtml7/tools/layout-builder.html
-- Page builder: https://qhtml.github.io/qhtml7/tools/page-builder.html
-- QHTML editor: https://qhtml.github.io/qhtml7/tools/editor.html
-- Graphics Scene Test https://qhtml.github.io/qhtml7/test/graphics-scene.html
-- Language notes: `language/qhtml7.txt`
+- [Dev gallery](https://qhtml.github.io/qhtml7/test/demo.html)
+- [Initialization tests](https://qhtml.github.io/qhtml7/test/init.html)
+- [Basic component tests](https://qhtml.github.io/qhtml7/test/01.html)
+- [Component/runtime tests](https://qhtml.github.io/qhtml7/test/02.html)
+- [Style, theme, and transition tests](https://qhtml.github.io/qhtml7/test/03.html)
+- [Signal/connect tests](https://qhtml.github.io/qhtml7/test/04.html)
+- [Animation stress tests](https://qhtml.github.io/qhtml7/test/05.html)
+- [Behavior animation loop test](https://qhtml.github.io/qhtml7/test/07-behavior-animation-loop.html)
+- [Graphics scene test](https://qhtml.github.io/qhtml7/test/graphics-scene.html)
+- [Reference passing test](https://qhtml.github.io/qhtml7/test/reference-passing.html)
+- [Social media example](https://qhtml.github.io/qhtml7/examples/social-media.html)
+- [Tower defense example](https://qhtml.github.io/qhtml7/examples/towerdefense/index.html)
+- [Blockwars example](https://qhtml.github.io/qhtml7/examples/blockwars/index.html)
+- [Reel Poker example](https://qhtml.github.io/qhtml7/examples/reelpoker/index.html)
+- [QHTML editor](https://qhtml.github.io/qhtml7/tools/editor.html)
+- [Particle editor](https://qhtml.github.io/qhtml7/tools/particle-editor.html)
+- [Layout builder](https://qhtml.github.io/qhtml7/tools/layout-builder.html)
+- [Page builder](https://qhtml.github.io/qhtml7/tools/page-builder.html)
+- [Roller](https://qhtml.github.io/qhtml7/tools/roller.html)
+- [Script roller](https://qhtml.github.io/qhtml7/tools/script-roller.html)
+- [Language notes](language/qhtml7.txt)
+- [JavaScript API reference](doc/Javascript-API.md)
+- [Declarative example checklist](doc/QHTML_declarative_example_checklist.txt)
 
 ## 1. Quick Start And HTML Syntax
 
@@ -1215,6 +1223,18 @@ Useful methods:
 - `.toJSON()` / `.toJSONText()`
 - `.fromJSON(value)` / `.fromJSONText(text)`
 - `.setPropertyText(name, value)`
+- `.remove()` / `.remove(child)`
+
+Component definition objects also expose `.create(parent, properties)`:
+
+```js
+const tree = new QHTMLDomTree();
+tree.fromQHTML('q-component card { div,text { ${this.title} } } div container { }');
+
+const card = tree.qhtmlResolve("card");
+const container = tree.qhtmlResolve("container");
+card.create(container, { title: "Runtime card" });
+```
 
 ### Mounted Host Helpers
 

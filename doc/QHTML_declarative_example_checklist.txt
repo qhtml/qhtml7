@@ -2020,7 +2020,7 @@ J. REFERENCES / CONTEXT
      }
 
      q-component parentComp {
-         div wrapper {
+         div wrapper2 {
              childComp child1 { }
          }
      }
@@ -2035,9 +2035,39 @@ K. CONDITIONAL / DYNAMIC UI
 
 91. Conditionally show/hide an element
     Preferred native QHTML mechanism.
+    ```
+q-component mycomp {
+  q-property displayParam: "block"
+
+  div {
+    display: this.displayParam
+    text { hello world }
+  }
+  button {
+    onclick {
+      if (this.displayParam == "block") { this.displayParam = "none"; }
+      else { this.displayParam = "block"; }
+    }
+    text { hide element }
+  }
+}
+mycomp obj1 {}
+    ```
 
 92. Conditionally change text
     Based on q-property.
+    ```
+    q-component mycomp {
+        q-property myprop: "hello"
+        div,span { text { ${this.myprop} } }
+        button {
+          onclick { this.myprop = "world" }
+          text { Click here }
+        }
+    }
+    mycomp obj1 { }
+
+    ```
 
 93. Conditionally change style/class
     Preferred declarative pattern.
@@ -2048,9 +2078,52 @@ K. CONDITIONAL / DYNAMIC UI
 95. Dynamic child creation
     Show the native QHTML way if one exists.
     Explicitly distinguish it from document.createElement.
+    ```
+    q-component mycomp {
+      div,span,text { hello world }
+    }
+
+    q-component somecomp { }
+    somecomp obj2 { }
+
+    button {
+      onclick { var newobj = mycomp.create(obj2, { }); }
+    }
+    ```
 
 96. Dynamic child removal
-    Native QHTML pattern if supported.
+    Native QHTML removal updates the parent object's qhtmlChildren and
+    rerenders the parent. Use remove() on a named QHTML object, object().remove()
+    for the current rendered QHTML object, or parent.remove(child) when the
+    parent object should perform the removal.
+    ```
+    q-component removableCard {
+      div,span,text { I can be removed }
+    }
+
+    q-component removalDemo {
+      removableCard obj2 { }
+
+      button {
+        onclick { obj2.remove() }
+        text { Remove named component }
+      }
+
+      div wrapper1 {
+        button button1 {
+          onclick { object().remove() }
+          text { Remove this button }
+        }
+      }
+
+      button {
+        onclick { objectParent().remove(wrapper1) }
+        text { Remove wrapper from parent }
+      }
+    }
+
+    removalDemo demo1 { }
+    ```
 
 97. Re-render/update after data changes
     Show when render(), sync(), repaint(), etc. is appropriate.
