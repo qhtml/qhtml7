@@ -361,6 +361,9 @@
     }
 
     function unwrapExpressionValue(value) {
+      if (value instanceof QHTMLContextPropertyPointer) {
+        return value.resolveTarget(contextNode && typeof contextNode.rootNode === "function" ? contextNode.rootNode() : null);
+      }
       if (value instanceof QHTMLKeyword) {
         const raw = value.value();
         try {
