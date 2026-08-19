@@ -20,6 +20,8 @@
   let activePropertyTransactionId = "";
   let propertyTransactionCounter = 0;
   let qhtmlContentLoadedDispatchPending = false;
+  const qhtmlTimerSchedule = new Map();
+  let qhtmlTimerSchedulerHandle = 0;
   const qhtmlReferenceFacades = new WeakMap();
   const qhtmlReferenceNodeFacades = new WeakMap();
   const qhtmlReferenceAliases = new WeakMap();
@@ -39,6 +41,39 @@
     "render",
     "__qhtmlRegistry"
   ]);
+
+  function runQHTMLTimerScheduler() {
+    const now = Date.now();
+    qhtmlTimerSchedule.forEach((dueAt, timer) => {
+      if (now < dueAt) {
+        return;
+      }
+      qhtmlTimerSchedule.delete(timer);
+      timer.tick();
+      if (timer.running && timer.repeat) {
+        scheduleQHTMLTimer(timer);
+      }
+    });
+    if (qhtmlTimerSchedule.size === 0 && qhtmlTimerSchedulerHandle !== 0) {
+      globalScope.clearInterval(qhtmlTimerSchedulerHandle);
+      qhtmlTimerSchedulerHandle = 0;
+    }
+  }
+
+  function scheduleQHTMLTimer(timer) {
+    qhtmlTimerSchedule.set(timer, Date.now() + Math.max(0, Number(timer.interval) || 0));
+    if (qhtmlTimerSchedulerHandle === 0) {
+      qhtmlTimerSchedulerHandle = globalScope.setInterval(runQHTMLTimerScheduler, 40);
+    }
+  }
+
+  function unscheduleQHTMLTimer(timer) {
+    qhtmlTimerSchedule.delete(timer);
+    if (qhtmlTimerSchedule.size === 0 && qhtmlTimerSchedulerHandle !== 0) {
+      globalScope.clearInterval(qhtmlTimerSchedulerHandle);
+      qhtmlTimerSchedulerHandle = 0;
+    }
+  }
 
   globalScope.QHTML7 = Object.assign(globalScope.QHTML7 || {}, {
     runtime: "native-js",
@@ -6195,7 +6230,7 @@
     if (typeof value === "boolean") {
       return value;
     }
-    const text = String(value == null ? "" : value).trim().toLowerCase();
+    const text = String(value == null ? "" : value).trim().toLowerCase().replace(/;+$/, "");
     if (text === "true" || text === "1" || text === "yes") {
       return true;
     }
@@ -6280,13 +6315,18 @@
 
   function createLiveTimer(timerNode, ownerElement, registry) {
     const timerName = qhtmlNodeName(timerNode);
+    const intervalValue = timerAssignmentValue(timerNode, "interval", ownerElement, registry, undefined);
+    const durationValue = timerAssignmentValue(timerNode, "duration", ownerElement, registry, undefined);
     const liveTimer = {
       name: timerName,
       node: timerNode,
       ownerElement,
       __qhtmlTimerId: null,
       __qhtmlRunning: false,
-      __qhtmlInterval: timerNumber(timerAssignmentValue(timerNode, "interval", ownerElement, registry, 0), 0),
+      __qhtmlInterval: timerNumber(
+        intervalValue === undefined || intervalValue === "" ? durationValue : intervalValue,
+        0
+      ),
       __qhtmlRepeat: timerBool(timerAssignmentValue(timerNode, "repeat", ownerElement, registry, true), true),
       __qhtmlHandlers: timerHandlers(timerNode).map((handlerNode) => {
         const parameters = splitList(typeof handlerNode.parameters === "function" ? handlerNode.parameters() : "");
@@ -6366,8 +6406,8 @@
     liveTimer.start = function () {
       liveTimer.stop();
       liveTimer.__qhtmlRunning = true;
-      const schedule = liveTimer.repeat ? globalScope.setInterval : globalScope.setTimeout;
-      liveTimer.__qhtmlTimerId = schedule(() => liveTimer.tick(), liveTimer.interval);
+      scheduleQHTMLTimer(liveTimer);
+      liveTimer.__qhtmlTimerId = 1;
       ownerElement.dispatchEvent(new CustomEvent("QHTMLTimerStarted", {
         bubbles: true,
         detail: { timer: liveTimer, qhtmlNode: timerNode }
@@ -6375,13 +6415,7 @@
       return liveTimer;
     };
     liveTimer.stop = function () {
-      if (liveTimer.__qhtmlTimerId !== null) {
-        if (liveTimer.repeat) {
-          globalScope.clearInterval(liveTimer.__qhtmlTimerId);
-        } else {
-          globalScope.clearTimeout(liveTimer.__qhtmlTimerId);
-        }
-      }
+      unscheduleQHTMLTimer(liveTimer);
       liveTimer.__qhtmlTimerId = null;
       liveTimer.__qhtmlRunning = false;
       return liveTimer;
@@ -6403,10 +6437,28 @@
     }
     const timerUuid = typeof timerNode.qhtmlUUID === "function" ? timerNode.qhtmlUUID() : "";
     domElement.__qhtmlTimersByUuid = domElement.__qhtmlTimersByUuid || new Map();
+    domElement.__qhtmlTimersByKey = domElement.__qhtmlTimersByKey || new Map();
     if (timerUuid && domElement.__qhtmlTimersByUuid.has(timerUuid)) {
       return domElement.__qhtmlTimersByUuid.get(timerUuid);
     }
     const timerName = qhtmlNodeName(timerNode);
+    const timerKey = timerName || timerUuid;
+    const componentOwner = domElement.closest && domElement.closest("[component-instance]");
+    const ownerKey = componentOwner
+      ? componentOwner.getAttribute("component-instance")
+      : domElement;
+    registry.timersByOwnerKey = registry.timersByOwnerKey || new Map();
+    let ownerTimers = registry.timersByOwnerKey.get(ownerKey);
+    if (!ownerTimers) {
+      ownerTimers = new Map();
+      registry.timersByOwnerKey.set(ownerKey, ownerTimers);
+    }
+    if (timerKey && ownerTimers.has(timerKey)) {
+      return ownerTimers.get(timerKey);
+    }
+    if (timerKey && domElement.__qhtmlTimersByKey.has(timerKey)) {
+      return domElement.__qhtmlTimersByKey.get(timerKey);
+    }
     const timerObject = createLiveTimer(timerNode, domElement, registry);
     if (timerName) {
       domElement[timerName] = timerObject;
@@ -6422,6 +6474,10 @@
       if (registry && registry.timersByUuid) {
         registry.timersByUuid.set(timerUuid, timerObject);
       }
+    }
+    if (timerKey) {
+      domElement.__qhtmlTimersByKey.set(timerKey, timerObject);
+      ownerTimers.set(timerKey, timerObject);
     }
     return timerObject;
   }

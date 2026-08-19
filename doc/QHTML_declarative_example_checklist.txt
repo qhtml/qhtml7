@@ -2182,6 +2182,24 @@ mycomp obj1 { }
 101. Update a collection and refresh UI
      Canonical pattern.
      ```
+     q-component myuicomp {
+     div,span {
+     slot content { }
+     }
+     }
+     q-component mycomp {
+      q-property objs: [0, 1, 2, 3, 4, 5]
+      for (obj in objs) {
+        myuicomp {
+          text { ${obj} }
+        }
+      }
+     }
+     mycomp obj1 { }
+     onready {
+     obj1.objs.push(6);
+     obj1.render()
+     }
 
 
      ```
@@ -2189,6 +2207,22 @@ mycomp obj1 { }
 
 102. Create repeated component instances from data
      Preferred QHTML implementation.
+     ```
+     q-component comp1 {
+     div,span { text { hello world } }
+     }
+     q-component mycomp {
+        q-property data: [0,1,2,3,4,5,6,7,8]
+        q-property objs: []
+        onready {
+        for (var i=0; i<10; i++) {
+            var obj = comp1.create(this, { });
+            this.objs.push(obj)
+        }
+        }
+     }
+     mycomp obj1 { }
+     ```
 
 If QHTML does NOT have a native declarative repetition construct, explicitly
 document the preferred QHTML-compatible solution instead of inventing one.
