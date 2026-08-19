@@ -22,6 +22,137 @@ q-import { map.qhtml }
 q-import { board.qhtml }
 q-import { game.qhtml }
 
+q-class tdBoardAlgorithms {
+  index(row, col) {
+    return String((Number(row) * 1000) + Number(col));
+  }
+
+  findTile(board, row, col) {
+    return board.tiles[this.index(row, col)];
+  }
+
+  neighborsFor(board, tile) {
+    var out = [];
+    var offsets = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    var rows = Number(board.rows);
+    var cols = Number(board.cols);
+    for (var i = 0; i < offsets.length; i += 1) {
+      var row = Number(tile.row) + offsets[i][0];
+      var col = Number(tile.col) + offsets[i][1];
+      if (row >= 0 && row < rows && col >= 0 && col < cols) {
+        var candidate = board.tiles[this.index(row, col)];
+        if (candidate.walkable === true) {
+          out.push(candidate);
+        }
+      }
+    }
+    return out;
+  }
+
+  heuristic(a, b) {
+    return Math.abs(Number(a.row) - Number(b.row)) + Math.abs(Number(a.col) - Number(b.col));
+  }
+
+  turnCost(cameFrom, current, next) {
+    var previous = cameFrom[this.index(current.row, current.col)];
+    if (previous === undefined) {
+      return 0;
+    }
+    var currentRowDelta = Number(current.row) - Number(previous.row);
+    var currentColDelta = Number(current.col) - Number(previous.col);
+    var nextRowDelta = Number(next.row) - Number(current.row);
+    var nextColDelta = Number(next.col) - Number(current.col);
+    if (currentRowDelta !== nextRowDelta || currentColDelta !== nextColDelta) {
+      return 0.2;
+    }
+    return 0;
+  }
+
+  reconstructPath(cameFrom, current) {
+    var out = [current];
+    var cur = current;
+    while (cameFrom[this.index(cur.row, cur.col)] !== undefined) {
+      cur = cameFrom[this.index(cur.row, cur.col)];
+      out.unshift(cur);
+    }
+    return out;
+  }
+
+  findPath(board, start, end) {
+    var open = [start];
+    var cameFrom = {};
+    var gScore = {};
+    var fScore = {};
+    var startKey = this.index(start.row, start.col);
+    gScore[startKey] = 0;
+    fScore[startKey] = this.heuristic(start, end);
+
+    while (open.length > 0) {
+      var bestIndex = 0;
+      var bestScore = fScore[this.index(open[0].row, open[0].col)];
+      for (var o = 1; o < open.length; o += 1) {
+        var score = fScore[this.index(open[o].row, open[o].col)];
+        if (score < bestScore) {
+          bestScore = score;
+          bestIndex = o;
+        }
+      }
+
+      var current = open.splice(bestIndex, 1)[0];
+      if (Number(current.row) === Number(end.row) && Number(current.col) === Number(end.col)) {
+        return this.reconstructPath(cameFrom, current);
+      }
+
+      var currentKey = this.index(current.row, current.col);
+      var neighbors = this.neighborsFor(board, current);
+      for (var i = 0; i < neighbors.length; i += 1) {
+        var neighbor = neighbors[i];
+        var neighborKey = this.index(neighbor.row, neighbor.col);
+        var tentative = Number(gScore[currentKey]) + 1 + this.turnCost(cameFrom, current, neighbor);
+        if (gScore[neighborKey] === undefined || tentative < Number(gScore[neighborKey])) {
+          cameFrom[neighborKey] = current;
+          gScore[neighborKey] = tentative;
+          fScore[neighborKey] = tentative + this.heuristic(neighbor, end);
+          if (open.indexOf(neighbor) < 0) {
+            open.push(neighbor);
+          }
+        }
+      }
+    }
+
+    return [start];
+  }
+
+  addRouteNode(board, routeKey, pathIndex, tile) {
+    var key = this.index(tile.row, tile.col);
+    if (board.routeNodes[key] === undefined) {
+      board.routeNodes[key] = {
+        row: tile.row,
+        col: tile.col,
+        routeKey: routeKey,
+        pathIndex: pathIndex
+      };
+      board.routeOrder.push(board.routeNodes[key]);
+    }
+  }
+
+  populateEntryPaths(board) {
+    board.paths = {};
+    board.routeNodes = {};
+    board.routeOrder = [];
+    var exit = board.exits[0];
+    for (var i = 0; i < board.entrances.length; i += 1) {
+      var entrance = board.entrances[i];
+      var routeKey = this.index(entrance.row, entrance.col);
+      var path = this.findPath(board, entrance, exit);
+      board.paths[routeKey] = path;
+      for (var p = 0; p < path.length; p += 1) {
+        this.addRouteNode(board, routeKey, p, path[p]);
+      }
+    }
+  }
+}
+
 q-component td-main {
   td-game game { }
 }

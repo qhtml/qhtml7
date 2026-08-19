@@ -773,6 +773,17 @@
       ensureEnemyParticleManager(board);
       runtime.syncStores(board);
     }
+
+    syncDynamic(board) {
+      this.board = board;
+      syncCollection(this, board, board.gunsList, this.renderedGuns, "td-gun-view");
+      syncCollection(this, board, board.enemiesList, this.renderedEnemies, "td-enemy-view");
+      syncProjectilePools(this, board, board.projectilesList, this.renderedProjectiles);
+      board.renderedGuns = this.renderedGuns;
+      board.renderedEnemies = this.renderedEnemies;
+      board.renderedProjectiles = this.renderedProjectiles;
+      runtime.syncStores(board);
+    }
   }
 
   function button(text, clickHandler) {

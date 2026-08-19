@@ -321,7 +321,7 @@
 
   function headerLooksLikeInlineValueStatement(header) {
     const text = trim(header);
-    return /^q-property\s+[A-Za-z_][A-Za-z0-9_+-]*\s*:\s*$/.test(text) ||
+    return /^q-(?:property|var)\s+[A-Za-z_][A-Za-z0-9_+-]*\s*:\s*$/.test(text) ||
       /^[A-Za-z_][A-Za-z0-9_+-]*\s*:\s*$/.test(text);
   }
 
@@ -400,7 +400,7 @@
     let index = cursor;
     while (index < source.length && isSpace(source[index])) index += 1;
     const remaining = source.slice(index);
-    const match = /^(q-property\s+[A-Za-z_][A-Za-z0-9_+-]*\s*:|[A-Za-z_][A-Za-z0-9_+-]*\s*:)/.exec(remaining);
+    const match = /^(q-(?:property|var)\s+[A-Za-z_][A-Za-z0-9_+-]*\s*:|[A-Za-z_][A-Za-z0-9_+-]*\s*:)/.exec(remaining);
     if (!match) {
       return { matched: false, endIndex: -1, statement: "" };
     }
@@ -438,6 +438,15 @@
       return { matched: false, endIndex: -1, statement: "" };
     }
     let colonIndex = cursorAfterName;
+    if (name === "q-var") {
+      while (colonIndex < source.length && isSpace(source[colonIndex]) && source[colonIndex] !== "\n") colonIndex += 1;
+      if (colonIndex >= source.length || !isWordStart(source[colonIndex])) {
+        return { matched: false, endIndex: -1, statement: "" };
+      }
+      while (colonIndex < source.length && isWordChar(source[colonIndex])) {
+        colonIndex += 1;
+      }
+    }
     while (colonIndex < source.length && isSpace(source[colonIndex]) && source[colonIndex] !== "\n") colonIndex += 1;
     if (source[colonIndex] !== ":") {
       return { matched: false, endIndex: -1, statement: "" };
@@ -970,7 +979,7 @@
     astType() { return "QHTMLAstNamedTypeNode"; }
     qhtmlType() { return this.qhtmlKeyword; }
     static isRawScriptBodyKeyword(keyword) {
-      return ["q-event-handler", "q-event-listener", "function", "q-connect", "q-class", "q-script", "q-script-action", "script"].includes(keyword);
+      return ["q-event-handler", "q-event-listener", "function", "q-connect", "q-class", "q-var", "q-script", "q-script-action", "script"].includes(keyword);
     }
     createTypedNode() {
       const T = QHTMLTypes;
@@ -988,7 +997,7 @@
         case "q-slot-default": return new T.QHTMLSlotDefault(this.qhtmlName, this._attributes);
         case "q-property-assignment": return new T.QHTMLPropertyAssignment(this.qhtmlName, this._attributes);
         case "q-class": return new T.QHTMLClass(this.qhtmlName, this._attributes, this.qhtmlContent);
-        case "q-var": return new T.QHTMLVar(this.qhtmlName, this._attributes);
+        case "q-var": return new T.QHTMLVar(this.qhtmlName, this._attributes, this.qhtmlContent);
         case "q-array": return new T.QHTMLArray(this.qhtmlName, this._attributes);
         case "q-map": return new T.QHTMLMap(this.qhtmlName, this._attributes);
         case "q-model": return new T.QHTMLModel(this.qhtmlName, this._attributes);
@@ -1184,6 +1193,10 @@
     match = /^q-property\s+([A-Za-z_][A-Za-z0-9_+-]*)\s*:\s*([\s\S]*?)\s*$/.exec(text);
     if (match) {
       return new QHTMLAstNamedTypeNode("q-property", trim(match[1]), { value: trim(match[2]) }, "");
+    }
+    match = /^q-var\s+([A-Za-z_][A-Za-z0-9_+-]*)\s*:\s*([\s\S]*?)\s*$/.exec(text);
+    if (match) {
+      return new QHTMLAstNamedTypeNode("q-var", trim(match[1]), { value: trim(match[2]) }, "");
     }
     match = /^(?:(propagate|propogate)\s+)?on([A-Za-z_][A-Za-z0-9_+-]*)(?:\s*\((.*?)\))?\s*\{([\s\S]*)\}\s*$/i.exec(text);
     if (match) {

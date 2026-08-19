@@ -39,6 +39,7 @@ q-component td-board {
   q-property inRangeCache: {}
   q-property gunParticleEffects: {}
   q-property enemyParticleManager: null
+  q-property algorithms: null
   q-signal signal_update_xy_translation(x, y)
 
   td-property-sheet props { }
@@ -59,6 +60,7 @@ q-component td-board {
   }
 
   function initBoard() {
+    this.algorithms = new tdBoardAlgorithms();
     this.createBlankMap();
     this.populateEntryPaths();
     this.placeGun(this.exits[0].row - 4, this.exits[0].col, 1);
@@ -85,6 +87,10 @@ q-component td-board {
 
   function refreshView() {
     this.boardRenderer.sync(this);
+  }
+
+  function refreshDynamicView() {
+    this.boardRenderer.syncDynamic(this);
   }
 
   function createBlankMap() {
@@ -219,7 +225,7 @@ q-component td-board {
   }
 
   function findTile(row, col) {
-    return this.tiles[this.index(row, col)];
+    return this.algorithms.findTile(this, row, col);
   }
 
   function findTileById(tileId) {
@@ -233,122 +239,31 @@ q-component td-board {
   }
 
   function neighborsFor(tile) {
-    var out = [];
-    var offsets = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    for (var i = 0; i < offsets.length; i += 1) {
-      var row = Number(tile.row) + offsets[i][0];
-      var col = Number(tile.col) + offsets[i][1];
-      if (row >= 0 && row < Number(this.rows) && col >= 0 && col < Number(this.cols)) {
-        var candidate = this.findTile(row, col);
-        if (candidate !== undefined && candidate.walkable === true) {
-          out.push(candidate);
-        }
-      }
-    }
-    return out;
+    return this.algorithms.neighborsFor(this, tile);
   }
 
   function heuristic(a, b) {
-    return Math.abs(Number(a.row) - Number(b.row)) + Math.abs(Number(a.col) - Number(b.col));
+    return this.algorithms.heuristic(a, b);
   }
 
   function turnCost(cameFrom, current, next) {
-    var previous = cameFrom[this.index(current.row, current.col)];
-    if (previous === undefined) {
-      return 0;
-    }
-    var currentRowDelta = Number(current.row) - Number(previous.row);
-    var currentColDelta = Number(current.col) - Number(previous.col);
-    var nextRowDelta = Number(next.row) - Number(current.row);
-    var nextColDelta = Number(next.col) - Number(current.col);
-    if (currentRowDelta !== nextRowDelta || currentColDelta !== nextColDelta) {
-      return 0.2;
-    }
-    return 0;
+    return this.algorithms.turnCost(cameFrom, current, next);
   }
 
   function reconstructPath(cameFrom, current) {
-    var out = [current];
-    var cur = current;
-    while (cameFrom[this.index(cur.row, cur.col)] !== undefined) {
-      cur = cameFrom[this.index(cur.row, cur.col)];
-      out.unshift(cur);
-    }
-    return out;
+    return this.algorithms.reconstructPath(cameFrom, current);
   }
 
   function findPath(start, end) {
-    var open = [start];
-    var cameFrom = {};
-    var gScore = {};
-    var fScore = {};
-    var startKey = this.index(start.row, start.col);
-    gScore[startKey] = 0;
-    fScore[startKey] = this.heuristic(start, end);
-
-    while (open.length > 0) {
-      var bestIndex = 0;
-      var bestScore = fScore[this.index(open[0].row, open[0].col)];
-      for (var o = 1; o < open.length; o += 1) {
-        var score = fScore[this.index(open[o].row, open[o].col)];
-        if (score < bestScore) {
-          bestScore = score;
-          bestIndex = o;
-        }
-      }
-
-      var current = open.splice(bestIndex, 1)[0];
-      if (Number(current.row) === Number(end.row) && Number(current.col) === Number(end.col)) {
-        return this.reconstructPath(cameFrom, current);
-      }
-
-      var currentKey = this.index(current.row, current.col);
-      var neighbors = this.neighborsFor(current);
-      for (var i = 0; i < neighbors.length; i += 1) {
-        var neighbor = neighbors[i];
-        var neighborKey = this.index(neighbor.row, neighbor.col);
-        var tentative = Number(gScore[currentKey]) + 1 + this.turnCost(cameFrom, current, neighbor);
-        if (gScore[neighborKey] === undefined || tentative < Number(gScore[neighborKey])) {
-          cameFrom[neighborKey] = current;
-          gScore[neighborKey] = tentative;
-          fScore[neighborKey] = tentative + this.heuristic(neighbor, end);
-          if (open.indexOf(neighbor) < 0) {
-            open.push(neighbor);
-          }
-        }
-      }
-    }
-
-    return [start];
+    return this.algorithms.findPath(this, start, end);
   }
 
   function addRouteNode(routeKey, pathIndex, tile) {
-    var key = this.index(tile.row, tile.col);
-    if (this.routeNodes[key] === undefined) {
-      this.routeNodes[key] = {
-        row: tile.row,
-        col: tile.col,
-        routeKey: routeKey,
-        pathIndex: pathIndex
-      };
-      this.routeOrder.push(this.routeNodes[key]);
-    }
+    this.algorithms.addRouteNode(this, routeKey, pathIndex, tile);
   }
 
   function populateEntryPaths() {
-    this.paths = {};
-    this.routeNodes = {};
-    this.routeOrder = [];
-    var exit = this.exits[0];
-    for (var i = 0; i < this.entrances.length; i += 1) {
-      var entrance = this.entrances[i];
-      var routeKey = this.index(entrance.row, entrance.col);
-      var path = this.findPath(entrance, exit);
-      this.paths[routeKey] = path;
-      for (var p = 0; p < path.length; p += 1) {
-        this.addRouteNode(routeKey, p, path[p]);
-      }
-    }
+    this.algorithms.populateEntryPaths(this);
   }
 
   function selectTile(tileId) {
@@ -627,7 +542,7 @@ q-component td-board {
     this.fireAll(now);
     this.updateProjectiles(now);
     this.rebuildLists();
-    this.refreshView();
+    this.refreshDynamicView();
   }
 
   function moveEnemies(now) {

@@ -2127,6 +2127,9 @@ mycomp obj1 {}
 
 97. Re-render/update after data changes
     Show when render(), sync(), repaint(), etc. is appropriate.
+    ```
+    Should not need to call these functions. QHTML is coded to dynamically update after changes are made
+    ```
 
 
 ======================================================================
@@ -2135,15 +2138,54 @@ L. REPEATED / COLLECTION UI
 
 98. Render a list/collection
     If QHTML provides a declarative repeat/iteration mechanism, demonstrate it.
+    ```
+    q-component mycomp {
+        q-property myprop: [1, 2, 3, 4, 5]
+        for (val in myprop) {
+            div,span,text { iteration ${val} }
+        }
+    }
+    mycomp obj1 { }
+    ```
 
 99. Access current list item
     Show item context.
+        ```
+    q-component mycomp {
+        q-property myprop: [1, 2, 3, 4, 5]
+        q-property curIdx: 0
+        for (val in myprop) {
+            div,span,text { iteration ${val} }
+        }
+    }
+    mycomp obj1 { }
+    ```
 
 100. Access list index
      If supported.
+     ```
+
+     /* creating a q-var allows for snapshotting a q-property and storing it rather than return binding behavior of q-property definition */
+q-component mycomp {
+    q-property myprop: [1, 2, 3, 4, 5]
+    q-property curIdx: 0
+    for (val in myprop) {
+        q-script-action { this.curIdx++ }
+        q-var myvar: this.curIdx
+        div,span,text { iteration ${myvar} }
+    }
+}
+
+mycomp obj1 { }
+     ```
 
 101. Update a collection and refresh UI
      Canonical pattern.
+     ```
+
+
+     ```
+
 
 102. Create repeated component instances from data
      Preferred QHTML implementation.
