@@ -2224,9 +2224,6 @@ mycomp obj1 { }
      mycomp obj1 { }
      ```
 
-If QHTML does NOT have a native declarative repetition construct, explicitly
-document the preferred QHTML-compatible solution instead of inventing one.
-
 
 ======================================================================
 M. IMPORTS / MULTI-FILE QHTML
@@ -2234,18 +2231,47 @@ M. IMPORTS / MULTI-FILE QHTML
 
 103. q-import a .qhtml file
      Minimal import example.
+     ``` q-import { somepath/myfile.qhtml } ```
 
 104. Use a component defined in an imported file
      Show complete two-file relationship.
 
+     myfile.qhtml
+     ```
+     q-component mycomp {
+       div,span,text { hello wworld }
+     }
+
+     -----
+
+     in q-html context elsewhere:
+     ```
+     q-import { myfile.qhtml  }
+     mycomp obj1 { }
+     ```
+
 105. Import multiple QHTML files
      Demonstrate syntax/order if relevant.
+     ```
+     q-import { file1.qhtml }
+     q-import { file2.qhtml }
+     ```
+     order happens the same order as q-import is called, with each import blocking the next one until it completes
 
 106. Main HTML shell loading QHTML
      Show the canonical minimal .html + q-import setup.
+     ```
+     <q-html>
+     q-import { file.qhtml }
+     <q-html>
+     ```
 
 107. Component library file
      Show a file containing multiple reusable component definitions.
+     ```
+     q-component comp1 { }
+     q-component comp2 { }
+     ```
 
 
 ======================================================================
@@ -2254,25 +2280,102 @@ N. TIMERS / ASYNC BEHAVIOR
 
 108. q-timer
      Minimal timer example.
+     ```
+     q-timer mytimer {
+        duration: 600
+        ontimeout {
+            alert("hello world")
+        }
+        running: true
+     }
+     ```
 
 109. Repeating timer
      If supported.
+      ```
+     q-timer mytimer {
+        duration: 600
+        ontimeout {
+            alert("hello world")
+        }
+        running: true
+        repeat: true
+     }
+     ```
 
 110. One-shot timer
      If supported.
+      ```
+     q-timer mytimer {
+        duration: 600
+        ontimeout {
+            alert("hello world")
+        }
+        running: true
+        repeat: false
+     }
+     ```
 
 111. Timer calling a component function
      Canonical pattern.
+     ```
+    q-component mycomp {
+        function dothing() { alert("hello world")}
+    }
+
+
+    q-component comp2 {
+        mycomp obj1 { }
+        q-timer timer2 {
+            duration: 5000
+            ontimeout {
+                alert(obj1)
+                this.obj1.dothing()
+            }
+            running: true
+            repeat: false;
+        }
+    }
+    comp2 obj2 { }
+     ```
 
 112. Timer modifying a q-property
      Demonstrate state update.
+     ```
+     q-component mycomp {
+        q-property myprop: 2
+    }
+       q-component comp2 {
+        mycomp obj1 { }
+        q-timer timer2 {
+            duration: 5000
+            ontimeout {
+                this.obj1.myprop = 5
+            }
+            running: true
+            repeat: false;
+        }
+    }
+    comp2 obj2 { }
+    ```
 
 113. Promise/async function usage
      If QHTML allows async JavaScript in functions/handlers, show correct usage.
+     ```
+    q-class myclass {
+        myclass() { this.makeRequest() }
+        makeRequest() { var ok = fetch("/").then(res => { console.log(res) })}
+    }
+    button {
+        onclick { var obj2 = new myclass(); }
+        text { click here }
+
+    }
+     ```
 
 114. Await external JavaScript operation
      If supported, show the correct execution context.
-
+     ``` not supported inside qhtml -- use only in separate <script>```
 
 ======================================================================
 O. DOM INTEROP -- ONLY WHEN ACTUALLY NEEDED
@@ -2283,21 +2386,81 @@ for everything.
 
 115. Access the underlying DOM element from QHTML
      Show the approved/native bridge if one exists.
+     ```
+    div mydiv { }
+    button {
+        onclick { console.log(mydiv) }
+        text { click here }
+
+    }
+```
 
 116. Change a DOM property through QHTML
      Demonstrate the QHTML-native route instead of querySelector.
+       ```
+q-component mycomp {
+  q-property opacityAmt: 0
+  q-property buttonText: "Click
+  here"
+  div
+  mydiv {
+    opacity: this.opacityAmt
+    text { hello world }
+  }
+  button mybutton {
+    onclick { this.opacityAmt += 0.2; this.buttonText = "Opacity: " + this.opacityAmt;    }
+    text { ${this.buttonText} }
+
+  }
+}
+mycomp obj1 { }
+```
 
 117. Call a native DOM method when genuinely necessary
      Example where QHTML intentionally exposes the DOM object.
+     ```
+     div#mydiv {
+
+     }
+
+     button { onclick { document.querySelector("#mydiv").innerHTML = "hello world"} text { click here } }
+     ```
 
 118. Integrate an existing JavaScript class
      Show the preferred context/binding mechanism.
+
+     ```js
+     class myclass1 {
+       super() { }
+       dothing() { alert("hello world") }
+     }
+     window.myobj2 = new myclass1();
+     ```
+
+     ```qhtml
+
+    button {
+        onclick { window.myobj2.dothing() }
+        text { click here }
+    }
+     ```
 
 119. Integrate an external JavaScript library
      Minimal example that keeps QHTML responsible for structure/state.
 
 120. Explicit example of when document.querySelector IS appropriate
      Only if such a case exists. Otherwise state that it should generally not be used.
+     ```
+
+     <div id="mydiv">hello world</div>
+     <q-html>
+     /* use document.querySelector to talk to the DOM nodes that live outside of <q-html> */
+     button {
+        onclick { document.querySelector("#mydiv").innerHTML = "hello" }
+        text { Click here }
+     }
+     </q-html>
+     ```
 
 
 ======================================================================
@@ -2306,16 +2469,66 @@ P. CUSTOM QHTML / DOM TYPES
 
 121. Use a registered custom element from QHTML
      Show declarative use of an existing HTMLElement/custom element.
+     ```
+      my-element {
+           someprop: 5
+        }
+     ```
 
 122. Bind QHTML behavior/properties to a custom element
      Demonstrate interaction without rebuilding the element in JavaScript.
+     ```
+     q-component mycomp {
+        q-property myprop: 5
+        /* if someprop is attribute */
+        my-element {
+           someprop: ${this.myprop}
+        }
+
+        /* if someprop is property */
+        onmypropchanged {
+            document.querySelector("#myid").someprop = this.myprop;
+        }
+        my-element#myid {
+
+        }
+     }
+     mycomp obj1 { }
+
+     ```
 
 123. Define/use a QHTML-specific custom type
      If QHTML supports custom declarative types beyond q-component.
+     ```
+    q-class mytype {
+        mytype() {  }
+        sendAlert(msg) { alert(msg) }
+    }
+    button {
+        onclick { var ok = new mytype(); ok.sendAlert("hello") }
+        text { Click }
+    }
+     ```
 
 124. Access methods exposed by a custom element
      Preferred native object-reference mechanism.
+```
+     q-component mycomp {
 
+        /* custom element my-element has somefunc() defined  in it */
+        my-element#myid {
+
+        }
+        /* talk to it like this */
+        function dothing() { document.querySelector("#myid").somefunc() }
+     }
+     mycomp obj1 { }
+
+     button {
+        onclick { obj1.dothing(); }
+        text { click here }
+     }
+```
 
 ======================================================================
 Q. GRAPHICS / SPECIAL QHTML TYPES
@@ -2325,15 +2538,71 @@ Only include these if they are part of the normal documented QHTML API.
 
 125. q-graphics-scene
      Minimal scene creation.
+     ```
+     q-import { dist/q-components/q-graphics-scene.qhtml nocache }
+       graphics-scene navScene {
+
+       }
+       ```
 
 126. q-graphics-item
      Minimal item creation.
 
+     ```
+     q-import { dist/q-components/q-graphics-scene.qhtml nocache }
+       graphics-scene navScene {
+       onready {
+        var obj2 = this.createItem({ x: 0, y: 0, width: 170, height: 54 })
+        this.addItem(obj2)
+        obj2.setPainter(function(ctx, scene) {
+            var width = 170;
+            var height = 54;
+           ctx.fillRect(width * 0.16, height * 0.48, width * 0.68, Math.max(1, height * 0.045));
+        })
+       }
+       }
+       ```
+
 127. Configure graphics item properties declaratively
+```
+/* graphics-items are javascript objects and are not used directly in a declarative context */
+
+```
 
 128. Reference a graphics item from QHTML code
+```
+q-import { ../dist/q-components/q-graphics-scene.qhtml nocache }
+q-component mycomp {
+  q-property someprop: 42
+  q-property gfxItems: []
+  graphics-scene#myscene {
+
+  }
+
+  onready {
+    var myscene = document.querySelector("#myscene");
+    console.log(myscene)
+    var itm = myscene.createItem({ width: this.someprop });
+    myscene.addItem(itm);
+    this.gfxItems.push(itm.uuid)
+    itm.setPainter(function(ctx, scene) {
+      ctx.fillRect(scene.obj1, 100, 100, 100)
+    })
+
+
+  }
+}
+
+mycomp obj1 { }
+
+button {
+  onclick { alert(document.querySelector("#myscene").itemByUUID(obj1.gfxItems[0])) }
+  text { click }
+}
+```
 
 129. Repaint/update a graphics item
+/* call setPainter again on a reference to a graphics-item to update its painting function or to re-draw the existing function use .repaint() */
 
 130. Graphics item event or animation example
 
@@ -2453,38 +2722,52 @@ T. SEMANTIC QUESTIONS THE EXAMPLES SHOULD ANSWER
 Along with the snippets, the corpus should make these rules unambiguous:
 
 157. What exactly is `this` inside:
-     - q-component function
-     - event handler
-     - onready
-     - signal handler
-     - JavaScript block
+     - q-component function: ``` the closest QHTML Ancestor Component Instance ```
+     - event handler:``` the closest QHTML Ancestor  Component Instance ```
+     - onready: ``` the closest QHTML Ancestor  Component Instance ```
+     - signal handler: ``` the closest QHTML Ancestor  Component Instance  ```
+     - JavaScript block: ``` the closest QHTML Ancestor  Component Instance ```
 
 158. How are names resolved?
+``` Direct Resolution by name ```
 
 159. How are parent/ancestor properties resolved?
+``` dot-walking ```
 
 160. How are component instance properties overridden?
+``` /* define when instantiation happenss: */
+    mycomp obj1 { prop1: "newval" }
+```
 
 161. When does interpolation evaluate?
+```depends on the definition of interpolation.  It happens at different times depending on the requirements and interoperability, but typically it should happen automatically  ```
 
 162. Does interpolation update automatically after a property mutation?
+``` yes  ```
 
 163. What causes render()/sync() if either is required?
+``` property changes, qhtmlChildren reparenting/removal/adding```
 
 164. What is the difference between a QHTML node/object and its underlying DOM element?
+``` QHTML nodes are logical nodes that exist in the qhtmlDomTree and have a plethora of bound properties which allow it to be accessed from the DOM, the two are technically separate entities, but they are integrated very comprehensively ```
 
 165. How should one QHTML component access another?
+``` There re quite a a few ways: named reference, dot walking, via the DOM node, via .qhtmlNode from the DOM node, from the QHTMLDomTree, or by using .parent(), .object(), .parentObject(), and .childList() from other QHTML components ```
 
 166. Which objects/functions are automatically available in execution context?
+``` q-component instance named siblings, direct children of parent q-component, all dot-walking destinations such as parent() .object() .parentObject() and the whole suite of qhtml Javascript API functions are automatically bound to all execution contexts dynamically, everything in scope essentially ```
 
 167. Which QHTML constructs are declarative versus imperative?
+``` only a few imperative operations exist -- `for` loops, q-script-action, and q-class definitions, the inside of event handlers like onclick { } or onready { } and the inside of function definitions. The rest of the language is declarative.```
 
 168. Where is ordinary JavaScript explicitly allowed?
+``` separate outside script tag (<script></script>), event handlers, function definitions on q-components, q-class definitions, and q-script-action definitions. ```
 
 169. When should JavaScript be preferred over native QHTML?
+``` never -- everything javascript can do is possible to do in QHTML except for event handlers, q-script-action, q-class, and function definitions which all must be javascript inside of the { } with the one non-javascript thing is the `myclass()` style constructor instead of using `constructor()` for initialization -- ```
 
 170. What common JavaScript/DOM patterns should NEVER be used when a QHTML equivalent exists?
-
+``` no HTML or javascript should be used when a QHTML equivalent exists ```
 
 ======================================================================
 RECOMMENDED EXAMPLE FORMAT
