@@ -1,6 +1,11 @@
 (() => {
   "use strict";
 
+  const BUILDER_NODE_ID_PROP = "data-builder-node-id";
+  const BUILDER_PALETTE_ID_PROP = "data-builder-palette-id";
+  const BUILDER_CANVAS_INSTANCE_ID_PROP = "data-builder-canvas-instance-id";
+  const BUILDER_DEFINITION_NAME_PROP = "data-builder-definition-name";
+
   function ensureLayoutBuilderChrome() {
     if (document.getElementById("lbMenu") &&
         document.getElementById("lbEditorDialog") &&
@@ -42,6 +47,39 @@
       color: #94a3b8;
       cursor: not-allowed;
       background: transparent;
+    }
+
+    .lb-canvas-edit-button {
+      position: absolute;
+      z-index: 5000;
+      width: 30px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+      transition: opacity 120ms ease, background-color 120ms ease;
+    }
+
+    .lb-canvas-edit-button.visible,
+    .lb-canvas-edit-button:hover,
+    .lb-canvas-edit-button:focus-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .lb-canvas-edit-button:hover,
+    .lb-canvas-edit-button:focus-visible {
+      background: #eff6ff;
     }
 
     .lb-preview-host [data-lb-builder-root="1"] {
@@ -415,6 +453,8 @@
   let editorMode = "";
   let editorTargetId = "";
   let editorOriginal = "";
+  let editorPaletteId = "";
+  let editorPaletteDefinitionName = "";
   let cssEditState = null;
   let nodeCounter = 0;
   let interaction = null;
@@ -500,7 +540,10 @@
     })
   });
   const RESIZE_MINIMUM_PIXELS = 24;
+  const RESIZE_EMPTY_SPACE_MINIMUM_PIXELS = 35;
   const RESIZE_EPSILON = 0.5;
+  const DROP_BOUNDARY_PADDING_PIXELS = 5;
+  const EMPTY_INSERT_MIN_PIXELS = 25;
 
   function nextId() {
     nodeCounter += 1;
@@ -545,7 +588,9 @@
   function defaultLayoutProps(overrides) {
     const values = overrides || {};
     return EDITABLE_LAYOUT_PROPS.reduce((props, key) => {
-      props[key] = Object.prototype.hasOwnProperty.call(values, key) ? values[key] : DEFAULT_LAYOUT_VALUE;
+      props[key] = Object.prototype.hasOwnProperty.call(values, key)
+        ? values[key]
+        : (key === "wrap" ? "nowrap" : DEFAULT_LAYOUT_VALUE);
       return props;
     }, {});
   }
@@ -636,6 +681,9 @@
         next[key] = DEFAULT_LAYOUT_VALUE;
       }
     });
+    if (!String(next.wrap || "").trim() || next.wrap === DEFAULT_LAYOUT_VALUE) {
+      next.wrap = "nowrap";
+    }
 
     const ordered = {};
     EDITABLE_LAYOUT_PROPS.forEach((key) => {
@@ -765,6 +813,9 @@
       }
       const prefix = entry.kind === "q-property" ? "q-property " : "";
       lines.push(indent(level) + prefix + entry.key + ': "' + escapeQhtmlString(value) + '"');
+      if (canonical === "wrap" && entry.key !== "flexWrap" && entry.key !== "flex-wrap") {
+        lines.push(indent(level) + prefix + 'flexWrap: "' + escapeQhtmlString(value) + '"');
+      }
       emitted.add(canonical);
     });
 
@@ -780,6 +831,9 @@
       const value = String(props[key] || "").trim();
       if (value) {
         lines.push(indent(level) + key + ': "' + escapeQhtmlString(value) + '"');
+        if (canonical === "wrap" && key !== "flexWrap" && key !== "flex-wrap") {
+          lines.push(indent(level) + 'flexWrap: "' + escapeQhtmlString(value) + '"');
+        }
         emitted.add(canonical);
       }
     });
@@ -820,12 +874,45 @@
     scopedImports.splice(0, scopedImports.length);
   }
 
+  function scopedImportSource() {
+    return scopedImports.map((path) => "q-import { " + path + " }").join("\n");
+  }
+
+  function pageBuilderPaletteApi() {
+    return window.QHTMLPageBuilderPalette || null;
+  }
+
+  function paletteOverrideSource() {
+    const api = pageBuilderPaletteApi();
+    if (!api || typeof api.serializedDefinitionOverrides !== "function") {
+      return "";
+    }
+    return String(api.serializedDefinitionOverrides() || "").trim();
+  }
+
   function sourceWithScopedImports(source) {
     const body = String(source || "");
     if (!scopedImports.length) {
       return body;
     }
-    return scopedImports.map((path) => "q-import { " + path + " }").join("\n") + "\n\n" + body;
+    return scopedImportSource() + "\n\n" + body;
+  }
+
+  function sourceWithDocumentPreamble(source) {
+    const sections = [];
+    const imports = scopedImportSource().trim();
+    const paletteOverrides = paletteOverrideSource();
+    const body = String(source || "").trim();
+    if (imports) {
+      sections.push(imports);
+    }
+    if (paletteOverrides) {
+      sections.push(paletteOverrides);
+    }
+    if (body) {
+      sections.push(body);
+    }
+    return sections.join("\n\n");
   }
 
   function qhtmlModule() {
@@ -893,6 +980,10 @@
       }
     }
     return out;
+  }
+
+  function qhtmlNodeType(node) {
+    return node && typeof node.qhtmlType === "function" ? String(node.qhtmlType() || "") : "";
   }
 
   function sourceHasSingleLayoutRoot(source) {
@@ -975,6 +1066,96 @@
     };
   }
 
+  function splitPaletteComponentDefinitions(source) {
+    const api = pageBuilderPaletteApi();
+    if (!api || typeof api.isPaletteDefinitionName !== "function") {
+      return {
+        definitions: [],
+        source: String(source || "").trim()
+      };
+    }
+    if (typeof api.scan === "function") {
+      api.scan();
+    }
+    const text = String(source || "");
+    const definitions = [];
+    let output = "";
+    let cursor = 0;
+    let depth = 0;
+    let quote = "";
+    let escape = false;
+    const componentRe = /\bq-component\s+([A-Za-z_][\w-]*)\b[^{]*\{/y;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const ch = text[index];
+      if (quote) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+        continue;
+      }
+      if (ch === "}") {
+        depth = Math.max(0, depth - 1);
+        continue;
+      }
+      if (depth !== 0) {
+        continue;
+      }
+      componentRe.lastIndex = index;
+      const match = componentRe.exec(text);
+      if (!match) {
+        continue;
+      }
+      const open = componentRe.lastIndex - 1;
+      const close = findMatchingBrace(text, open);
+      if (close < 0) {
+        continue;
+      }
+      const name = match[1] || "";
+      const componentSource = text.slice(index, close + 1).trim();
+      if (api.isPaletteDefinitionName(name)) {
+        definitions.push({
+          name: name,
+          source: componentSource
+        });
+        output += text.slice(cursor, index);
+        cursor = close + 1;
+      }
+      index = close;
+    }
+
+    output += text.slice(cursor);
+    return {
+      definitions: definitions,
+      source: output.trim()
+    };
+  }
+
+  function applyLoadedPaletteDefinitions(definitions) {
+    const api = pageBuilderPaletteApi();
+    if (!api || typeof api.applyPaletteDefinitionSource !== "function") {
+      return;
+    }
+    definitions.forEach((definition) => {
+      const paletteId = typeof api.paletteIdForDefinitionName === "function"
+        ? api.paletteIdForDefinitionName(definition.name)
+        : "";
+      api.applyPaletteDefinitionSource(paletteId, definition.name, definition.source);
+    });
+  }
+
   function qhtmlAssignmentValue(node, name) {
     const children = qhtmlChildArray(node);
     for (let i = 0; i < children.length; i += 1) {
@@ -998,6 +1179,28 @@
       return value;
     }
     return "";
+  }
+
+  function qhtmlSourceAssignmentValue(source, name) {
+    const escaped = String(name || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp("^\\s*(?:q-property\\s+)?" + escaped + "\\s*:\\s*(\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*'|[^\\s{};]+)", "m");
+    const match = re.exec(String(source || ""));
+    if (!match) {
+      return "";
+    }
+    let value = match[1] || "";
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\'/g, "'");
+    }
+    return value;
+  }
+
+  function firstQHTMLContentChild(tree) {
+    const children = qhtmlChildArray(tree);
+    return children.find((child) => {
+      const type = qhtmlNodeType(child);
+      return type && type !== "QHTMLImport";
+    }) || null;
   }
 
   function qhtmlNodeByLayoutId(node, id) {
@@ -1117,6 +1320,7 @@
       activeId = next.id;
       hideMenus();
       renderPreview();
+      reconcileInsertedLayoutNode(next.id);
       setStatus(kind + " added");
       return true;
     } finally {
@@ -1129,7 +1333,7 @@
     const source = roots.length
       ? roots.map((node) => modelToQHTML(node, 0)).join("\n\n")
       : "";
-    return sourceWithScopedImports(source);
+    return sourceWithDocumentPreamble(source);
   }
 
   function previewSource() {
@@ -1138,7 +1342,7 @@
   }
 
   function renderedPreviewSource() {
-    return sourceWithScopedImports(previewSource());
+    return sourceWithDocumentPreamble(previewSource());
   }
 
   function setStatus(text) {
@@ -1167,7 +1371,131 @@
         window.QHTML7.refreshLayouts(previewHost);
       }
       refreshOutlines();
+      scheduleCanvasEditButtonRefresh();
     }, 0);
+  }
+
+  function collectEditableQHTMLNodes(node, out) {
+    if (!node) {
+      return out;
+    }
+    if (node.type === "qhtml" && node.id && node.meta && node.meta.paletteId) {
+      out.push(node);
+    }
+    (node.children || []).forEach((child) => {
+      collectEditableQHTMLNodes(child, out);
+    });
+    return out;
+  }
+
+  function setCanvasEditButtonVisible(button, visible) {
+    if (button) {
+      button.classList.toggle("visible", Boolean(visible));
+    }
+  }
+
+  function bindCanvasEditButtonHover(target, button) {
+    let hideTimer = 0;
+    const show = () => {
+      window.clearTimeout(hideTimer);
+      setCanvasEditButtonVisible(button, true);
+    };
+    const hide = () => {
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        setCanvasEditButtonVisible(button, button.matches(":hover") || button.matches(":focus-visible"));
+      }, 80);
+    };
+    target.addEventListener("mouseenter", show);
+    target.addEventListener("mouseleave", hide);
+    button.addEventListener("mouseenter", show);
+    button.addEventListener("mouseleave", hide);
+    button.addEventListener("focus", show);
+    button.addEventListener("blur", hide);
+  }
+
+  function openCanvasQHTMLEditor(nodeId) {
+    const found = findNodeById(nodeId);
+    if (!found || !found.node || found.node.type !== "qhtml") {
+      return;
+    }
+    activeId = found.node.id;
+    menuTargetId = "";
+    refreshOutlines();
+    openEditor("edit", found.node.id, found.node.source);
+  }
+
+  function renderedQHTMLSourceForElement(element) {
+    const node = element && element.qhtmlNode ? element.qhtmlNode : null;
+    if (!node) {
+      return "";
+    }
+    if (typeof node.sourceQHTML === "function") {
+      return String(node.sourceQHTML(0) || "");
+    }
+    if (typeof node.toQHTML === "function") {
+      return String(node.toQHTML(0) || "");
+    }
+    return "";
+  }
+
+  function renderedPaletteTargetForNode(mount, node) {
+    const direct = mount.querySelector("[" + BUILDER_NODE_ID_PROP + '="' + CSS.escape(node.id) + '"]');
+    if (direct) {
+      return direct;
+    }
+    const candidates = mount.querySelectorAll("[component-instance],[qhtml-node]");
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      const source = renderedQHTMLSourceForElement(candidate);
+      if (qhtmlSourceAssignmentValue(source, BUILDER_NODE_ID_PROP) === node.id) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  function scheduleCanvasEditButtonRefresh() {
+    [0, 80, 240].forEach((delay) => {
+      window.setTimeout(refreshCanvasEditButtons, delay);
+    });
+  }
+
+  function refreshCanvasEditButtons() {
+    const mount = document.getElementById("layoutPreviewMount");
+    if (!mount) {
+      return;
+    }
+    mount.querySelectorAll(".lb-canvas-edit-button").forEach((button) => {
+      button.remove();
+    });
+    collectEditableQHTMLNodes(root, []).forEach((node) => {
+      const target = renderedPaletteTargetForNode(mount, node);
+      if (!target) {
+        return;
+      }
+      const mountRect = mount.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "lb-canvas-edit-button";
+      button.title = "Edit QHTML";
+      button.setAttribute("aria-label", "Edit QHTML");
+      button.dataset.nodeId = node.id;
+      button.textContent = "✎";
+      button.style.left = Math.max(0, targetRect.right - mountRect.left - 38) + "px";
+      button.style.top = Math.max(0, targetRect.top - mountRect.top + 8) + "px";
+      button.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openCanvasQHTMLEditor(node.id);
+      });
+      bindCanvasEditButtonHover(target, button);
+      mount.appendChild(button);
+    });
   }
 
   function refreshOutlines() {
@@ -1412,6 +1740,38 @@
 
   function layoutElementForResizeEvent(event) {
     const mount = document.getElementById("layoutPreviewMount");
+    if (mount) {
+      const candidates = Array.from(mount.querySelectorAll("[data-layout-id]")).map((candidate) => {
+        const id = candidate.getAttribute("data-layout-id");
+        const found = findNodeById(id);
+        const rect = candidate.getBoundingClientRect();
+        if (!found || !found.node ||
+            event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom) {
+          return null;
+        }
+        const region = pointerRegion(candidate, event);
+        const edge = resizeEdgeForNode(found.node, found.parent, region.edge);
+        if (!edge) {
+          return null;
+        }
+        return {
+          element: candidate,
+          area: rect.width * rect.height,
+          depth: ancestorChainForNodeId(id).length
+        };
+      }).filter(Boolean).sort((a, b) => {
+        if (b.depth !== a.depth) {
+          return b.depth - a.depth;
+        }
+        return a.area - b.area;
+      });
+      if (candidates.length) {
+        return candidates[0].element;
+      }
+    }
     let current = document.elementFromPoint(event.clientX, event.clientY) || event.target;
     while (current && mount && mount.contains(current)) {
       if (current.hasAttribute && current.hasAttribute("data-layout-id")) {
@@ -1512,33 +1872,7 @@
       return "";
     }
 
-    if (node.type === "q-col") {
-      if (axis.name !== "horizontal") {
-        return "";
-      }
-      if (edge === "left" &&
-          parent &&
-          layoutFlowAxis(parent) === "horizontal" &&
-          !hasPreviousFlowSibling(node, parent, axis, null)) {
-        return "";
-      }
-      return edge;
-    }
-
-    if (node.type === "q-row") {
-      if (axis.name !== "vertical") {
-        return "";
-      }
-      if (edge === "top" &&
-          parent &&
-          layoutFlowAxis(parent) === "vertical" &&
-          !hasPreviousFlowSibling(node, parent, axis, null)) {
-        return "";
-      }
-      return edge;
-    }
-
-    if (node.type === "q-layout") {
+    if (isLayoutType(node.type)) {
       if (edgeIsStart(edge, axis) &&
           parent &&
           layoutFlowAxis(parent) === axis.name &&
@@ -1637,11 +1971,114 @@
     return true;
   }
 
+  function metadataAssignmentsForQHTMLNode(node, meta) {
+    const values = {};
+    values[BUILDER_NODE_ID_PROP] = node.id;
+    if (meta && meta.paletteId) {
+      values[BUILDER_PALETTE_ID_PROP] = meta.paletteId;
+    }
+    if (meta && meta.canvasInstanceId) {
+      values[BUILDER_CANVAS_INSTANCE_ID_PROP] = meta.canvasInstanceId;
+    }
+    if (meta && meta.definitionName) {
+      values[BUILDER_DEFINITION_NAME_PROP] = meta.definitionName;
+    }
+    return values;
+  }
+
+  function injectAssignmentsIntoSource(source, assignments) {
+    const text = String(source || "").trim();
+    const open = text.indexOf("{");
+    if (open < 0) {
+      return text;
+    }
+    const lines = Object.keys(assignments)
+      .filter((key) => String(assignments[key] || "").trim())
+      .map((key) => "  " + key + ': "' + escapeQhtmlString(assignments[key]) + '"');
+    if (!lines.length) {
+      return text;
+    }
+    return text.slice(0, open + 1) + "\n" + lines.join("\n") + text.slice(open + 1);
+  }
+
+  function stampQHTMLNodeSource(source, node, meta) {
+    const assignments = metadataAssignmentsForQHTMLNode(node, meta);
+    const tree = createQHTMLDomTree(source);
+    if (!tree) {
+      return injectAssignmentsIntoSource(source, assignments);
+    }
+    try {
+      const target = firstQHTMLContentChild(tree);
+      if (target && typeof target.setPropertyText === "function") {
+        Object.keys(assignments).forEach((key) => {
+          if (String(assignments[key] || "").trim()) {
+            target.setPropertyText(key, String(assignments[key]));
+          }
+        });
+        if (typeof tree.toQHTML === "function") {
+          return tree.toQHTML();
+        }
+        if (typeof tree.sourceQHTML === "function") {
+          return tree.sourceQHTML();
+        }
+      }
+      return injectAssignmentsIntoSource(source, assignments);
+    } finally {
+      disposeQHTMLObject(tree);
+    }
+  }
+
+  function applyQHTMLSourceMetadata(node) {
+    const source = String(node.source || "");
+    const sourceId = qhtmlSourceAssignmentValue(source, BUILDER_NODE_ID_PROP);
+    if (sourceId) {
+      node.id = sourceId;
+    }
+    const paletteId = qhtmlSourceAssignmentValue(source, BUILDER_PALETTE_ID_PROP);
+    const canvasInstanceId = qhtmlSourceAssignmentValue(source, BUILDER_CANVAS_INSTANCE_ID_PROP);
+    const definitionName = qhtmlSourceAssignmentValue(source, BUILDER_DEFINITION_NAME_PROP);
+    if (paletteId || canvasInstanceId || definitionName) {
+      node.meta = Object.assign({}, node.meta || {}, {
+        paletteId: paletteId,
+        canvasInstanceId: canvasInstanceId,
+        definitionName: definitionName
+      });
+    }
+  }
+
   function createQHTMLNodeFromSource(source, meta) {
     const node = createNode("qhtml", []);
     node.source = String(source || "").trim();
     node.meta = meta || {};
+    if (meta && (meta.paletteId || meta.canvasInstanceId || meta.definitionName)) {
+      node.source = stampQHTMLNodeSource(node.source, node, meta);
+    }
+    applyQHTMLSourceMetadata(node);
     return node;
+  }
+
+  function appendPaletteQHTMLToStableCell(target, parent, qhtmlNode) {
+    if (!target || !qhtmlNode) {
+      return null;
+    }
+    if (target.type === "q-col" && parent && parent.type === "q-row") {
+      target.children.push(qhtmlNode);
+      return target;
+    }
+    if (target.type === "q-row" && parent && parent.type === "q-col") {
+      const col = createNode("q-col", [qhtmlNode], { label: false });
+      target.children.push(col);
+      return col;
+    }
+    if (target.type === "q-row") {
+      const col = createNode("q-col", [qhtmlNode], { label: false });
+      target.children.push(col);
+      return col;
+    }
+    const col = createNode("q-col", [qhtmlNode], { label: false });
+    const row = createNode("q-row", [col], { label: false });
+    target.children.push(row);
+    return col;
   }
 
   function dropQHTMLAtPoint(source, x, y, meta) {
@@ -1667,12 +2104,20 @@
       meta.scopeImports.forEach(addScopedImport);
     }
 
-    if (target.type === "q-row") {
-      const col = createNode("q-col", [qhtmlNode], { label: false });
-      target.children.push(col);
-      activeId = col.id;
-      inserted = true;
-    } else {
+    if (isLayoutType(target.type)) {
+      const cell = appendPaletteQHTMLToStableCell(target, found ? found.parent : null, qhtmlNode);
+      activeId = cell ? cell.id : target.id;
+      inserted = !!cell;
+    } else if (found && found.parent && isLayoutType(found.parent.type)) {
+      const cell = appendPaletteQHTMLToStableCell(found.parent, findNodeById(found.parent.id).parent, qhtmlNode);
+      activeId = cell ? cell.id : found.parent.id;
+      inserted = !!cell;
+    } else if (isLayoutType(root.type)) {
+      const cell = appendPaletteQHTMLToStableCell(root, null, qhtmlNode);
+      activeId = cell ? cell.id : root.id;
+      inserted = !!cell;
+    }
+    if (!inserted) {
       target.children.push(qhtmlNode);
       activeId = target.id;
       inserted = true;
@@ -1680,6 +2125,7 @@
 
     if (inserted) {
       renderPreview();
+      reconcileDroppedNodeAncestors(qhtmlNode.id);
       setStatus("Dropped " + (meta && meta.displayName ? meta.displayName : "palette item"));
     }
     return inserted;
@@ -1991,8 +2437,8 @@
     });
     if (!descendants.length) {
       return {
-        width: Math.max(RESIZE_MINIMUM_PIXELS, element.parent.getBoundingClientRect().width),
-        height: Math.max(RESIZE_MINIMUM_PIXELS, parent.getBoundingClientRect().height)
+        width: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS,
+        height: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS
       };
     }
 
@@ -2011,6 +2457,574 @@
       width: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(right - own.left)),
       height: Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(bottom - own.top))
     };
+  }
+
+  function minimumLayoutSizeForChildren(node, element, mount) {
+    if (!node || !element) {
+      return {
+        width: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS,
+        height: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS
+      };
+    }
+    const children = node.children || [];
+    if (!children.length) {
+      return {
+        width: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS,
+        height: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS
+      };
+    }
+
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const paddingLeft = numericStyleValue(style, "paddingLeft");
+    const paddingRight = numericStyleValue(style, "paddingRight");
+    const paddingTop = numericStyleValue(style, "paddingTop");
+    const paddingBottom = numericStyleValue(style, "paddingBottom");
+    const contentLeft = rect.left + paddingLeft;
+    const contentTop = rect.top + paddingTop;
+    let width = RESIZE_EMPTY_SPACE_MINIMUM_PIXELS;
+    let height = RESIZE_EMPTY_SPACE_MINIMUM_PIXELS;
+
+    children.forEach((childNode) => {
+      const childElement = renderedElementForModelNode(childNode, mount || document);
+      if (!childElement) {
+        return;
+      }
+      const childRect = elementVisualBounds(childElement);
+      const leftOverflow = Math.max(0, contentLeft - childRect.left);
+      const topOverflow = Math.max(0, contentTop - childRect.top);
+      width = Math.max(width, paddingLeft + leftOverflow + Math.max(0, childRect.right - contentLeft) + paddingRight);
+      height = Math.max(height, paddingTop + topOverflow + Math.max(0, childRect.bottom - contentTop) + paddingBottom);
+    });
+
+    return {
+      width: Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, Math.ceil(width)),
+      height: Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, Math.ceil(height))
+    };
+  }
+
+  function contentMinimumSizeForChildren(node, element, mount) {
+    if (!node || !element) {
+      return {
+        width: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS,
+        height: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS
+      };
+    }
+    const children = node.children || [];
+    if (!children.length) {
+      return {
+        width: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS,
+        height: RESIZE_EMPTY_SPACE_MINIMUM_PIXELS
+      };
+    }
+
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const paddingLeft = numericStyleValue(style, "paddingLeft");
+    const paddingRight = numericStyleValue(style, "paddingRight");
+    const paddingTop = numericStyleValue(style, "paddingTop");
+    const paddingBottom = numericStyleValue(style, "paddingBottom");
+    const contentLeft = rect.left + paddingLeft;
+    const contentTop = rect.top + paddingTop;
+    let width = RESIZE_EMPTY_SPACE_MINIMUM_PIXELS;
+    let height = RESIZE_EMPTY_SPACE_MINIMUM_PIXELS;
+
+    children.forEach((childNode) => {
+      const childElement = renderedElementForModelNode(childNode, mount || document);
+      if (!childElement) {
+        return;
+      }
+      const childRect = elementVisualBounds(childElement);
+      const leftOverflow = Math.max(0, contentLeft - childRect.left);
+      const topOverflow = Math.max(0, contentTop - childRect.top);
+      let childWidth = textualContentMinimumWidth(childElement);
+      let childHeight = intrinsicContentHeight(childElement);
+      if (isLayoutType(childNode.type)) {
+        const childMinimum = contentMinimumSizeForChildren(childNode, childElement, mount || document);
+        childWidth = childMinimum.width;
+        childHeight = childMinimum.height;
+      }
+      width = Math.max(width, paddingLeft + leftOverflow + Math.max(0, childRect.left - contentLeft) + childWidth + paddingRight);
+      height = Math.max(height, paddingTop + topOverflow + Math.max(0, childRect.top - contentTop) + childHeight + paddingBottom);
+    });
+
+    return {
+      width: Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, Math.ceil(width)),
+      height: Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, Math.ceil(height))
+    };
+  }
+
+  function ancestorChainForNodeId(id) {
+    const chain = [];
+    const visit = (node, parent) => {
+      if (!node) {
+        return false;
+      }
+      chain.push({ node: node, parent: parent || null });
+      if (node.id === id) {
+        return true;
+      }
+      const children = node.children || [];
+      for (let i = 0; i < children.length; i += 1) {
+        if (visit(children[i], node)) {
+          return true;
+        }
+      }
+      chain.pop();
+      return false;
+    };
+    return visit(root, null) ? chain : [];
+  }
+
+  function renderedElementForModelNode(node, mount) {
+    if (!node) {
+      return null;
+    }
+    if (node.type === "qhtml") {
+      return renderedPaletteTargetForNode(mount || document, node);
+    }
+    return layoutElementById(node.id, mount || null);
+  }
+
+  function elementContentBounds(element) {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const left = rect.left + numericStyleValue(style, "paddingLeft");
+    const right = rect.right - numericStyleValue(style, "paddingRight");
+    const top = rect.top + numericStyleValue(style, "paddingTop");
+    const bottom = rect.bottom - numericStyleValue(style, "paddingBottom");
+    return {
+      left: left,
+      right: Math.max(left, right),
+      top: top,
+      bottom: Math.max(top, bottom),
+      rect: rect
+    };
+  }
+
+  function elementVisualBounds(element) {
+    const own = element.getBoundingClientRect();
+    let left = own.left;
+    let top = own.top;
+    let right = own.right;
+    let bottom = own.bottom;
+    Array.from(element.querySelectorAll("*")).forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) {
+        return;
+      }
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+    });
+    return {
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+      width: Math.max(0, right - left),
+      height: Math.max(0, bottom - top)
+    };
+  }
+
+  function requiredAncestorSizeForChildren(ancestorNode, ancestorElement, mount) {
+    const bounds = elementContentBounds(ancestorElement);
+    let width = bounds.rect.width;
+    let height = bounds.rect.height;
+    let overflowed = false;
+    (ancestorNode.children || []).forEach((childNode) => {
+      const childElement = renderedElementForModelNode(childNode, mount);
+      if (!childElement) {
+        return;
+      }
+      const childRect = elementVisualBounds(childElement);
+      const leftOverflow = Math.max(0, bounds.left - childRect.left);
+      const rightOverflow = Math.max(0, childRect.right - bounds.right);
+      const topOverflow = Math.max(0, bounds.top - childRect.top);
+      const bottomOverflow = Math.max(0, childRect.bottom - bounds.bottom);
+      if (leftOverflow > RESIZE_EPSILON || rightOverflow > RESIZE_EPSILON) {
+        width = Math.max(width, bounds.rect.width + leftOverflow + rightOverflow + DROP_BOUNDARY_PADDING_PIXELS);
+        overflowed = true;
+      }
+      if (topOverflow > RESIZE_EPSILON || bottomOverflow > RESIZE_EPSILON) {
+        height = Math.max(height, bounds.rect.height + topOverflow + bottomOverflow + DROP_BOUNDARY_PADDING_PIXELS);
+        overflowed = true;
+      }
+    });
+    return overflowed ? { width: width, height: height } : null;
+  }
+
+  function growLayoutNodeMinimumToFitChildren(node, mount) {
+    if (!node || !isLayoutType(node.type) || isBuilderRoot(node)) {
+      return false;
+    }
+    const element = layoutElementById(node.id, mount || null);
+    if (!element) {
+      return false;
+    }
+    const required = requiredAncestorSizeForChildren(node, element, mount || document);
+    if (!required) {
+      return false;
+    }
+    node.props = normalizedPropsFor(node.type, node.props);
+    let changed = false;
+    const currentMinWidth = lengthValueToPixels(node, "minWidth", element, "width");
+    const currentMinHeight = lengthValueToPixels(node, "minHeight", element, "height");
+    const nextMinWidth = Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(required.width));
+    const nextMinHeight = Math.max(RESIZE_MINIMUM_PIXELS, Math.ceil(required.height));
+    if (nextMinWidth > currentMinWidth + RESIZE_EPSILON) {
+      setNodeProp(node, "minWidth", nextMinWidth + "px");
+      changed = true;
+    }
+    const maxWidth = parseLengthValue(node.props.maxWidth);
+    const currentMaxWidth = Number.isFinite(maxWidth.number)
+      ? lengthValueToPixels(node, "maxWidth", element, "width")
+      : 0;
+    if (currentMaxWidth > 0 && nextMinWidth > currentMaxWidth + RESIZE_EPSILON) {
+      setNodeProp(node, "maxWidth", nextMinWidth + "px");
+      changed = true;
+    }
+    if (nextMinHeight > currentMinHeight + RESIZE_EPSILON) {
+      setNodeProp(node, "minHeight", nextMinHeight + "px");
+      changed = true;
+    }
+    const maxHeight = parseLengthValue(node.props.maxHeight);
+    const currentMaxHeight = Number.isFinite(maxHeight.number)
+      ? lengthValueToPixels(node, "maxHeight", element, "height")
+      : 0;
+    if (currentMaxHeight > 0 && nextMinHeight > currentMaxHeight + RESIZE_EPSILON) {
+      setNodeProp(node, "maxHeight", nextMinHeight + "px");
+      changed = true;
+    }
+    return changed;
+  }
+
+  function setLayoutNodeAxisPixelBounds(node, parent, axis, pixels) {
+    const value = Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, Math.ceil(pixels)) + "px";
+    node.props = normalizedPropsFor(node.type, node.props);
+    setNodeProp(node, axis.size, DEFAULT_LAYOUT_VALUE);
+    setNodeProp(node, axis.min, value);
+    setNodeProp(node, axis.max, value);
+    if (parent && layoutFlowAxis(parent) === axis.name) {
+      setNodeProp(node, "flex", "0 0 " + value);
+    }
+    const element = layoutElementById(node.id);
+    if (element) {
+      element.style[axis.size] = "auto";
+      element.style[axis.min] = value;
+      element.style[axis.max] = value;
+      if (parent && layoutFlowAxis(parent) === axis.name) {
+        element.style.flex = "0 0 " + value;
+      }
+      element.style.boxSizing = "border-box";
+    }
+  }
+
+  function resizeContainedLayoutChildrenToAxis(node, axis, mount, edgeLinks) {
+    if (!node || !isLayoutType(node.type)) {
+      return false;
+    }
+    const element = layoutElementById(node.id, mount || null);
+    if (!element) {
+      return false;
+    }
+    const bounds = elementContentBounds(element);
+    let changed = false;
+    (node.children || []).forEach((childNode) => {
+      if (!childNode || !isLayoutType(childNode.type)) {
+        return;
+      }
+      const childElement = layoutElementById(childNode.id, mount || null);
+      if (!childElement) {
+        return;
+      }
+      const childRect = childElement.getBoundingClientRect();
+      const childMinimum = contentMinimumSizeForChildren(childNode, childElement, mount || document);
+      const start = Math.max(bounds[axis.rectStart], childRect[axis.rectStart]);
+      const available = Math.max(childMinimum[axis.size], bounds[axis.rectEnd] - start);
+      const endOverflow = childRect[axis.rectEnd] - bounds[axis.rectEnd];
+      const nearEnd = Math.abs(childRect[axis.rectEnd] - bounds[axis.rectEnd]) <= EDGE_MAX;
+      const followsEnd = edgeLinks && edgeLinks[childNode.id] && edgeLinks[childNode.id][axis.name];
+      if (endOverflow > RESIZE_EPSILON || nearEnd || followsEnd) {
+        const found = findNodeById(childNode.id);
+        setLayoutNodeAxisPixelBounds(
+          childNode,
+          found ? found.parent : node,
+          axis,
+          available
+        );
+        changed = true;
+      }
+      changed = resizeContainedLayoutChildrenToAxis(childNode, axis, mount, edgeLinks) || changed;
+    });
+    return changed;
+  }
+
+  function squeezeLayoutDescendantsToAxis(node, axis, mount) {
+    if (!node || !isLayoutType(node.type)) {
+      return false;
+    }
+    const element = layoutElementById(node.id, mount || null);
+    if (!element) {
+      return false;
+    }
+    const bounds = elementContentBounds(element);
+    let changed = false;
+    (node.children || []).forEach((childNode) => {
+      if (!childNode || !isLayoutType(childNode.type)) {
+        return;
+      }
+      const childElement = layoutElementById(childNode.id, mount || null);
+      if (!childElement) {
+        return;
+      }
+      const childRect = childElement.getBoundingClientRect();
+      const childMinimum = contentMinimumSizeForChildren(childNode, childElement, mount || document);
+      const start = Math.max(bounds[axis.rectStart], childRect[axis.rectStart]);
+      const available = Math.max(childMinimum[axis.size], Math.min(childRect[axis.size], bounds[axis.rectEnd] - start));
+      const overflowsEnd = childRect[axis.rectEnd] > bounds[axis.rectEnd] + RESIZE_EPSILON;
+      if (!overflowsEnd && available >= childRect[axis.size] - RESIZE_EPSILON) {
+        changed = squeezeLayoutDescendantsToAxis(childNode, axis, mount) || changed;
+        return;
+      }
+      const found = findNodeById(childNode.id);
+      setLayoutNodeAxisPixelBounds(
+        childNode,
+        found ? found.parent : node,
+        axis,
+        available
+      );
+      changed = true;
+      changed = squeezeLayoutDescendantsToAxis(childNode, axis, mount) || changed;
+    });
+    return changed;
+  }
+
+  function captureDescendantEdgeLinks(node, mount) {
+    const links = Object.create(null);
+    const visit = (parentNode) => {
+      if (!parentNode || !isLayoutType(parentNode.type)) {
+        return;
+      }
+      const parentElement = layoutElementById(parentNode.id, mount || null);
+      if (!parentElement) {
+        return;
+      }
+      const parentBounds = elementContentBounds(parentElement);
+      (parentNode.children || []).forEach((childNode) => {
+        if (!childNode || !isLayoutType(childNode.type)) {
+          return;
+        }
+        const childElement = layoutElementById(childNode.id, mount || null);
+        if (!childElement) {
+          return;
+        }
+        const rect = childElement.getBoundingClientRect();
+        const horizontal = Math.abs(rect.right - parentBounds.right) <= EDGE_MAX ||
+          rect.right > parentBounds.right + RESIZE_EPSILON;
+        const vertical = Math.abs(rect.bottom - parentBounds.bottom) <= EDGE_MAX ||
+          rect.bottom > parentBounds.bottom + RESIZE_EPSILON;
+        links[childNode.id] = {
+          horizontal: horizontal,
+          vertical: vertical
+        };
+        visit(childNode);
+      });
+    };
+    visit(node);
+    return links;
+  }
+
+  function captureAncestorEdgeLinks(found, element, axis, edge) {
+    if (!found || !found.node || !element || !axis || !edge) {
+      return [];
+    }
+    const links = [];
+    const selectedRect = element.getBoundingClientRect();
+    const selectedEdge = selectedRect[axis.rectEnd];
+    let current = found.parent;
+    while (current) {
+      const located = findNodeById(current.id);
+      const parent = located ? located.parent : null;
+      if (!isLayoutType(current.type) || isBuilderRoot(current)) {
+        current = parent;
+        continue;
+      }
+      const ancestorElement = layoutElementById(current.id);
+      if (!ancestorElement) {
+        current = parent;
+        continue;
+      }
+      const rect = ancestorElement.getBoundingClientRect();
+      const ancestorEdge = edgeIsStart(edge, axis) ? rect[axis.rectStart] : rect[axis.rectEnd];
+      const selectedLinkedEdge = edgeIsStart(edge, axis) ? selectedRect[axis.rectStart] : selectedEdge;
+      if (Math.abs(ancestorEdge - selectedLinkedEdge) <= EDGE_MAX) {
+        const item = captureConstraintItem(current, parent, ancestorElement.parentElement, axis);
+        if (item) {
+          links.push(item);
+        }
+      }
+      current = parent;
+    }
+    return links;
+  }
+
+  function applyAncestorEdgeLinks(links, axis, edge, pointerPosition) {
+    (links || []).forEach((item) => {
+      const desired = edgeIsStart(edge, axis)
+        ? item.rect[axis.rectEnd] - pointerPosition
+        : pointerPosition - item.rect[axis.rectStart];
+      applyConstraintItemSize(item, axis, desired);
+    });
+  }
+
+  function setLayoutAxisPixelConstraint(node, parent, axis, pixels) {
+    const value = Math.max(EMPTY_INSERT_MIN_PIXELS, Math.ceil(pixels)) + "px";
+    node.props = normalizedPropsFor(node.type, node.props);
+    setNodeProp(node, axis.size, DEFAULT_LAYOUT_VALUE);
+    setNodeProp(node, axis.min, value);
+    setNodeProp(node, axis.max, value);
+    if (parent && layoutFlowAxis(parent) === axis.name) {
+      setNodeProp(node, "flex", "0 0 " + value);
+    }
+  }
+
+  function constrainEmptyInsertedLayoutToParent(nodeId) {
+    const mount = document.getElementById("layoutPreviewMount");
+    const chain = ancestorChainForNodeId(nodeId);
+    const entry = chain[chain.length - 1];
+    const parentEntry = chain[chain.length - 2];
+    const node = entry ? entry.node : null;
+    const parent = parentEntry ? parentEntry.node : null;
+    if (!mount ||
+        !node ||
+        !parent ||
+        !isLayoutType(node.type) ||
+        !isLayoutType(parent.type) ||
+        (node.children || []).length) {
+      return {
+        changed: false,
+        needsAncestorGrowth: false
+      };
+    }
+
+    const nodeElement = layoutElementById(node.id, mount);
+    const parentElement = layoutElementById(parent.id, mount);
+    if (!nodeElement || !parentElement) {
+      return {
+        changed: false,
+        needsAncestorGrowth: false
+      };
+    }
+
+    const parentBounds = elementContentBounds(parentElement);
+    const childBounds = elementVisualBounds(nodeElement);
+    const axes = [RESIZE_AXIS.horizontal, RESIZE_AXIS.vertical];
+    let changed = false;
+    let needsAncestorGrowth = false;
+
+    axes.forEach((axis) => {
+      const startOverflow = Math.max(0, parentBounds[axis.rectStart] - childBounds[axis.rectStart]);
+      const endOverflow = Math.max(0, childBounds[axis.rectEnd] - parentBounds[axis.rectEnd]);
+      const belowFloor = childBounds[axis.size] < EMPTY_INSERT_MIN_PIXELS - RESIZE_EPSILON;
+      if (startOverflow <= RESIZE_EPSILON && endOverflow <= RESIZE_EPSILON && !belowFloor) {
+        return;
+      }
+      const available = Math.max(0, parentBounds[axis.rectEnd] - Math.max(parentBounds[axis.rectStart], childBounds[axis.rectStart]));
+      const desired = available >= EMPTY_INSERT_MIN_PIXELS
+        ? Math.min(childBounds[axis.size], available)
+        : EMPTY_INSERT_MIN_PIXELS;
+      setLayoutAxisPixelConstraint(node, parent, axis, desired);
+      changed = true;
+      if (available < EMPTY_INSERT_MIN_PIXELS || belowFloor) {
+        needsAncestorGrowth = true;
+      }
+    });
+
+    return {
+      changed: changed,
+      needsAncestorGrowth: needsAncestorGrowth
+    };
+  }
+
+  function reconcileInsertedLayoutNode(nodeId) {
+    window.setTimeout(() => {
+      const result = constrainEmptyInsertedLayoutToParent(nodeId);
+      if (result.changed) {
+        renderPreview();
+      }
+      if (result.needsAncestorGrowth) {
+        window.setTimeout(() => reconcileDroppedNodeAncestors(nodeId), 80);
+      } else {
+        window.setTimeout(() => {
+          refreshOutlines();
+          scheduleCanvasEditButtonRefresh();
+        }, 80);
+      }
+    }, 80);
+  }
+
+  function reconcileDroppedNodeAncestors(nodeId) {
+    const mount = document.getElementById("layoutPreviewMount");
+    const chain = ancestorChainForNodeId(nodeId);
+    if (!mount || chain.length < 2) {
+      return;
+    }
+
+    const step = (index) => {
+      const currentChain = ancestorChainForNodeId(nodeId);
+      if (index < 1) {
+        refreshOutlines();
+        scheduleCanvasEditButtonRefresh();
+        return;
+      }
+      const entry = currentChain[index];
+      if (!entry || !entry.node || !isLayoutType(entry.node.type) || isBuilderRoot(entry.node)) {
+        step(index + 1);
+        return;
+      }
+      const changed = growLayoutNodeMinimumToFitChildren(entry.node, mount);
+      if (changed) {
+        renderPreview();
+        window.setTimeout(() => step(index - 1), 80);
+        return;
+      }
+      step(index - 1);
+    };
+
+    window.setTimeout(() => step(chain.length - 2), 80);
+  }
+
+  function reconcileResizedNodeAncestors(nodeId, axis) {
+    const mount = document.getElementById("layoutPreviewMount");
+    const chain = ancestorChainForNodeId(nodeId);
+    if (!mount || !axis || chain.length < 2) {
+      return;
+    }
+
+    const step = (index) => {
+      const currentChain = ancestorChainForNodeId(nodeId);
+      if (index < 1) {
+        refreshOutlines();
+        scheduleCanvasEditButtonRefresh();
+        return;
+      }
+      const entry = currentChain[index];
+      if (!entry || !entry.node || !isLayoutType(entry.node.type) || isBuilderRoot(entry.node)) {
+        step(index - 1);
+        return;
+      }
+      const changed = squeezeLayoutDescendantsToAxis(entry.node, axis, mount);
+      if (changed) {
+        renderPreview();
+        window.setTimeout(() => step(index - 1), 80);
+        return;
+      }
+      step(index - 1);
+    };
+
+    window.setTimeout(() => step(chain.length - 2), 80);
   }
 
   function renderedMinimumSize(node) {
@@ -2143,6 +3157,14 @@
       return 24;
     }
     const clone = element.cloneNode(true);
+    Array.from(clone.querySelectorAll("*")).forEach((child) => {
+      child.style.width = "min-content";
+      child.style.minWidth = "0";
+      child.style.maxWidth = "none";
+      child.style.flex = "0 0 auto";
+      child.style.flexBasis = "auto";
+      child.style.boxSizing = "border-box";
+    });
     clone.style.position = "absolute";
     clone.style.visibility = "hidden";
     clone.style.pointerEvents = "none";
@@ -2158,12 +3180,60 @@
     return Math.max(24, Math.ceil(width));
   }
 
+  function textualContentMinimumWidth(element) {
+    if (!element) {
+      return RESIZE_EMPTY_SPACE_MINIMUM_PIXELS;
+    }
+    const measurer = document.createElement("span");
+    measurer.style.position = "absolute";
+    measurer.style.visibility = "hidden";
+    measurer.style.pointerEvents = "none";
+    measurer.style.whiteSpace = "nowrap";
+    measurer.style.left = "-100000px";
+    measurer.style.top = "-100000px";
+    document.body.appendChild(measurer);
+
+    let width = RESIZE_EMPTY_SPACE_MINIMUM_PIXELS;
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode();
+    while (textNode) {
+      const parent = textNode.parentElement || element;
+      const style = window.getComputedStyle(parent);
+      measurer.style.font = style.font;
+      String(textNode.nodeValue || "").split(/\s+/).forEach((word) => {
+        if (!word) {
+          return;
+        }
+        measurer.textContent = word;
+        width = Math.max(width, measurer.getBoundingClientRect().width);
+      });
+      textNode = walker.nextNode();
+    }
+
+    Array.from(element.querySelectorAll("button,input,select,textarea,img,svg")).forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      width = Math.max(width, Math.min(rect.width || child.scrollWidth || 0, 180));
+    });
+    measurer.remove();
+
+    const style = window.getComputedStyle(element);
+    width += numericStyleValue(style, "paddingLeft") + numericStyleValue(style, "paddingRight");
+    return Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, Math.ceil(width));
+  }
+
   function intrinsicContentHeight(element) {
     if (!element || !element.parentElement) {
       return 24;
     }
     const rect = element.getBoundingClientRect();
     const clone = element.cloneNode(true);
+    Array.from(clone.querySelectorAll("*")).forEach((child) => {
+      child.style.minHeight = "0";
+      child.style.maxHeight = "none";
+      child.style.flex = "0 0 auto";
+      child.style.flexBasis = "auto";
+      child.style.boxSizing = "border-box";
+    });
     clone.style.position = "absolute";
     clone.style.visibility = "hidden";
     clone.style.pointerEvents = "none";
@@ -2188,6 +3258,10 @@
       return RESIZE_AXIS.vertical;
     }
     return null;
+  }
+
+  function oppositeResizeAxis(axis) {
+    return axis && axis.name === "horizontal" ? RESIZE_AXIS.vertical : RESIZE_AXIS.horizontal;
   }
 
   function edgeIsStart(edge, axis) {
@@ -2288,21 +3362,6 @@
     return siblings.indexOf(node) > 0;
   }
 
-  function nodeResizeState(node, axis) {
-    if (!node._lbResizeState) {
-      Object.defineProperty(node, "_lbResizeState", {
-        configurable: true,
-        enumerable: false,
-        writable: true,
-        value: {}
-      });
-    }
-    if (!node._lbResizeState[axis.name]) {
-      node._lbResizeState[axis.name] = {};
-    }
-    return node._lbResizeState[axis.name];
-  }
-
   function intrinsicAxisMinimum(element, axis) {
     return axis.name === "horizontal"
       ? intrinsicContentWidth(element)
@@ -2321,17 +3380,11 @@
   }
 
   function hardAxisMinimum(node, element, axis) {
-    const state = nodeResizeState(node, axis);
-    const intrinsic = intrinsicAxisMinimum(element, axis);
-    if (!Number.isFinite(state.hardMinimum)) {
-      const declared = lengthValueToPixels(node, axis.min, element, axis.size);
-      state.hardMinimum = Math.max(
-        RESIZE_MINIMUM_PIXELS,
-        intrinsic,
-        Number.isFinite(declared) ? declared : 0
-      );
-    }
-    return Math.max(RESIZE_MINIMUM_PIXELS, intrinsic, state.hardMinimum);
+    const layoutMinimum = node && isLayoutType(node.type)
+      ? contentMinimumSizeForChildren(node, element, document)[axis.size]
+      : 0;
+    const intrinsic = layoutMinimum || intrinsicAxisMinimum(element, axis);
+    return Math.max(RESIZE_EMPTY_SPACE_MINIMUM_PIXELS, intrinsic);
   }
 
   function captureConstraintItem(node, parent, parentElement, axis) {
@@ -2353,18 +3406,42 @@
     };
   }
 
+  function collectLayoutDescendants(node, descendants) {
+    const output = descendants || [];
+    (node && node.children ? node.children : []).forEach((child) => {
+      if (!child || !isLayoutType(child.type)) {
+        return;
+      }
+      output.push(child);
+      collectLayoutDescendants(child, output);
+    });
+    return output;
+  }
+
+  function captureDescendantAxisLocks(node, axis) {
+    const lockedAxis = oppositeResizeAxis(axis);
+    return collectLayoutDescendants(node).map((child) => {
+      const element = layoutElementById(child.id);
+      const found = findNodeById(child.id);
+      if (!element || !found || !found.node) {
+        return null;
+      }
+      const rect = element.getBoundingClientRect();
+      return {
+        node: found.node,
+        parent: found.parent,
+        element: element,
+        axis: lockedAxis,
+        pixels: Math.max(0, rect[lockedAxis.size])
+      };
+    }).filter(Boolean);
+  }
+
   function parentWraps(parent, parentElement) {
     const configured = String(parent && parent.props ? parent.props.wrap || "" : "")
       .trim()
       .toLowerCase();
-    if (configured === "wrap" || configured === "wrap-reverse") {
-      return true;
-    }
-    if (configured === "nowrap") {
-      return false;
-    }
-    const computed = parentElement ? window.getComputedStyle(parentElement).flexWrap : "";
-    return computed === "wrap" || computed === "wrap-reverse";
+    return configured === "wrap" || configured === "wrap-reverse";
   }
 
   function captureFlowLevel(parent, selected, axis, edge, orderMap) {
@@ -2502,9 +3579,13 @@
     return {
       axis: axis,
       edge: edge,
+      targetNode: found.node,
       levels: levels,
       selfItem: selfItem,
       terminal: terminal,
+      ancestorEdgeLinks: captureAncestorEdgeLinks(found, element, axis, edge),
+      descendantEdgeLinks: captureDescendantEdgeLinks(found.node, document.getElementById("layoutPreviewMount") || document),
+      descendantAxisLocks: captureDescendantAxisLocks(found.node, axis),
       startPointer: 0
     };
   }
@@ -2532,16 +3613,6 @@
       remaining -= applied;
     }
     return Math.max(0, amount - remaining);
-  }
-
-  function distributeConstraintGrowth(level, sizes, amount) {
-    const candidates = level.sideIndexes.slice();
-    if (!candidates.length) {
-      return 0;
-    }
-    const growth = Math.max(0, amount);
-    sizes[candidates[0]] += growth;
-    return growth;
   }
 
   function clearAxisOffset(node, element, axis) {
@@ -2586,29 +3657,29 @@
     return size;
   }
 
-  function expandWrappedContainer(level) {
-    if (!level.wraps || !level.parentElement) {
-      return;
-    }
-    const crossAxis = level.axis.name === "horizontal"
-      ? RESIZE_AXIS.vertical
-      : RESIZE_AXIS.horizontal;
-    const element = level.parentElement;
-    const rect = element.getBoundingClientRect();
-    const required = Math.max(rect[crossAxis.size], element[crossAxis.scrollSize] || 0);
-    if (required <= rect[crossAxis.size] + RESIZE_EPSILON) {
-      return;
-    }
-    const found = findNodeById(level.parent.id);
-    const item = captureConstraintItem(
-      level.parent,
-      found ? found.parent : null,
-      element.parentElement,
-      crossAxis
-    );
-    if (item) {
-      applyConstraintItemSize(item, crossAxis, required);
-    }
+  function applyDescendantAxisLocks(locks) {
+    (locks || []).forEach((lock) => {
+      const value = formatLengthValue(lock.pixels, { unit: "px", basePixels: 1 });
+      const axis = lock.axis;
+      const controlsParentFlow = lock.parent && layoutFlowAxis(lock.parent) === axis.name;
+      lock.node.props = normalizedPropsFor(lock.node.type, lock.node.props);
+      setNodeProp(lock.node, axis.size, DEFAULT_LAYOUT_VALUE);
+      setNodeProp(lock.node, axis.min, value);
+      setNodeProp(lock.node, axis.max, value);
+      if (controlsParentFlow) {
+        setNodeProp(lock.node, "flex", "0 0 " + value);
+      }
+      clearAxisOffset(lock.node, lock.element, axis);
+      if (lock.element) {
+        lock.element.style[axis.size] = "auto";
+        lock.element.style[axis.min] = value;
+        lock.element.style[axis.max] = value;
+        if (controlsParentFlow) {
+          lock.element.style.flex = "0 0 " + value;
+        }
+        lock.element.style.boxSizing = "border-box";
+      }
+    });
   }
 
   function solveFlowLevel(level, requestedGrowth) {
@@ -2623,22 +3694,15 @@
       const pressure = Math.max(0, actualGrowth - level.freeSpace);
       const absorbed = distributeConstraintShrink(level, sizes, pressure);
       residual = Math.max(0, pressure - absorbed);
-      if (residual > RESIZE_EPSILON && level.wraps) {
-        residual = 0;
-      }
     } else if (actualGrowth < -RESIZE_EPSILON) {
-      const released = -actualGrowth;
-      const absorbed = distributeConstraintGrowth(level, sizes, released);
-      residual = -(released - absorbed);
+      residual = 0;
     }
 
     level.items.forEach((item, index) => {
       applyConstraintItemSize(item, level.axis, sizes[index]);
     });
     if (level.wraps) {
-      const wrap = String(level.parent.props.wrap || "").toLowerCase();
-      level.parentElement.style.flexWrap = wrap === "wrap-reverse" ? "wrap-reverse" : "wrap";
-      expandWrappedContainer(level);
+      level.parentElement.style.flexWrap = "nowrap";
     }
     return Math.abs(residual) <= RESIZE_EPSILON ? 0 : residual;
   }
@@ -2681,6 +3745,15 @@
       applyConstraintItemSize(plan.terminal, plan.axis, desired);
       residual = 0;
     }
+
+    applyAncestorEdgeLinks(plan.ancestorEdgeLinks, plan.axis, plan.edge, pointerPosition);
+    resizeContainedLayoutChildrenToAxis(
+      plan.targetNode,
+      plan.axis,
+      document.getElementById("layoutPreviewMount") || document,
+      plan.descendantEdgeLinks
+    );
+    applyDescendantAxisLocks(plan.descendantAxisLocks);
 
     if (window.QHTML7 && typeof window.QHTML7.refreshLayouts === "function") {
       window.QHTML7.refreshLayouts(previewHost);
@@ -2743,6 +3816,7 @@
     activeId = next.id;
     hideMenus();
     renderPreview();
+    reconcileInsertedLayoutNode(next.id);
     setStatus(kind + " added");
   }
 
@@ -2776,7 +3850,9 @@
     editorMode = mode;
     editorTargetId = targetId || "";
     editorOriginal = String(source || "");
-    title.textContent = mode === "add-qhtml" ? "Add QHTML" : "Edit QHTML";
+    title.textContent = mode === "add-qhtml"
+      ? "Add QHTML"
+      : (mode === "edit-palette" ? "Edit Palette Item" : "Edit QHTML");
     if (typeof editor.setQhtmlSource === "function") {
       editor.setQhtmlSource(editorOriginal);
     } else {
@@ -2784,6 +3860,20 @@
     }
     dialog.showModal();
     hideMenus();
+  }
+
+  function openPaletteDefinitionEditor(detail) {
+    const api = pageBuilderPaletteApi();
+    const paletteId = detail && detail.paletteId ? String(detail.paletteId) : "";
+    const definitionName = detail && detail.definitionName ? String(detail.definitionName) : "";
+    const savedSource = api && typeof api.definitionSource === "function"
+      ? api.definitionSource(paletteId, definitionName)
+      : "";
+    const source = savedSource || String(detail && detail.definitionSource ? detail.definitionSource : "").trim() ||
+      ("q-component " + definitionName + " { }");
+    editorPaletteId = paletteId;
+    editorPaletteDefinitionName = definitionName;
+    openEditor("edit-palette", "", source);
   }
 
   function editorValue() {
@@ -2796,6 +3886,16 @@
 
   function saveEditor() {
     const value = normalizeQHTMLThroughDomTree(editorValue());
+    if (editorMode === "edit-palette") {
+      const api = pageBuilderPaletteApi();
+      if (api && typeof api.applyPaletteDefinitionSource === "function") {
+        api.applyPaletteDefinitionSource(editorPaletteId, editorPaletteDefinitionName, value);
+      }
+      closeEditor(true);
+      renderPreview();
+      setStatus("Palette item updated");
+      return;
+    }
     if (editorMode === "add-qhtml") {
       const target = currentTarget().node || root;
       const next = createNode("qhtml", []);
@@ -2814,6 +3914,7 @@
           found.node.props = {};
           found.node.source = value;
           found.node.children = [];
+          applyQHTMLSourceMetadata(found.node);
           activeId = found.node.id;
         }
       }
@@ -2891,6 +3992,8 @@
     editorMode = "";
     editorTargetId = "";
     editorOriginal = "";
+    editorPaletteId = "";
+    editorPaletteDefinitionName = "";
   }
 
   function openProperties() {
@@ -2972,8 +4075,10 @@
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       clearScopedImports();
-      const source = normalizeQHTMLThroughDomTree(String(reader.result || ""));
-      const parsed = parseLayoutSource(source);
+      const normalized = normalizeQHTMLThroughDomTree(String(reader.result || ""));
+      const paletteSplit = splitPaletteComponentDefinitions(normalized);
+      applyLoadedPaletteDefinitions(paletteSplit.definitions);
+      const parsed = parseLayoutSource(paletteSplit.source);
       root = wrapAsBuilderRoot(parsed || buildDefaultUserTree());
       activeId = firstUserRoot() ? firstUserRoot().id : root.id;
       renderPreview();
@@ -3006,6 +4111,9 @@
 
   function startCanvasInteraction(event) {
     if (event.button !== 0) {
+      return;
+    }
+    if (event.target && event.target.closest && event.target.closest(".lb-canvas-edit-button")) {
       return;
     }
     const element = layoutElementForResizeEvent(event) || layoutElementForEvent(event);
@@ -3102,6 +4210,7 @@
     if (current.type === "resize") {
       clearDropHighlight();
       renderPreview();
+      reconcileResizedNodeAncestors(current.nodeId, current.resizePlan ? current.resizePlan.axis : null);
       setStatus("Resized");
       return;
     }
@@ -3392,6 +4501,12 @@
     });
   }
 
+  function bindPageBuilderPaletteEvents() {
+    document.addEventListener("qhtml-page-builder-palette-edit-request", (event) => {
+      openPaletteDefinitionEditor(event.detail || {});
+    });
+  }
+
   function bindCanvas() {
     const canvas = document.getElementById("layoutCanvas");
     canvas.addEventListener("pointerdown", startCanvasInteraction);
@@ -3468,9 +4583,7 @@
     const cleaned = stripComments(layoutSource);
     const matches = topLevelLayoutMatches(cleaned);
     if (!matches.length) {
-      const qhtmlNode = createNode("qhtml", []);
-      qhtmlNode.source = normalized;
-      return qhtmlNode;
+      return createQHTMLNodeFromSource(normalized, {});
     }
 
     if (matches.length === 1 && !cleaned.slice(0, matches[0].index).trim()) {
@@ -3486,9 +4599,7 @@
     for (const match of matches) {
       const before = cleaned.slice(cursor, match.index).trim();
       if (before) {
-        const qhtmlNode = createNode("qhtml", []);
-        qhtmlNode.source = before;
-        children.push(qhtmlNode);
+        children.push(createQHTMLNodeFromSource(before, {}));
       }
       const open = match.index + match[0].lastIndexOf("{");
       const close = findMatchingBrace(cleaned, open);
@@ -3503,9 +4614,7 @@
     }
     const tail = cleaned.slice(cursor).trim();
     if (tail) {
-      const qhtmlNode = createNode("qhtml", []);
-      qhtmlNode.source = tail;
-      children.push(qhtmlNode);
+      children.push(createQHTMLNodeFromSource(tail, {}));
     }
     return createBuilderRoot(children);
   }
@@ -3642,9 +4751,7 @@
     for (const match of matches) {
       const before = stripPropertyLines(body.slice(cursor, match.index));
       if (before) {
-        const qhtmlNode = createNode("qhtml", []);
-        qhtmlNode.source = before;
-        node.children.push(qhtmlNode);
+        node.children.push(createQHTMLNodeFromSource(before, {}));
       }
       const open = match.index + match[0].lastIndexOf("{");
       const close = findMatchingBrace(body, open);
@@ -3660,9 +4767,7 @@
     const tail = body.slice(cursor).trim();
     const cleanedTail = stripPropertyLines(tail);
     if (cleanedTail) {
-      const qhtmlNode = createNode("qhtml", []);
-      qhtmlNode.source = cleanedTail;
-      node.children.push(qhtmlNode);
+      node.children.push(createQHTMLNodeFromSource(cleanedTail, {}));
     }
   }
 
@@ -3737,6 +4842,7 @@
     activeId = firstUserRoot() ? firstUserRoot().id : root.id;
     createPreviewHost();
     bindToolbar();
+    bindPageBuilderPaletteEvents();
     bindCanvas();
     bindOutline();
     bindMenus();

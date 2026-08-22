@@ -56,8 +56,9 @@ q-component builderPaletteButton {
     window.QHTMLPageBuilderPalette.beginButtonPointerDrag(this, event);
   }
 
-  button.builder-palette-button {
-    type: "button"
+  div.builder-palette-button {
+    role: "button"
+    tabindex: "0"
     data-builder-palette-button: "1"
     data-palette-id: "${this.paletteId}"
     data-definition-name: "${this.definitionName}"
@@ -78,6 +79,18 @@ q-component builderPaletteButton {
 
     span.builder-palette-description {
       text { ${this.description} }
+    }
+
+    button.builder-palette-edit {
+      type: "button"
+      title: "Edit palette item"
+      aria-label: "Edit palette item"
+      onpointerdown { event.stopPropagation(); }
+      onclick {
+        event.stopPropagation();
+        this.component.requestPaletteEdit(event);
+      }
+      text { ✎ }
     }
   }
 }

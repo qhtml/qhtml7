@@ -5,6 +5,8 @@
     activeDrag: null,
     selectedPaletteId: "",
     paletteDefinitions: Object.create(null),
+    paletteDefinitionSources: Object.create(null),
+    paletteDefinitionSourcesByName: Object.create(null),
     paletteItems: Object.create(null),
     canvasInstances: Object.create(null),
     topLevelCanvasItems: Object.create(null),
@@ -56,7 +58,8 @@
       state.paletteDefinitions[detail.paletteId] = {
         uuid: detail.definitionUUID,
         name: detail.definitionName,
-        slots: detail.slotNames ? detail.slotNames.split(/\s*,\s*/) : []
+        slots: detail.slotNames ? detail.slotNames.split(/\s*,\s*/) : [],
+        source: state.paletteDefinitionSources[detail.paletteId] || state.paletteDefinitionSourcesByName[detail.definitionName] || ""
       };
     }
     return detail;
@@ -84,6 +87,82 @@
   function childrenOf(node) {
     if (node && typeof node.childList === "function") return Array.prototype.slice.call(node.childList());
     return [];
+  }
+
+  function sourceQHTML(node) {
+    if (!node) return "";
+    if (typeof node.sourceQHTML === "function") return String(node.sourceQHTML(0) || "");
+    if (typeof node.toQHTML === "function") return String(node.toQHTML(0) || "");
+    return "";
+  }
+
+  function resolveDefinition(component, definitionName, event) {
+    var name = String(definitionName || "").trim();
+    var target = event && event.currentTarget ? event.currentTarget : null;
+    var host = target && target.closest ? target.closest("q-html,q-html7") : null;
+    if (component && name && typeof component.qhtmlResolve === "function") {
+      var local = component.qhtmlResolve(name);
+      if (local) return local;
+    }
+    if (host && host.qhtmlNode && name && typeof host.qhtmlNode.qhtmlResolve === "function") {
+      var hosted = host.qhtmlNode.qhtmlResolve(name);
+      if (hosted) return hosted;
+    }
+    var roots = document.querySelectorAll("q-html,q-html7");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      if (root.qhtmlNode && name && typeof root.qhtmlNode.qhtmlResolve === "function") {
+        var resolved = root.qhtmlNode.qhtmlResolve(name);
+        if (resolved) return resolved;
+      }
+    }
+    return null;
+  }
+
+  function paletteIdForDefinitionName(definitionName) {
+    var wanted = String(definitionName || "").trim();
+    var found = "";
+    Object.keys(state.paletteItems).some(function (paletteId) {
+      var item = state.paletteItems[paletteId];
+      if (item && item.detail && item.detail.definitionName === wanted) {
+        found = paletteId;
+        return true;
+      }
+      return false;
+    });
+    return found;
+  }
+
+  function definitionSourceForDetail(component, detail, event) {
+    if (!detail) return "";
+    if (detail.paletteId && state.paletteDefinitionSources[detail.paletteId]) {
+      return state.paletteDefinitionSources[detail.paletteId];
+    }
+    if (detail.definitionName && state.paletteDefinitionSourcesByName[detail.definitionName]) {
+      return state.paletteDefinitionSourcesByName[detail.definitionName];
+    }
+    return sourceQHTML(resolveDefinition(component, detail.definitionName, event));
+  }
+
+  function qhtmlModule() {
+    return window.QHTML7 && window.QHTML7.Module ? window.QHTML7.Module : null;
+  }
+
+  function definitionSlotsFromSource(source, definitionName) {
+    var Module = qhtmlModule();
+    if (!Module || typeof Module.QHTMLDomTree !== "function") return [];
+    var tree = new Module.QHTMLDomTree();
+    try {
+      if (typeof tree.fromQHTML === "function") {
+        tree.fromQHTML(String(source || ""));
+      }
+      if (definitionName && typeof tree.qhtmlResolve === "function") {
+        return slotsFromDefinition(tree.qhtmlResolve(String(definitionName || "")));
+      }
+      return [];
+    } finally {
+      if (tree && typeof tree.delete === "function") tree.delete();
+    }
   }
 
   function slotsFromChildList(node, slots) {
@@ -254,11 +333,13 @@
 
     requestEdit: function (component, event) {
       var detail = registerPaletteItem(component);
+      detail.definitionSource = definitionSourceForDetail(component, detail, event);
       emit("qhtml-page-builder-palette-edit-request", detail);
     },
 
     requestButtonEdit: function (component, event) {
       var detail = registerPaletteItem(component);
+      detail.definitionSource = definitionSourceForDetail(component, detail, event);
       emit("qhtml-page-builder-palette-edit-request", detail);
     },
 
@@ -283,7 +364,11 @@
 
     createInstanceFromType: function (buttonComponent, componentDefinition) {
       var detail = registerPaletteItem(buttonComponent);
-      var definitionSlots = slotsFromDefinition(componentDefinition);
+      var resolvedDefinition = resolveDefinition(buttonComponent, detail.definitionName);
+      if (resolvedDefinition) {
+        api.registerPaletteDefinition(detail.paletteId, resolvedDefinition);
+      }
+      var definitionSlots = slotsFromDefinition(resolvedDefinition) || slotsFromDefinition(componentDefinition);
       var instance = {
         paletteId: detail.paletteId,
         canvasInstanceId: detail.canvasInstanceId || "pb-instance-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
@@ -357,8 +442,49 @@
       state.paletteDefinitions[paletteId].definition = definition;
       state.paletteDefinitions[paletteId].name = qhtmlNodeName(definition) || state.paletteDefinitions[paletteId].name || "";
       state.paletteDefinitions[paletteId].slots = slotsFromDefinition(definition);
+      state.paletteDefinitions[paletteId].source = state.paletteDefinitionSources[paletteId] || sourceQHTML(definition);
       emit("qhtml-page-builder-palette-definition-registered", state.paletteDefinitions[paletteId]);
       return state.paletteDefinitions[paletteId];
+    },
+
+    applyPaletteDefinitionSource: function (paletteId, definitionName, source) {
+      var id = String(paletteId || "").trim() || paletteIdForDefinitionName(definitionName);
+      var name = String(definitionName || "").trim();
+      var text = String(source || "").trim();
+      if (!id && name) id = paletteIdForDefinitionName(name);
+      if (id) state.paletteDefinitionSources[id] = text;
+      if (name) state.paletteDefinitionSourcesByName[name] = text;
+      if (id) {
+        state.paletteDefinitions[id] = state.paletteDefinitions[id] || {};
+        state.paletteDefinitions[id].name = name || state.paletteDefinitions[id].name || "";
+        state.paletteDefinitions[id].source = text;
+        state.paletteDefinitions[id].slots = definitionSlotsFromSource(text, name);
+      }
+      emit("qhtml-page-builder-palette-definition-source-change", {
+        paletteId: id,
+        definitionName: name,
+        source: text
+      });
+      return text;
+    },
+
+    definitionSource: function (paletteId, definitionName) {
+      var id = String(paletteId || "").trim() || paletteIdForDefinitionName(definitionName);
+      var name = String(definitionName || "").trim();
+      return (id && state.paletteDefinitionSources[id]) || (name && state.paletteDefinitionSourcesByName[name]) || "";
+    },
+
+    serializedDefinitionOverrides: function () {
+      return Object.keys(state.paletteDefinitionSources)
+        .map(function (paletteId) { return state.paletteDefinitionSources[paletteId]; })
+        .filter(function (source) { return String(source || "").trim(); })
+        .join("\n\n");
+    },
+
+    paletteIdForDefinitionName: paletteIdForDefinitionName,
+
+    isPaletteDefinitionName: function (definitionName) {
+      return !!paletteIdForDefinitionName(definitionName);
     },
 
     beginSlotMigration: function (paletteId, nextSlots) {
