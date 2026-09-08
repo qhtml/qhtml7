@@ -1,5 +1,9 @@
 # Changes
 
+## 7.4.9
+
+- Component-definition `onready` handlers now run before `onready` handlers declared in individual component instances, allowing instance initialization to override definition defaults reliably.
+
 ## 7.4.6
 
 - Added `QHTMLComponentDefinition.create(parent, properties)` for QHTML-native dynamic component instantiation into a target QHTML parent, followed by reference rebuilding and parent rerendering.

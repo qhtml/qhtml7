@@ -10843,16 +10843,38 @@
       return;
     }
     const count = typeof qhtmlNode.childCount === "function" ? qhtmlNode.childCount() : 0;
-    for (let index = 0; index < count; index += 1) {
-      const child = qhtmlNode.childAt(index);
+    const bindChild = (child) => {
       if (qhtmlNodeType(child) !== "QHTMLEventHandler") {
-        continue;
+        return;
       }
       const eventName = String(child.eventName() || "").toLowerCase();
       if (isPaintEventName(eventName) || eventName === "paint") {
-        continue;
+        return;
       }
       bindEventHandler(domElement, child);
+    };
+
+    // Definition handlers establish the initial component state. Constructor
+    // handlers must connect afterward so instance overrides win on ready.
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      const eventName = qhtmlNodeType(child) === "QHTMLEventHandler"
+        ? String(child.eventName() || "").toLowerCase()
+        : "";
+      if (eventName === "ready" && !child.property("__qhtmlDefinitionMember")) {
+        continue;
+      }
+      bindChild(child);
+    }
+    for (let index = 0; index < count; index += 1) {
+      const child = qhtmlNode.childAt(index);
+      const eventName = qhtmlNodeType(child) === "QHTMLEventHandler"
+        ? String(child.eventName() || "").toLowerCase()
+        : "";
+      if (eventName === "ready" && child.property("__qhtmlDefinitionMember")) {
+        continue;
+      }
+      bindChild(child);
     }
   }
 

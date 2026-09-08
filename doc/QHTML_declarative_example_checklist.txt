@@ -252,6 +252,8 @@ B. COMPONENTS
     }
     mycomp obj2 { }
     ```
+    Component-definition `onready` handlers run before handlers declared in the
+    component instance, so instance initialization can override definition defaults.
 
 18. Anonymous component instance
     If supported, show a component instance without a named reference.

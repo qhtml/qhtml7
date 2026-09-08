@@ -43,7 +43,7 @@ q-component td-game {
         span { text { Money: $${this.money} } }
         span { text { Level: ${this.level} } }
         span { text { Health: ${this.health} } }
-        span { text { TowerDefenseVS QHTML7 Port } }
+        span { text { TowerDefenseVS } }
       }
 
       td-board board { }

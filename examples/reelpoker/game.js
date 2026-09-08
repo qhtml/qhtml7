@@ -4,10 +4,10 @@ const REEL_COUNT = 5;
 const CARDS_PER_REEL = 9;
 const VISIBLE_SLOTS = 3;
 const SLOT_HEIGHT = 100 / VISIBLE_SLOTS;
-const SPIN_DURATION = 2600;
-const WIN_LINE_DURATION = 1000;
+const SPIN_DURATION = 5600;
+const WIN_LINE_DURATION = 3000;
 
-const STARTING_CREDITS = 100;
+const STARTING_CREDITS = 1000;
 const MIN_BET = 1;
 const MAX_BET = 100;
 
@@ -43,15 +43,15 @@ const PAYLINES = [
 
 /* Simple poker-slot payout table. Payout = multiplier × current bet. */
 const POKER_PAYOUTS = {
-  ROYAL_FLUSH:    { name: "Royal Flush",    multiplier: 250 },
-  STRAIGHT_FLUSH: { name: "Straight Flush", multiplier: 50 },
-  FOUR_KIND:      { name: "Four of a Kind", multiplier: 25 },
-  FULL_HOUSE:     { name: "Full House",     multiplier: 9 },
-  FLUSH:          { name: "Flush",          multiplier: 6 },
-  STRAIGHT:       { name: "Straight",       multiplier: 4 },
+  ROYAL_FLUSH:    { name: "Royal Flush",    multiplier: 150 },
+  STRAIGHT_FLUSH: { name: "Straight Flush", multiplier: 25 },
+  FOUR_KIND:      { name: "Four of a Kind", multiplier: 20 },
+  FULL_HOUSE:     { name: "Full House",     multiplier: 10 },
+  FLUSH:          { name: "Flush",          multiplier: 8 },
+  STRAIGHT:       { name: "Straight",       multiplier: 5 },
   THREE_KIND:     { name: "Three of a Kind",multiplier: 3 },
   TWO_PAIR:       { name: "Two Pair",       multiplier: 2 },
-  PAIR:           { name: "Pair",           multiplier: 1 }
+  PAIR:           { name: "Pair",           multiplier: 0.5 }
 };
 
 function modulo(value, divisor) {
@@ -280,26 +280,26 @@ class PokerGame {
   }
 
   async spin() {
-    if (this.spinning || this.credits < (this.bet * (0.5 * 20))) {
+    if (this.spinning || this.credits < (this.bet)) {
       return;
     }
 
     this.stopWinCelebration();
     this.spinning = true;
-    this.credits -= this.bet * (0.5 * 20);
+    this.credits -= this.bet * 20;
     this.lastWin = 0;
     this.clearWinningPaylines();
     this.updateDisplay();
 
     await Promise.all(this.reels.map((reel, index) => {
       const fullRotations = CARDS_PER_REEL * 4;
-      const stopOffset = randomInteger(1, CARDS_PER_REEL);
+      const stopOffset = randomInteger(1, CARDS_PER_REEL * 5);
       return reel.spin(fullRotations + stopOffset, SPIN_DURATION + index * 100);
     }));
 
     const result = this.evaluatePaylines();
-    this.lastWin = result.totalWin;
-    this.credits += result.totalWin;
+    this.lastWin = Math.ceil((result.totalWin * 2)) ;
+    this.credits += Math.ceil((result.totalWin * 2));
     this.spinning = false;
     this.showWinningPaylines(result.wins);
     this.startWinCelebration(result.wins);
@@ -429,7 +429,7 @@ class PokerGame {
 
   updateDisplay() {
     this.creditsDisplay.textContent = String(this.credits);
-    this.betDisplay.textContent = String(this.bet);
+    this.betDisplay.textContent = String(this.bet * 20);
     this.winDisplay.textContent = String(this.lastWin);
 
     this.spinButton.disabled = this.spinning || this.credits < this.bet;

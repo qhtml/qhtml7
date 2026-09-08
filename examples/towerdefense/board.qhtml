@@ -1,7 +1,7 @@
 q-component td-board {
   q-property game: null
-  q-property rows: 20
-  q-property cols: 30
+  q-property rows: 15
+  q-property cols: 25
   q-property tileWidth: 50
   q-property tileHeight: 50
   q-property tiles: {}
@@ -30,7 +30,7 @@ q-component td-board {
   q-property nextProjectileId: 1
   q-property numEnemies: 0
   q-property numWaves: 0
-  q-property waveSize: 15
+  q-property waveSize: 40
   q-property wavesPerLevel: 2
   q-property entranceIndex: 0
   q-property nextSpawnAt: 0
@@ -119,7 +119,7 @@ q-component td-board {
   }
 
   function randomMazeWallCount() {
-    return 100 + Math.floor(Math.random() * 101);
+    return Math.ceil(this.rows * this.cols * 0.12) + Math.floor(Math.random() * 10);
   }
 
   function randomInteriorRow() {
@@ -514,8 +514,8 @@ q-component td-board {
       y: entrance.y,
       width: this.tileWidth + "px",
       height: this.tileHeight + "px",
-      health: maxHealth,
-      maxHealth: maxHealth,
+      health: maxHealth * Math.ceil(this.game.level / 2),
+      maxHealth: maxHealth * Math.ceil(this.game.level / 2),
       speed: enemyProperties.speed - (Number(this.game.level) * 5),
       cost: enemyProperties.cost,
       opacity: 1,

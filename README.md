@@ -6,6 +6,10 @@ Language design, specifications, and tests created by humans; implementation by 
 
 ## What's New
 
+### 7.4.9: Component ready-handler ordering
+
+When a component instance supplies its own `onready { }` handler, the handler declared by the component definition runs first. The instance handler runs afterward, allowing constructor-specific initialization to override values established by the reusable component definition.
+
 ### 7.4.6: QHTML-native dynamic creation and removal
 
 QHTML components can now be instantiated directly from their component definition with `.create(parent, properties)`. The first argument is the QHTML parent object to append into, and the optional second argument supplies initial property assignments. The parent is rerendered after the new instance is added.
@@ -604,6 +608,26 @@ signal-card { }
 
 Signals are runtime behavior, not static HTML. They are useful for component-local events and for connecting components together.
 
+The built-in `ready` lifecycle signal follows a defined ordering: an `onready { }` handler from the component definition runs before an `onready { }` handler declared in a component instance. This lets the definition establish defaults while the instance performs its final, instance-specific initialization.
+
+```qhtml
+q-component label-card {
+  q-property label: "default"
+
+  onready {
+    this.label = "definition value"
+  }
+}
+
+label-card card1 {
+  onready {
+    this.label = "instance value"
+  }
+}
+```
+
+After ready handlers finish, `card1.label` is `"instance value"`.
+
 ### Events And Event Listeners
 
 `q-event` declares a named action/event object in QHTML context. It is callable like a function from QHTML scripts, but it also dispatches a DOM `CustomEvent` named `qhtml:<EventName>`. This makes it useful for game flow, application-level actions, and coordination between components that are not direct parents or children.
@@ -699,7 +723,7 @@ q-component sender-box {
 q-component receiver-box {
   q-property value: "waiting"
 
-  function onMessage(message) {
+  function messageFunction(message) {
     this.value = message;
   }
 
@@ -713,7 +737,7 @@ q-component receiver-box {
 sender-box sender1 { }
 receiver-box receiver1 { }
 
-q-connect { sender1.sent receiver1.onMessage }
+q-connect { sender1.sent receiver1.messageFunction }
 
 q-component driver {
   onready {
@@ -721,8 +745,44 @@ q-component driver {
   }
 }
 
-driver { }
+driver my_obj { }
 ```
+#### Initialization / DOM Content Loaded handlers
+
+Every q-component has a built-in set of q-signals which includes a signal named
+`ready()` which fires automatically once a component instance is fully materialized and rendered into the DOM.
+
+You do not need to specify this signal to use it. You treat it like any other native DOM signal by attaching it to q-components and q-component instances to execute javascript at runtime.
+
+```
+q-component my_component {
+  q-property someproperty: 42
+  
+  div,span,text { Here is the value for someproperty: - ${someproperty} - }
+  
+  onready { 
+    this.someproperty = "hello world"
+  }
+}
+
+
+my_component object2 { }
+
+
+/*
+*
+* optionally for object-level handling 
+*
+*/
+
+my_component object3 { 
+  someproperty: 99
+  
+  onready { this.someproperty = 128 }
+}
+```
+
+The component definition's `onready` handler runs before the instance handler, so `object3.someproperty` finishes at `128`. This ordering allows a component definition to establish defaults while each instance applies its final initialization.
 
 ### Component Inheritance
 

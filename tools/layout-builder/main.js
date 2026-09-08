@@ -196,6 +196,117 @@
       grid-template-columns: minmax(0, 1fr) 12px !important;
     }
 
+    #lbEditorDialog .lb-dialog-body {
+      max-height: calc(100vh - 180px);
+      overflow: auto;
+    }
+
+    .lb-editor-style-panel {
+      margin-top: 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+
+    .lb-editor-style-panel[hidden] {
+      display: none;
+    }
+
+    .lb-editor-style-panel summary {
+      cursor: pointer;
+      padding: 11px 12px;
+      color: #1e293b;
+      font-size: 13px;
+      font-weight: 850;
+      user-select: none;
+    }
+
+    .lb-editor-style-panel[open] summary {
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .lb-editor-style-body {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      background: #ffffff;
+    }
+
+    .lb-editor-style-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    .lb-editor-style-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .lb-editor-style-field.wide {
+      grid-column: 1 / -1;
+    }
+
+    .lb-editor-style-field label {
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .lb-editor-style-field input,
+    .lb-editor-style-field textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 8px 9px;
+    }
+
+    .lb-editor-style-field input {
+      min-height: 36px;
+    }
+
+    .lb-editor-style-field textarea {
+      min-height: 116px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .lb-editor-style-names {
+      color: #64748b;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .lb-editor-style-names code {
+      color: #334155;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .lb-editor-style-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    @media (max-width: 720px) {
+      .lb-editor-style-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .lb-editor-style-field.wide {
+        grid-column: auto;
+      }
+    }
+
   </style>
 
   <input id="lbOpenFile" type="file" accept=".qhtml,.txt,text/plain" hidden>
@@ -281,6 +392,34 @@
     </div>
     <div class="lb-dialog-body">
       <q-editor id="lbEditor" auto-format="1"></q-editor>
+
+      <details id="lbEditorStylePanel" class="lb-editor-style-panel" hidden>
+        <summary>CSS / q-style + q-theme</summary>
+        <div class="lb-editor-style-body">
+          <div class="lb-editor-style-grid">
+            <div class="lb-editor-style-field wide">
+              <label for="lbEditorCssSelector">Theme selector</label>
+              <input id="lbEditorCssSelector" type="text" list="lbEditorCssSelectorOptions" placeholder=".card">
+              <datalist id="lbEditorCssSelectorOptions"></datalist>
+            </div>
+
+            <div class="lb-editor-style-field wide">
+              <label for="lbEditorCssDeclarations">Style declarations</label>
+              <textarea id="lbEditorCssDeclarations" spellcheck="false" placeholder="backgroundColor: #ffffff&#10;color: #0f172a&#10;padding: 12px"></textarea>
+            </div>
+          </div>
+
+          <div class="lb-editor-style-names">
+            Generates <code id="lbEditorCssStyleName"></code> and <code id="lbEditorCssThemeName"></code>.
+            Standard kebab-case CSS properties are converted to QHTML camelCase shortcuts.
+          </div>
+
+          <div class="lb-editor-style-actions">
+            <button id="lbEditorCssRemove" class="lb-button" type="button">Remove Generated CSS</button>
+            <button id="lbEditorCssApply" class="lb-button primary" type="button">Apply CSS to QHTML</button>
+          </div>
+        </div>
+      </details>
     </div>
     <div class="lb-dialog-actions">
       <button id="lbEditorCancel" class="lb-button" type="button">Cancel</button>
@@ -3858,6 +3997,7 @@
     } else {
       editor.textContent = editorOriginal;
     }
+    configureEditorStylePanel(editorOriginal, editorTargetId);
     dialog.showModal();
     hideMenus();
   }
@@ -3882,6 +4022,332 @@
       return editor.getQhtmlSource();
     }
     return editor.textContent || "";
+  }
+
+  function setEditorValue(value) {
+    const editor = document.getElementById("lbEditor");
+    const source = String(value || "");
+    if (typeof editor.setQhtmlSource === "function") {
+      editor.setQhtmlSource(source);
+    } else {
+      editor.textContent = source;
+    }
+  }
+
+  function editorGeneratedStyleNames(nodeId) {
+    const token = String(nodeId || "node")
+      .replace(/[^A-Za-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "node";
+    return {
+      styleName: "lb-style-" + token,
+      themeName: "lb-theme-" + token
+    };
+  }
+
+  function escapeRegExp(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function findNamedDeclarationBlock(source, keyword, name) {
+    const text = String(source || "");
+    const re = new RegExp("(^|\\n)\\s*" + escapeRegExp(keyword) + "\\s+" + escapeRegExp(name) + "\\s*\\{", "g");
+    const match = re.exec(text);
+    if (!match) {
+      return null;
+    }
+    const start = match.index + match[1].length;
+    const open = text.indexOf("{", start);
+    const close = open >= 0 ? findMatchingBrace(text, open) : -1;
+    if (open < 0 || close < 0) {
+      return null;
+    }
+    return {
+      start: start,
+      open: open,
+      close: close,
+      end: close + 1,
+      body: text.slice(open + 1, close)
+    };
+  }
+
+  function findNamedInvocationBlock(source, name) {
+    const text = String(source || "");
+    const re = new RegExp("(^|\\n)\\s*" + escapeRegExp(name) + "\\s*\\{", "g");
+    let match = null;
+    while ((match = re.exec(text))) {
+      const start = match.index + match[1].length;
+      const open = text.indexOf("{", start);
+      const close = open >= 0 ? findMatchingBrace(text, open) : -1;
+      if (open >= 0 && close >= 0) {
+        return {
+          start: start,
+          open: open,
+          close: close,
+          end: close + 1,
+          body: text.slice(open + 1, close)
+        };
+      }
+      if (re.lastIndex <= match.index) {
+        re.lastIndex = match.index + 1;
+      }
+    }
+    return null;
+  }
+
+  function removeSourceRange(source, block) {
+    if (!block) {
+      return String(source || "");
+    }
+    const text = String(source || "");
+    let start = block.start;
+    let end = block.end;
+    while (start > 0 && (text[start - 1] === " " || text[start - 1] === "\t")) {
+      start -= 1;
+    }
+    if (start > 0 && text[start - 1] === "\n") {
+      start -= 1;
+    }
+    while (end < text.length && (text[end] === " " || text[end] === "\t")) {
+      end += 1;
+    }
+    if (end < text.length && text[end] === "\n") {
+      end += 1;
+    }
+    return (text.slice(0, start) + text.slice(end)).replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function generatedThemeSelector(themeBlock) {
+    if (!themeBlock) {
+      return "";
+    }
+    const body = String(themeBlock.body || "").trim();
+    const open = body.indexOf("{");
+    return open >= 0 ? body.slice(0, open).trim() : "";
+  }
+
+  function inspectGeneratedEditorStyling(source, nodeId) {
+    const names = editorGeneratedStyleNames(nodeId);
+    const styleBlock = findNamedDeclarationBlock(source, "q-style", names.styleName);
+    const themeBlock = findNamedDeclarationBlock(source, "q-theme", names.themeName);
+    return {
+      names: names,
+      styleBlock: styleBlock,
+      themeBlock: themeBlock,
+      wrapperBlock: findNamedInvocationBlock(source, names.themeName),
+      declarations: styleBlock ? String(styleBlock.body || "").trim() : "",
+      selector: generatedThemeSelector(themeBlock)
+    };
+  }
+
+  function stripGeneratedEditorStyling(source, nodeId) {
+    const details = inspectGeneratedEditorStyling(source, nodeId);
+    let text = String(source || "");
+    if (details.wrapperBlock) {
+      text = text.slice(0, details.wrapperBlock.start) +
+        String(details.wrapperBlock.body || "").trim() +
+        text.slice(details.wrapperBlock.end);
+    }
+    const styleBlock = findNamedDeclarationBlock(text, "q-style", details.names.styleName);
+    text = removeSourceRange(text, styleBlock);
+    const themeBlock = findNamedDeclarationBlock(text, "q-theme", details.names.themeName);
+    text = removeSourceRange(text, themeBlock);
+    return {
+      source: text.replace(/\n{3,}/g, "\n\n").trim(),
+      declarations: details.declarations,
+      selector: details.selector,
+      names: details.names
+    };
+  }
+
+  function qhtmlStylePropertyName(name) {
+    const property = String(name || "").trim();
+    if (!property || property.startsWith("--") || !property.includes("-")) {
+      return property;
+    }
+    return property.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+  }
+
+  function normalizeEditorStyleDeclarations(value) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return { text: "", error: "" };
+    }
+    const parts = raw
+      .replace(/\r/g, "")
+      .split(/\n|;/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const lines = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const match = /^([A-Za-z_-][\w-]*)\s*:\s*(.+)$/.exec(parts[i]);
+      if (!match) {
+        return {
+          text: "",
+          error: 'Invalid CSS declaration: "' + parts[i] + '". Use property: value.'
+        };
+      }
+      lines.push(qhtmlStylePropertyName(match[1]) + ": " + match[2].trim());
+    }
+    return { text: lines.join("\n"), error: "" };
+  }
+
+  function indentQHTMLBlock(source, level) {
+    const prefix = indent(level);
+    return String(source || "").split("\n").map((line) => prefix + line).join("\n");
+  }
+
+  function simpleRenderedSelector(element) {
+    if (!element || !element.localName) {
+      return "";
+    }
+    const id = String(element.id || "");
+    if (/^[A-Za-z_][\w-]*$/.test(id)) {
+      return "#" + id;
+    }
+    const classes = Array.from(element.classList || []).filter((name) => {
+      return /^[A-Za-z_][\w-]*$/.test(name) &&
+        !name.startsWith("lb-") &&
+        !name.startsWith("layout-builder-");
+    });
+    if (classes.length) {
+      return "." + classes[0];
+    }
+    return String(element.localName || "").toLowerCase();
+  }
+
+  function editorSelectorSuggestions(node) {
+    const mount = document.getElementById("layoutPreviewMount");
+    const target = mount && node ? renderedPaletteTargetForNode(mount, node) : null;
+    if (!target) {
+      return [];
+    }
+    const preferredTags = new Set([
+      "a", "article", "aside", "button", "div", "footer", "form", "h1", "h2", "h3", "h4",
+      "header", "img", "input", "label", "li", "main", "nav", "p", "section", "select", "span",
+      "table", "td", "textarea", "th", "tr", "ul"
+    ]);
+    const candidates = [target].concat(Array.from(target.querySelectorAll("*")));
+    const selectors = [];
+    const add = (selector) => {
+      if (selector && !selectors.includes(selector)) {
+        selectors.push(selector);
+      }
+    };
+    candidates.forEach((element) => {
+      const tag = String(element.localName || "").toLowerCase();
+      const selector = simpleRenderedSelector(element);
+      if (preferredTags.has(tag) || selector.startsWith(".") || selector.startsWith("#")) {
+        add(selector);
+      }
+    });
+    return selectors.slice(0, 40);
+  }
+
+  function inferEditorStyleSelector(node, source) {
+    const suggestions = editorSelectorSuggestions(node);
+    const preferred = suggestions.find((selector) => selector.startsWith("#")) ||
+      suggestions.find((selector) => selector.startsWith(".")) ||
+      suggestions[0];
+    if (preferred) {
+      return preferred;
+    }
+    const cleaned = stripComments(String(source || ""))
+      .replace(/^\s*q-import\s*\{[^}]*\}\s*$/gm, "")
+      .trim();
+    const match = /^([A-Za-z_][\w-]*)/.exec(cleaned);
+    return match ? match[1] : "div";
+  }
+
+  function configureEditorStylePanel(source, targetId) {
+    const panel = document.getElementById("lbEditorStylePanel");
+    const selectorInput = document.getElementById("lbEditorCssSelector");
+    const declarationsInput = document.getElementById("lbEditorCssDeclarations");
+    const options = document.getElementById("lbEditorCssSelectorOptions");
+    const found = findNodeById(targetId);
+    const node = found && found.node ? found.node : null;
+    const eligible = editorMode === "edit" && node && node.type === "qhtml";
+    panel.hidden = !eligible;
+    panel.open = false;
+    options.innerHTML = "";
+    if (!eligible) {
+      selectorInput.value = "";
+      declarationsInput.value = "";
+      document.getElementById("lbEditorCssStyleName").textContent = "";
+      document.getElementById("lbEditorCssThemeName").textContent = "";
+      return;
+    }
+
+    const details = inspectGeneratedEditorStyling(source, targetId);
+    const suggestions = editorSelectorSuggestions(node);
+    suggestions.forEach((selector) => {
+      const option = document.createElement("option");
+      option.value = selector;
+      options.appendChild(option);
+    });
+
+    selectorInput.value = details.selector || inferEditorStyleSelector(node, source);
+    declarationsInput.value = details.declarations;
+    document.getElementById("lbEditorCssStyleName").textContent = details.names.styleName;
+    document.getElementById("lbEditorCssThemeName").textContent = details.names.themeName;
+    panel.open = Boolean(details.declarations);
+  }
+
+  function applyEditorThemeCss() {
+    const found = findNodeById(editorTargetId);
+    if (!found || !found.node || found.node.type !== "qhtml") {
+      return;
+    }
+    const selector = document.getElementById("lbEditorCssSelector").value.trim();
+    if (!selector || /[{}]/.test(selector)) {
+      setStatus("Enter a valid q-theme selector");
+      return;
+    }
+    const normalized = normalizeEditorStyleDeclarations(
+      document.getElementById("lbEditorCssDeclarations").value
+    );
+    if (normalized.error) {
+      setStatus(normalized.error);
+      return;
+    }
+    if (!normalized.text) {
+      removeEditorThemeCss();
+      return;
+    }
+
+    const stripped = stripGeneratedEditorStyling(editorValue(), editorTargetId);
+    const split = splitTopLevelImports(stripped.source);
+    const body = String(split.source || "").trim();
+    if (!body) {
+      setStatus("Add QHTML content before applying CSS");
+      return;
+    }
+
+    const styleLines = normalized.text.split("\n").map((line) => "  " + line).join("\n");
+    const styleSource = "q-style " + stripped.names.styleName + " {\n" + styleLines + "\n}";
+    const themeSource = "q-theme " + stripped.names.themeName + " {\n" +
+      "  " + selector + " { " + stripped.names.styleName + " }\n" +
+      "}";
+    const wrappedSource = stripped.names.themeName + " {\n" + indentQHTMLBlock(body, 1) + "\n}";
+    const imports = split.imports.map((path) => "q-import { " + path + " }").join("\n");
+    const sections = [imports, styleSource, themeSource, wrappedSource].filter(Boolean);
+    const nextSource = normalizeQHTMLThroughDomTree(sections.join("\n\n"));
+    setEditorValue(nextSource);
+    document.getElementById("lbEditorCssDeclarations").value =
+      inspectGeneratedEditorStyling(nextSource, editorTargetId).declarations || normalized.text;
+    document.getElementById("lbEditorStylePanel").open = true;
+    setStatus("Added q-style and q-theme to the editor QHTML");
+  }
+
+  function removeEditorThemeCss() {
+    const found = findNodeById(editorTargetId);
+    if (!found || !found.node || found.node.type !== "qhtml") {
+      return;
+    }
+    const stripped = stripGeneratedEditorStyling(editorValue(), editorTargetId);
+    setEditorValue(normalizeQHTMLThroughDomTree(stripped.source));
+    document.getElementById("lbEditorCssDeclarations").value = "";
+    document.getElementById("lbEditorStylePanel").open = true;
+    setStatus("Removed generated q-style and q-theme");
   }
 
   function saveEditor() {
@@ -4424,6 +4890,8 @@
       event.preventDefault();
       closeEditor(false);
     });
+    document.getElementById("lbEditorCssApply").addEventListener("click", applyEditorThemeCss);
+    document.getElementById("lbEditorCssRemove").addEventListener("click", removeEditorThemeCss);
 
     document.getElementById("lbPropertiesSave").addEventListener("click", saveProperties);
     document.getElementById("lbPropertiesCancel").addEventListener("click", () => {
