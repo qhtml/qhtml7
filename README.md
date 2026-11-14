@@ -306,13 +306,6 @@ This only defines `info-card`. It does not render anything until it is instantia
 ### Instantiate A Component
 
 ```qhtml
-q-component info-card {
-  article.card {
-    h3 { text { Info } }
-    p { text { This content came from a component. } }
-  }
-}
-
 info-card { }
 ```
 
